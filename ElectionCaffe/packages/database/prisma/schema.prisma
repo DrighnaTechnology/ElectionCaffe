@@ -1,0 +1,4119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== SUPER ADMIN & SYSTEM CONFIG ====================
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  configKey   String   @unique @map("config_key")
+  configValue Json     @map("config_value")
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
+
+model SuperAdmin {
+  id              String   @id @default(uuid())
+  firstName       String   @map("first_name")
+  lastName        String?  @map("last_name")
+  email           String   @unique
+  mobile          String   @unique
+  passwordHash    String   @map("password_hash")
+  profilePhotoUrl String?  @map("profile_photo_url")
+  isActive        Boolean  @default(true) @map("is_active")
+  lastLoginAt     DateTime? @map("last_login_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("super_admins")
+}
+
+// ==================== FEATURE FLAGS ====================
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  featureKey  String   @unique @map("feature_key")
+  featureName String   @map("feature_name")
+  description String?
+  category    String?
+  isGlobal    Boolean  @default(true) @map("is_global")
+  defaultEnabled Boolean @default(true) @map("default_enabled")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenantFeatures TenantFeature[]
+
+  @@map("feature_flags")
+}
+
+model TenantFeature {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  featureId   String   @map("feature_id")
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  settings    Json?    @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feature FeatureFlag @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureId])
+  @@map("tenant_features")
+}
+
+// ==================== AUTHENTICATION & USERS ====================
+
+enum UserRole {
+  // Super Admin (cross-tenant)
+  SUPER_ADMIN
+
+  // Tenant-level roles (Political Party)
+  TENANT_ADMIN
+  CENTRAL_ADMIN
+  CENTRAL_CAMPAIGN_TEAM
+
+  // Constituency-level roles
+  CONSTITUENCY_ADMIN
+  CAMPAIGN_MANAGER
+
+  // Field-level roles
+  COORDINATOR
+  SECTOR_OFFICER
+  BOOTH_INCHARGE
+  VOLUNTEER
+  AGENT
+  POLLING_AGENT
+  COUNTING_AGENT
+
+  // Individual Candidate roles
+  CANDIDATE
+  CANDIDATE_ADMIN
+
+  // Election Management Company roles
+  EMC_ADMIN
+  EMC_MANAGER
+  EMC_OPERATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+  PENDING
+}
+
+enum TenantType {
+  POLITICAL_PARTY      // Full party with multiple candidates/constituencies
+  INDIVIDUAL_CANDIDATE // Single candidate managing their constituency
+  ELECTION_MANAGEMENT  // Company managing elections for others
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  EXPIRED
+  TRIAL
+}
+
+enum DatabaseType {
+  SHARED               // Uses shared ElectionCaffe platform database with tenant isolation
+  DEDICATED_MANAGED    // Super Admin creates and manages the dedicated database
+  DEDICATED_SELF       // Tenant admin provides their own database connection
+  NONE                 // No database configured yet (tenant needs to set up)
+}
+
+enum DatabaseStatus {
+  NOT_CONFIGURED       // Database not set up yet
+  PENDING_SETUP        // Waiting for tenant to provide connection
+  CONNECTING           // Testing connection
+  CONNECTED            // Successfully connected
+  CONNECTION_FAILED    // Failed to connect
+  MIGRATING            // Running migrations
+  READY                // Fully operational
+  SUSPENDED            // Suspended by super admin
+}
+
+model Tenant {
+  id                String       @id @default(uuid())
+  name              String
+  slug              String       @unique
+  tenantType        TenantType   @default(INDIVIDUAL_CANDIDATE) @map("tenant_type")
+  organizationName  String?      @map("organization_name")
+  displayName       String?      @map("display_name") // Custom display name shown in header (tenant customizable)
+  tenantUrl         String?      @unique @map("tenant_url") // System-generated URL like "123.election.datacaffe.ai"
+  customDomain      String?      @unique @map("custom_domain") // Tenant's own domain alias
+  logoUrl           String?      @map("logo_url")
+  logoPosition      String?      @default("before") @map("logo_position") // 'before' or 'after' display name
+  primaryColor      String?      @map("primary_color") @default("#1890FF")
+  secondaryColor    String?      @map("secondary_color")
+  faviconUrl        String?      @map("favicon_url")
+
+  // Contact & Location
+  contactEmail      String?      @map("contact_email")
+  contactPhone      String?      @map("contact_phone")
+  address           String?
+  state             String?
+  country           String?      @default("India")
+
+  // For Political Party tenants
+  partyName         String?      @map("party_name")
+  partySymbolUrl    String?      @map("party_symbol_url")
+
+  // Database Configuration
+  databaseType          DatabaseType   @default(NONE) @map("database_type")
+  databaseStatus        DatabaseStatus @default(NOT_CONFIGURED) @map("database_status")
+  databaseHost          String?        @map("database_host")
+  databaseName          String?        @map("database_name")
+  databaseUser          String?        @map("database_user")
+  databasePassword      String?        @map("database_password") // Encrypted
+  databasePort          Int?           @map("database_port") @default(5432)
+  databaseSSL           Boolean        @default(true) @map("database_ssl")
+  databaseConnectionUrl String?        @map("database_connection_url") // Full connection string (encrypted)
+
+  // Database Management - Who can manage
+  canTenantEditDb       Boolean        @default(false) @map("can_tenant_edit_db") // Can tenant change DB settings?
+  databaseManagedBy     String?        @map("database_managed_by") // 'super_admin' | 'tenant' | 'external'
+  databaseLastCheckedAt DateTime?      @map("database_last_checked_at")
+  databaseLastError     String?        @map("database_last_error")
+  databaseMigrationVersion String?     @map("database_migration_version")
+
+  // Subscription & Limits
+  subscriptionPlan  String?      @map("subscription_plan") @default("free")
+  subscriptionId    String?      @map("subscription_id")
+  maxVoters         Int          @map("max_voters") @default(10000)
+  maxCadres         Int          @map("max_cadres") @default(100)
+  maxElections      Int          @map("max_elections") @default(5)
+  maxUsers          Int          @map("max_users") @default(50)
+  maxConstituencies Int          @map("max_constituencies") @default(1)
+  storageQuotaMB    Int          @map("storage_quota_mb") @default(5000)
+  storageUsedMB     Int          @map("storage_used_mb") @default(0)
+
+  // Status & Dates
+  status            TenantStatus @default(PENDING)
+  trialEndsAt       DateTime?    @map("trial_ends_at")
+  expiresAt         DateTime?    @map("expires_at")
+  suspendedAt       DateTime?    @map("suspended_at")
+  suspendedReason   String?      @map("suspended_reason")
+
+  // Audit
+  createdBy         String?      @map("created_by")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  users             User[]
+  elections         Election[]
+  constituencies    Constituency[]
+  tenantFeatures    TenantFeature[]
+  managedTenants    TenantManagement[] @relation("ManagedTenants")
+  managingCompany   TenantManagement[] @relation("ManagingCompany")
+  embeds            DataCaffeEmbed[]
+  invitations       Invitation[]
+  invitedBy         Invitation[] @relation("InvitedByTenant")
+  license           TenantLicense?
+
+  // NB (News & Broadcast) relations
+  nbParsedNews      NBParsedNews[]
+  nbNewsAnalyses    NBNewsAnalysis[]
+  nbPartyLines      NBPartyLine[]
+  nbSpeechPoints    NBSpeechPoint[]
+  nbActionPlans     NBActionPlan[]
+  nbActionExecutions NBActionExecution[]
+  nbCampaignSpeeches NBCampaignSpeech[]
+  nbBroadcasts      NBBroadcast[]
+
+  // Website Builder relations
+  tenantWebsites    TenantWebsite[]
+
+  // Fund Management relations
+  fundAccounts      FundAccount[]
+  fundDonations     FundDonation[]
+  fundExpenses      FundExpense[]
+  fundTransactions  FundTransaction[]
+
+  // Inventory Management relations
+  inventoryCategories InventoryCategory[]
+  inventoryItems    InventoryItem[]
+  inventoryMovements InventoryMovement[]
+  inventoryAllocations InventoryAllocation[]
+
+  // Event Management relations
+  partyEvents       PartyEvent[]
+
+  // Internal Notifications relations
+  internalNotifications InternalNotification[]
+
+  // Internal Chat relations
+  chatConversations ChatConversation[]
+
+  @@map("tenants")
+}
+
+// For Election Management Company managing other tenants
+model TenantManagement {
+  id              String   @id @default(uuid())
+  managingTenantId String  @map("managing_tenant_id")
+  managedTenantId String   @map("managed_tenant_id")
+  contractStart   DateTime? @map("contract_start")
+  contractEnd     DateTime? @map("contract_end")
+  accessLevel     String   @default("full") @map("access_level")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  managingTenant  Tenant @relation("ManagingCompany", fields: [managingTenantId], references: [id], onDelete: Cascade)
+  managedTenant   Tenant @relation("ManagedTenants", fields: [managedTenantId], references: [id], onDelete: Cascade)
+
+  @@unique([managingTenantId, managedTenantId])
+  @@map("tenant_management")
+}
+
+// Constituency for Political Party type tenants (multi-constituency support)
+model Constituency {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  nameLocal       String?  @map("name_local")
+  constituencyType String  @map("constituency_type")
+  state           String
+  district        String?
+  code            String?
+  totalVoters     Int      @default(0) @map("total_voters")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  elections       Election[]
+  users           User[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("constituencies")
+}
+
+model User {
+  id              String     @id @default(uuid())
+  tenantId        String     @map("tenant_id")
+  constituencyId  String?    @map("constituency_id")
+  firstName       String     @map("first_name")
+  lastName        String?    @map("last_name")
+  email           String?
+  mobile          String
+  passwordHash    String     @map("password_hash")
+  profilePhotoUrl String?    @map("profile_photo_url")
+  role            UserRole   @default(VOLUNTEER)
+  permissions     Json?      @default("[]")
+  status          UserStatus @default(ACTIVE)
+
+  // For Candidate users
+  isCandidate     Boolean    @default(false) @map("is_candidate")
+  candidateProfile Json?     @map("candidate_profile")
+
+  // Access control
+  canAccessAllConstituencies Boolean @default(false) @map("can_access_all_constituencies")
+  accessibleConstituencies   Json?   @default("[]") @map("accessible_constituencies")
+  accessibleElections        Json?   @default("[]") @map("accessible_elections")
+
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  constituency  Constituency?  @relation(fields: [constituencyId], references: [id])
+  refreshTokens RefreshToken[]
+  otps          OTP[]
+  cadre         Cadre?
+  auditLogs     AuditLog[]
+
+  @@unique([tenantId, mobile])
+  @@index([tenantId])
+  @@index([constituencyId])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model OTP {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  code      String
+  type      String   @default("password_reset")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("otps")
+}
+
+// ==================== INVITATIONS ====================
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+  RESENT
+}
+
+enum InvitationType {
+  TENANT_ADMIN     // Super Admin invites Tenant Admin
+  TENANT_USER      // Tenant Admin invites users within tenant
+}
+
+model Invitation {
+  id                String           @id @default(uuid())
+  invitationType    InvitationType   @map("invitation_type")
+
+  // For TENANT_ADMIN invitations (Super Admin inviting Tenant Admin)
+  tenantId          String?          @map("tenant_id")
+
+  // For TENANT_USER invitations (Tenant Admin inviting users)
+  invitedByTenantId String?          @map("invited_by_tenant_id")
+  electionId        String?          @map("election_id")
+
+  // Invitee details
+  email             String?
+  mobile            String
+  firstName         String           @map("first_name")
+  lastName          String?          @map("last_name")
+  role              UserRole
+
+  // Invitation token and status
+  token             String           @unique
+  status            InvitationStatus @default(PENDING)
+  message           String?          // Custom message from inviter
+
+  // Tracking
+  invitedBy         String           @map("invited_by") // SuperAdmin ID or User ID
+  invitedByName     String?          @map("invited_by_name")
+  invitedByType     String           @map("invited_by_type") // 'super_admin' or 'user'
+
+  // Dates
+  expiresAt         DateTime         @map("expires_at")
+  acceptedAt        DateTime?        @map("accepted_at")
+  cancelledAt       DateTime?        @map("cancelled_at")
+  lastResentAt      DateTime?        @map("last_resent_at")
+  resentCount       Int              @default(0) @map("resent_count")
+
+  // Result
+  createdUserId     String?          @map("created_user_id") // User created after acceptance
+
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedByTenant   Tenant?          @relation("InvitedByTenant", fields: [invitedByTenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([invitedByTenantId])
+  @@index([mobile])
+  @@index([email])
+  @@index([token])
+  @@index([status])
+  @@map("invitations")
+}
+
+// ==================== ELECTIONS ====================
+
+enum ElectionType {
+  ASSEMBLY
+  PARLIAMENT
+  LOCAL_BODY
+  PANCHAYAT
+  MUNICIPAL
+  BY_ELECTION
+}
+
+enum ElectionStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model Election {
+  id                String         @id @default(uuid())
+  tenantId          String         @map("tenant_id")
+  constituencyId    String?        @map("constituency_id")
+  name              String
+  nameLocal         String?        @map("name_local")
+  electionType      ElectionType   @map("election_type")
+  state             String
+  constituency      String
+  district          String?
+  candidateName     String?        @map("candidate_name")
+  candidatePhotoUrl String?        @map("candidate_photo_url")
+  partyId           String?        @map("party_id")
+  startDate         DateTime?      @map("start_date")
+  endDate           DateTime?      @map("end_date")
+  pollDate          DateTime?      @map("poll_date")
+  resultDate        DateTime?      @map("result_date")
+  status            ElectionStatus @default(DRAFT)
+  isLocked          Boolean        @default(false) @map("is_locked")
+  totalVoters       Int            @default(0) @map("total_voters")
+  totalMaleVoters   Int            @default(0) @map("total_male_voters")
+  totalFemaleVoters Int            @default(0) @map("total_female_voters")
+  totalOtherVoters  Int            @default(0) @map("total_other_voters")
+  totalBooths       Int            @default(0) @map("total_booths")
+  totalParts        Int            @default(0) @map("total_parts")
+  settings          Json?          @default("{}")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  constituencyRef    Constituency?     @relation(fields: [constituencyId], references: [id])
+  candidateParty     Party?            @relation(fields: [partyId], references: [id])
+  parts            Part[]
+  sections         Section[]
+  booths           Booth[]
+  voters           Voter[]
+  families         Family[]
+  cadres           Cadre[]
+  religions        Religion[]
+  casteCategories  CasteCategory[]
+  castes           Caste[]
+  subCastes        SubCaste[]
+  languages        Language[]
+  parties          Party[]           @relation("ElectionParties")
+  schemes          Scheme[]
+  voterCategories  VoterCategory[]
+  votingHistories  VotingHistory[]
+  voterSlips       VoterSlipTemplate[]
+  appBanners       AppBanner[]
+  feedbackIssues   FeedbackIssue[]
+  surveys          Survey[]
+  pollDayVotes     PollDayVote[]
+  reports          Report[]
+  aiAnalytics      AIAnalyticsResult[]
+
+  // NB (News & Broadcast) relations
+  nbParsedNews     NBParsedNews[]
+  nbNewsAnalyses   NBNewsAnalysis[]
+  nbPartyLines     NBPartyLine[]
+  nbSpeechPoints   NBSpeechPoint[]
+  nbActionPlans    NBActionPlan[]
+  nbCampaignSpeeches NBCampaignSpeech[]
+  nbBroadcasts     NBBroadcast[]
+
+  // Fund Management relations
+  fundDonations    FundDonation[]
+  fundExpenses     FundExpense[]
+
+  // Inventory Management relations
+  inventoryAllocations InventoryAllocation[]
+
+  // Event Management relations
+  partyEvents      PartyEvent[]
+
+  @@index([tenantId])
+  @@index([constituencyId])
+  @@index([status])
+  @@map("elections")
+}
+
+// ==================== GEOGRAPHIC ENTITIES ====================
+
+enum PartType {
+  URBAN
+  RURAL
+}
+
+enum VulnerabilityType {
+  NOT_ASSIGNED
+  CRITICAL
+  COMMUNAL
+  POLITICAL
+  NAXAL
+  BORDER
+  REMOTE
+}
+
+model Part {
+  id              String            @id @default(uuid())
+  electionId      String            @map("election_id")
+  partNumber      Int               @map("part_number")
+  boothName       String            @map("booth_name")
+  boothNameLocal  String?           @map("booth_name_local")
+  partType        PartType          @default(URBAN) @map("part_type")
+  address         String?
+  landmark        String?
+  pincode         String?
+  latitude        Float?
+  longitude       Float?
+  schoolName      String?           @map("school_name")
+  schoolLatitude  Float?            @map("school_latitude")
+  schoolLongitude Float?            @map("school_longitude")
+  buildingType    String?           @map("building_type")
+  imageUrl        String?           @map("image_url")
+  totalVoters     Int               @default(0) @map("total_voters")
+  totalSections   Int               @default(0) @map("total_sections")
+  maleVoters      Int               @default(0) @map("male_voters")
+  femaleVoters    Int               @default(0) @map("female_voters")
+  otherVoters     Int               @default(0) @map("other_voters")
+  isVulnerable    Boolean           @default(false) @map("is_vulnerable")
+  vulnerability   VulnerabilityType @default(NOT_ASSIGNED)
+  vulnerabilityNotes String?        @map("vulnerability_notes")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  election  Election  @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  sections  Section[]
+  booths    Booth[]
+  voters    Voter[]
+  cadres    CadreAssignment[]
+  feedbacks FeedbackIssue[]
+
+  @@unique([electionId, partNumber])
+  @@index([electionId])
+  @@map("parts")
+}
+
+model Section {
+  id               String   @id @default(uuid())
+  electionId       String   @map("election_id")
+  partId           String   @map("part_id")
+  sectionNumber    Int      @map("section_number")
+  sectionName      String   @map("section_name")
+  sectionNameLocal String?  @map("section_name_local")
+  isOverseas       Boolean  @default(false) @map("is_overseas")
+  totalVoters      Int      @default(0) @map("total_voters")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part     Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  voters   Voter[]
+
+  @@unique([partId, sectionNumber])
+  @@index([electionId])
+  @@index([partId])
+  @@map("sections")
+}
+
+model Booth {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  partId          String   @map("part_id")
+  boothNumber     Int      @map("booth_number")
+  boothName       String   @map("booth_name")
+  boothNameLocal  String?  @map("booth_name_local")
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  totalVoters     Int      @default(0) @map("total_voters")
+  maleVoters      Int      @default(0) @map("male_voters")
+  femaleVoters    Int      @default(0) @map("female_voters")
+  otherVoters     Int      @default(0) @map("other_voters")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election     Election      @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part         Part          @relation(fields: [partId], references: [id], onDelete: Cascade)
+  voters       Voter[]
+  pollDayVotes PollDayVote[]
+  boothAgents  BoothAgent[]
+
+  @@unique([electionId, boothNumber])
+  @@index([electionId])
+  @@index([partId])
+  @@map("booths")
+}
+
+// ==================== VOTERS ====================
+
+enum Gender {
+  MALE
+  FEMALE
+  TRANSGENDER
+}
+
+enum PoliticalLeaning {
+  LOYAL
+  SWING
+  OPPOSITION
+  UNKNOWN
+}
+
+enum InfluenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+  NONE
+}
+
+enum RelationType {
+  FATHER
+  MOTHER
+  HUSBAND
+  WIFE
+  GUARDIAN
+}
+
+model Voter {
+  id                String           @id @default(uuid())
+  electionId        String           @map("election_id")
+  partId            String           @map("part_id")
+  sectionId         String?          @map("section_id")
+  boothId           String?          @map("booth_id")
+  familyId          String?          @map("family_id")
+  epicNumber        String?          @map("epic_number")
+  slNumber          Int?             @map("sl_number")
+  name              String
+  nameLocal         String?          @map("name_local")
+  fatherName        String?          @map("father_name")
+  motherName        String?          @map("mother_name")
+  husbandName       String?          @map("husband_name")
+  relationType      RelationType?    @map("relation_type")
+  gender            Gender           @default(MALE)
+  age               Int?
+  dateOfBirth       DateTime?        @map("date_of_birth")
+  mobile            String?
+  alternateMobile   String?          @map("alternate_mobile")
+  email             String?
+  houseNumber       String?          @map("house_number")
+  address           String?
+  photoUrl          String?          @map("photo_url")
+  religionId        String?          @map("religion_id")
+  casteCategoryId   String?          @map("caste_category_id")
+  casteId           String?          @map("caste_id")
+  subCasteId        String?          @map("sub_caste_id")
+  languageId        String?          @map("language_id")
+  profession        String?
+  education         String?
+  partyId           String?          @map("party_id")
+  voterCategoryId   String?          @map("voter_category_id")
+  politicalLeaning  PoliticalLeaning @default(UNKNOWN) @map("political_leaning")
+  influenceLevel    InfluenceLevel   @default(NONE) @map("influence_level")
+  isFamilyCaptain   Boolean          @default(false) @map("is_family_captain")
+  isAadhaarVerified Boolean          @default(false) @map("is_aadhaar_verified")
+  isMobileVerified  Boolean          @default(false) @map("is_mobile_verified")
+  isDead            Boolean          @default(false) @map("is_dead")
+  isShifted         Boolean          @default(false) @map("is_shifted")
+  isDoubleEntry     Boolean          @default(false) @map("is_double_entry")
+  latitude          Float?
+  longitude         Float?
+  lastContactedAt   DateTime?        @map("last_contacted_at")
+  lastContactedBy   String?          @map("last_contacted_by")
+  notes             String?
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  deletedAt         DateTime?        @map("deleted_at")
+
+  election       Election        @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part           Part            @relation(fields: [partId], references: [id], onDelete: Cascade)
+  section        Section?        @relation(fields: [sectionId], references: [id])
+  booth          Booth?          @relation(fields: [boothId], references: [id])
+  family         Family?         @relation(fields: [familyId], references: [id])
+  religion       Religion?       @relation(fields: [religionId], references: [id])
+  casteCategory  CasteCategory?  @relation(fields: [casteCategoryId], references: [id])
+  caste          Caste?          @relation(fields: [casteId], references: [id])
+  subCaste       SubCaste?       @relation(fields: [subCasteId], references: [id])
+  language       Language?       @relation(fields: [languageId], references: [id])
+  party          Party?          @relation(fields: [partyId], references: [id])
+  voterCategory  VoterCategory?  @relation(fields: [voterCategoryId], references: [id])
+  schemes        VoterScheme[]
+  votingHistory  VoterVotingHistory[]
+  surveyResponses SurveyResponse[]
+  pollDayVotes   PollDayVote[]
+  feedbacks      FeedbackIssue[] @relation("VoterFeedbacks")
+
+  @@index([electionId])
+  @@index([partId])
+  @@index([familyId])
+  @@index([epicNumber])
+  @@index([mobile])
+  @@map("voters")
+}
+
+model Family {
+  id           String   @id @default(uuid())
+  electionId   String   @map("election_id")
+  familyName   String?  @map("family_name")
+  houseNumber  String?  @map("house_number")
+  address      String?
+  totalMembers Int      @default(0) @map("total_members")
+  isCrossBooth Boolean  @default(false) @map("is_cross_booth")
+  captainId    String?  @map("captain_id")
+  latitude     Float?
+  longitude    Float?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  members  Voter[]
+
+  @@index([electionId])
+  @@map("families")
+}
+
+// ==================== MASTER DATA ====================
+
+model Religion {
+  id               String   @id @default(uuid())
+  electionId       String   @map("election_id")
+  religionName     String   @map("religion_name")
+  religionNameLocal String? @map("religion_name_local")
+  religionImageUrl String?  @map("religion_image_url")
+  religionColor    String?  @map("religion_color") @default("#808080")
+  displayOrder     Int      @default(0) @map("display_order")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters   Voter[]
+  castes   Caste[]
+
+  @@unique([electionId, religionName])
+  @@index([electionId])
+  @@map("religions")
+}
+
+model CasteCategory {
+  id                  String   @id @default(uuid())
+  electionId          String   @map("election_id")
+  categoryName        String   @map("category_name")
+  categoryFullName    String?  @map("category_full_name")
+  reservationPercent  Float?   @map("reservation_percent")
+  displayOrder        Int      @default(0) @map("display_order")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters   Voter[]
+  castes   Caste[]
+
+  @@unique([electionId, categoryName])
+  @@index([electionId])
+  @@map("caste_categories")
+}
+
+model Caste {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  casteCategoryId String   @map("caste_category_id")
+  religionId      String?  @map("religion_id")
+  casteName       String   @map("caste_name")
+  casteNameLocal  String?  @map("caste_name_local")
+  casteCode       String?  @map("caste_code")
+  displayOrder    Int      @default(0) @map("display_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  election      Election      @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  casteCategory CasteCategory @relation(fields: [casteCategoryId], references: [id], onDelete: Cascade)
+  religion      Religion?     @relation(fields: [religionId], references: [id])
+  voters        Voter[]
+  subCastes     SubCaste[]
+
+  @@unique([electionId, casteName])
+  @@index([electionId])
+  @@index([casteCategoryId])
+  @@map("castes")
+}
+
+model SubCaste {
+  id               String   @id @default(uuid())
+  electionId       String   @map("election_id")
+  casteId          String   @map("caste_id")
+  subCasteName     String   @map("sub_caste_name")
+  subCasteNameLocal String? @map("sub_caste_name_local")
+  voterCount       Int      @default(0) @map("voter_count")
+  displayOrder     Int      @default(0) @map("display_order")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  caste    Caste    @relation(fields: [casteId], references: [id], onDelete: Cascade)
+  voters   Voter[]
+
+  @@unique([electionId, subCasteName])
+  @@index([electionId])
+  @@index([casteId])
+  @@map("sub_castes")
+}
+
+model Language {
+  id               String   @id @default(uuid())
+  electionId       String   @map("election_id")
+  languageName     String   @map("language_name")
+  languageNameLocal String? @map("language_name_local")
+  languageCode     String?  @map("language_code")
+  script           String?
+  writingDirection String   @default("ltr") @map("writing_direction")
+  voterCount       Int      @default(0) @map("voter_count")
+  displayOrder     Int      @default(0) @map("display_order")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters   Voter[]
+
+  @@unique([electionId, languageName])
+  @@index([electionId])
+  @@map("languages")
+}
+
+model Party {
+  id             String   @id @default(uuid())
+  electionId     String?  @map("election_id")
+  allianceName   String?  @map("alliance_name")
+  partyName      String   @map("party_name")
+  partyShortName String?  @map("party_short_name")
+  partyFullName  String?  @map("party_full_name")
+  partyImageUrl  String?  @map("party_image_url")
+  partyColor     String?  @map("party_color") @default("#808080")
+  isDefault      Boolean  @default(false) @map("is_default")
+  isNeutral      Boolean  @default(false) @map("is_neutral")
+  displayOrder   Int      @default(0) @map("display_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  elections Election[] @relation("ElectionParties")
+  voters    Voter[]
+  candidateElections Election[]
+
+  @@index([electionId])
+  @@map("parties")
+}
+
+enum SchemeProvider {
+  UNION_GOVT
+  STATE_GOVT
+  LOCAL_BODY
+}
+
+enum SchemeValueType {
+  ONE_TIME
+  MONTHLY
+  YEARLY
+}
+
+model Scheme {
+  id               String          @id @default(uuid())
+  electionId       String          @map("election_id")
+  schemeName       String          @map("scheme_name")
+  schemeShortName  String?         @map("scheme_short_name")
+  schemeDescription String?        @map("scheme_description")
+  schemeBy         SchemeProvider  @default(STATE_GOVT) @map("scheme_by")
+  schemeImageUrl   String?         @map("scheme_image_url")
+  schemeValue      Float?          @map("scheme_value")
+  valueType        SchemeValueType @default(ONE_TIME) @map("value_type")
+  currency         String          @default("INR")
+  category         String?
+  beneficiaryCount Int             @default(0) @map("beneficiary_count")
+  isActive         Boolean         @default(true) @map("is_active")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  election     Election      @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voterSchemes VoterScheme[]
+
+  @@index([electionId])
+  @@map("schemes")
+}
+
+model VoterScheme {
+  id             String    @id @default(uuid())
+  voterId        String    @map("voter_id")
+  schemeId       String    @map("scheme_id")
+  isBeneficiary  Boolean   @default(true) @map("is_beneficiary")
+  enrollmentDate DateTime? @map("enrollment_date")
+  verifiedBy     String?   @map("verified_by")
+  verifiedAt     DateTime? @map("verified_at")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  voter  Voter  @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@unique([voterId, schemeId])
+  @@index([voterId])
+  @@index([schemeId])
+  @@map("voter_schemes")
+}
+
+model VoterCategory {
+  id                  String   @id @default(uuid())
+  electionId          String   @map("election_id")
+  categoryName        String   @map("category_name")
+  categoryNameLocal   String?  @map("category_name_local")
+  categoryDescription String?  @map("category_description")
+  categoryImageUrl    String?  @map("category_image_url")
+  categoryColor       String?  @map("category_color") @default("#808080")
+  iconType            String?  @map("icon_type")
+  isSystem            Boolean  @default(false) @map("is_system")
+  displayOrder        Int      @default(0) @map("display_order")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters   Voter[]
+
+  @@unique([electionId, categoryName])
+  @@index([electionId])
+  @@map("voter_categories")
+}
+
+model VotingHistory {
+  id           String   @id @default(uuid())
+  electionId   String   @map("election_id")
+  historyName  String   @map("history_name")
+  electionType String   @map("election_type")
+  electionYear Int      @map("election_year")
+  badgeText    String?  @map("badge_text")
+  badgeColor   String?  @map("badge_color")
+  imageUrl     String?  @map("image_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  election Election             @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters   VoterVotingHistory[]
+
+  @@index([electionId])
+  @@map("voting_histories")
+}
+
+model VoterVotingHistory {
+  voterId   String  @map("voter_id")
+  historyId String  @map("history_id")
+  voted     Boolean @default(false)
+
+  voter   Voter         @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  history VotingHistory @relation(fields: [historyId], references: [id], onDelete: Cascade)
+
+  @@id([voterId, historyId])
+  @@map("voter_voting_histories")
+}
+
+// ==================== CADRES ====================
+
+enum CadreRole {
+  COORDINATOR
+  BOOTH_INCHARGE
+  VOLUNTEER
+  AGENT
+}
+
+enum AssignmentType {
+  PRIMARY
+  SECONDARY
+  BACKUP
+}
+
+model Cadre {
+  id              String    @id @default(uuid())
+  electionId      String    @map("election_id")
+  userId          String?   @unique @map("user_id")
+  name            String
+  mobile          String
+  email           String?
+  role            CadreRole @default(VOLUNTEER)
+  profilePhotoUrl String?   @map("profile_photo_url")
+  address         String?
+  isLoggedIn      Boolean   @default(false) @map("is_logged_in")
+  lastActiveAt    DateTime? @map("last_active_at")
+  votersUpdated   Int       @default(0) @map("voters_updated")
+  surveysCompleted Int      @default(0) @map("surveys_completed")
+  votesMarked     Int       @default(0) @map("votes_marked")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  election        Election          @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  user            User?             @relation(fields: [userId], references: [id])
+  assignments     CadreAssignment[]
+  locationHistory CadreLocation[]
+  pollDayVotes    PollDayVote[]
+  surveyResponses SurveyResponse[]
+  boothAgents     BoothAgent[]
+
+  @@unique([electionId, mobile])
+  @@index([electionId])
+  @@map("cadres")
+}
+
+model CadreAssignment {
+  id             String         @id @default(uuid())
+  cadreId        String         @map("cadre_id")
+  partId         String         @map("part_id")
+  assignmentType AssignmentType @default(PRIMARY) @map("assignment_type")
+  assignedAt     DateTime       @default(now()) @map("assigned_at")
+  assignedBy     String?        @map("assigned_by")
+
+  cadre Cadre @relation(fields: [cadreId], references: [id], onDelete: Cascade)
+  part  Part  @relation(fields: [partId], references: [id], onDelete: Cascade)
+
+  @@unique([cadreId, partId])
+  @@index([cadreId])
+  @@index([partId])
+  @@map("cadre_assignments")
+}
+
+model CadreLocation {
+  id        String   @id @default(uuid())
+  cadreId   String   @map("cadre_id")
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+  timestamp DateTime @default(now())
+
+  cadre Cadre @relation(fields: [cadreId], references: [id], onDelete: Cascade)
+
+  @@index([cadreId])
+  @@index([timestamp])
+  @@map("cadre_locations")
+}
+
+// ==================== TEMPLATES & BANNERS ====================
+
+model VoterSlipTemplate {
+  id                String   @id @default(uuid())
+  electionId        String   @map("election_id")
+  slipName          String   @map("slip_name")
+  printStatus       Boolean  @default(true) @map("print_status")
+  showCandidateInfo Boolean  @default(true) @map("show_candidate_info")
+  showCandidateImage Boolean @default(true) @map("show_candidate_image")
+  templateHtml      String?  @map("template_html")
+  headerImageUrl    String?  @map("header_image_url")
+  footerImageUrl    String?  @map("footer_image_url")
+  paperSize         String   @default("A4") @map("paper_size")
+  orientation       String   @default("portrait")
+  slipsPerPage      Int      @default(4) @map("slips_per_page")
+  isDefault         Boolean  @default(false) @map("is_default")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("voter_slip_templates")
+}
+
+model AppBanner {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  fileName        String   @map("file_name")
+  fileUrl         String   @map("file_url")
+  previewUrl      String?  @map("preview_url")
+  whatsappForward Boolean  @default(false) @map("whatsapp_forward")
+  isActive        Boolean  @default(true) @map("is_active")
+  displayOrder    Int      @default(0) @map("display_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("app_banners")
+}
+
+// ==================== FEEDBACK & ISSUES ====================
+
+enum FeedbackStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum FeedbackPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model FeedbackIssue {
+  id              String           @id @default(uuid())
+  electionId      String           @map("election_id")
+  partId          String?          @map("part_id")
+  issueName       String           @map("issue_name")
+  issueNameLocal  String?          @map("issue_name_local")
+  issueDescription String?         @map("issue_description")
+  category        String?
+  subCategory     String?          @map("sub_category")
+  village         String?
+  ward            String?
+  latitude        Float?
+  longitude       Float?
+  status          FeedbackStatus   @default(OPEN)
+  priority        FeedbackPriority @default(MEDIUM)
+  reportedCount   Int              @default(1) @map("reported_count")
+  assignedTo      String?          @map("assigned_to")
+  resolvedAt      DateTime?        @map("resolved_at")
+  resolutionNotes String?          @map("resolution_notes")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  election  Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part      Part?    @relation(fields: [partId], references: [id])
+  reporters Voter[]  @relation("VoterFeedbacks")
+
+  @@index([electionId])
+  @@index([status])
+  @@map("feedback_issues")
+}
+
+// ==================== SURVEYS ====================
+
+model Survey {
+  id          String   @id @default(uuid())
+  electionId  String   @map("election_id")
+  surveyName  String   @map("survey_name")
+  description String?
+  questions   Json     @default("[]")
+  isActive    Boolean  @default(true) @map("is_active")
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  election  Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  responses SurveyResponse[]
+
+  @@index([electionId])
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id          String   @id @default(uuid())
+  surveyId    String   @map("survey_id")
+  voterId     String   @map("voter_id")
+  cadreId     String?  @map("cadre_id")
+  responses   Json
+  latitude    Float?
+  longitude   Float?
+  completedAt DateTime @default(now()) @map("completed_at")
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  voter  Voter  @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  cadre  Cadre? @relation(fields: [cadreId], references: [id])
+
+  @@unique([surveyId, voterId])
+  @@index([surveyId])
+  @@index([voterId])
+  @@map("survey_responses")
+}
+
+// ==================== POLL DAY ====================
+
+model PollDayVote {
+  id         String   @id @default(uuid())
+  electionId String   @map("election_id")
+  boothId    String   @map("booth_id")
+  voterId    String   @map("voter_id")
+  cadreId    String?  @map("cadre_id")
+  votedAt    DateTime @default(now()) @map("voted_at")
+  latitude   Float?
+  longitude  Float?
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  booth    Booth    @relation(fields: [boothId], references: [id], onDelete: Cascade)
+  voter    Voter    @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  cadre    Cadre?   @relation(fields: [cadreId], references: [id])
+
+  @@unique([electionId, voterId])
+  @@index([electionId])
+  @@index([boothId])
+  @@index([votedAt])
+  @@map("poll_day_votes")
+}
+
+model BoothAgent {
+  id         String   @id @default(uuid())
+  boothId    String   @map("booth_id")
+  cadreId    String   @map("cadre_id")
+  agentType  String   @default("polling") @map("agent_type")
+  isActive   Boolean  @default(true) @map("is_active")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  booth Booth @relation(fields: [boothId], references: [id], onDelete: Cascade)
+  cadre Cadre @relation(fields: [cadreId], references: [id], onDelete: Cascade)
+
+  @@unique([boothId, cadreId])
+  @@index([boothId])
+  @@map("booth_agents")
+}
+
+// ==================== REPORTING & ANALYTICS ====================
+
+enum ReportType {
+  VOTER_DEMOGRAPHICS
+  BOOTH_STATISTICS
+  CADRE_PERFORMANCE
+  POLL_DAY_TURNOUT
+  FAMILY_ANALYSIS
+  SCHEME_BENEFICIARIES
+  FEEDBACK_SUMMARY
+  CUSTOM
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  CSV
+  JSON
+}
+
+model Report {
+  id           String       @id @default(uuid())
+  electionId   String       @map("election_id")
+  reportName   String       @map("report_name")
+  reportType   ReportType   @map("report_type")
+  description  String?
+  filters      Json?        @default("{}")
+  format       ReportFormat @default(PDF)
+  fileUrl      String?      @map("file_url")
+  generatedBy  String?      @map("generated_by")
+  generatedAt  DateTime?    @map("generated_at")
+  isScheduled  Boolean      @default(false) @map("is_scheduled")
+  scheduleExpr String?      @map("schedule_expr")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@index([reportType])
+  @@map("reports")
+}
+
+// ==================== AI ANALYTICS ====================
+
+enum AIAnalyticsType {
+  VOTER_SENTIMENT
+  TURNOUT_PREDICTION
+  SWING_VOTER_ANALYSIS
+  BOOTH_RISK_ASSESSMENT
+  CAMPAIGN_EFFECTIVENESS
+  DEMOGRAPHIC_INSIGHTS
+  CUSTOM_ANALYSIS
+}
+
+enum AIAnalyticsStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model AIAnalyticsResult {
+  id           String            @id @default(uuid())
+  electionId   String            @map("election_id")
+  analysisType AIAnalyticsType   @map("analysis_type")
+  analysisName String            @map("analysis_name")
+  description  String?
+  parameters   Json?             @default("{}")
+  results      Json?             @default("{}")
+  insights     Json?             @default("[]")
+  confidence   Float?
+  status       AIAnalyticsStatus @default(PENDING)
+  errorMessage String?           @map("error_message")
+  processedAt  DateTime?         @map("processed_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@index([analysisType])
+  @@index([status])
+  @@map("ai_analytics_results")
+}
+
+// ==================== DATACAFFE EMBED ====================
+
+model DataCaffeEmbed {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  electionId  String?  @map("election_id")
+  embedName   String   @map("embed_name")
+  embedUrl    String   @map("embed_url")
+  embedType   String   @default("dashboard") @map("embed_type")
+  description String?
+  accessToken String?  @map("access_token")
+  isActive    Boolean  @default(true) @map("is_active")
+  displayOrder Int     @default(0) @map("display_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@map("datacaffe_embeds")
+}
+
+// ==================== LICENSE MANAGEMENT ====================
+
+enum LicensePlanType {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+  CUSTOM
+}
+
+enum LicenseBillingCycle {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  ONE_TIME
+}
+
+enum LicenseStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  PENDING_PAYMENT
+  TRIAL
+}
+
+enum UsageAlertLevel {
+  INFO        // 50% usage
+  WARNING     // 75% usage
+  CRITICAL    // 90% usage
+  EXCEEDED    // 100%+ usage
+}
+
+// License Plans - Templates for licenses
+model LicensePlan {
+  id                    String             @id @default(uuid())
+  planName              String             @unique @map("plan_name")
+  planType              LicensePlanType    @map("plan_type")
+  description           String?
+
+  // User Limits
+  maxUsers              Int                @map("max_users") @default(10)
+  maxAdminUsers         Int                @map("max_admin_users") @default(2)
+
+  // Session Limits
+  maxConcurrentSessions Int                @map("max_concurrent_sessions") @default(5)
+  maxSessionsPerUser    Int                @map("max_sessions_per_user") @default(2)
+  sessionTimeoutMinutes Int                @map("session_timeout_minutes") @default(30)
+
+  // Data Processing Limits
+  maxDataProcessingGB   Float              @map("max_data_processing_gb") @default(5.0)
+  maxVoters             Int                @map("max_voters") @default(10000)
+  maxElections          Int                @map("max_elections") @default(3)
+  maxConstituencies     Int                @map("max_constituencies") @default(1)
+  maxStorageMB          Int                @map("max_storage_mb") @default(5000)
+
+  // API Limits
+  maxApiRequestsPerDay  Int                @map("max_api_requests_per_day") @default(10000)
+  maxApiRequestsPerHour Int                @map("max_api_requests_per_hour") @default(1000)
+
+  // Pricing
+  basePrice             Float              @map("base_price") @default(0)
+  pricePerUser          Float              @map("price_per_user") @default(0)
+  pricePerSession       Float              @map("price_per_session") @default(0)
+  pricePerGBProcessed   Float              @map("price_per_gb_processed") @default(0)
+  billingCycle          LicenseBillingCycle @map("billing_cycle") @default(MONTHLY)
+  currency              String             @default("INR")
+
+  // Feature Access
+  includedFeatures      Json               @default("[]") @map("included_features")
+  excludedFeatures      Json               @default("[]") @map("excluded_features")
+
+  // Grace Periods
+  gracePeriodDays       Int                @map("grace_period_days") @default(7)
+  trialDays             Int                @map("trial_days") @default(14)
+
+  // Overage Handling
+  allowOverage          Boolean            @default(false) @map("allow_overage")
+  overagePricePerUser   Float?             @map("overage_price_per_user")
+  overagePricePerGB     Float?             @map("overage_price_per_gb")
+  overageSessionPrice   Float?             @map("overage_session_price")
+
+  isActive              Boolean            @default(true) @map("is_active")
+  isPublic              Boolean            @default(true) @map("is_public")
+  displayOrder          Int                @default(0) @map("display_order")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  tenantLicenses        TenantLicense[]
+
+  @@map("license_plans")
+}
+
+// Tenant License - Assigned license to tenant
+model TenantLicense {
+  id                    String             @id @default(uuid())
+  tenantId              String             @unique @map("tenant_id")
+  licensePlanId         String             @map("license_plan_id")
+
+  status                LicenseStatus      @default(TRIAL)
+
+  // Custom Overrides (null = use plan defaults)
+  customMaxUsers        Int?               @map("custom_max_users")
+  customMaxSessions     Int?               @map("custom_max_concurrent_sessions")
+  customMaxSessionsPerUser Int?            @map("custom_max_sessions_per_user")
+  customMaxDataGB       Float?             @map("custom_max_data_gb")
+  customMaxVoters       Int?               @map("custom_max_voters")
+  customMaxElections    Int?               @map("custom_max_elections")
+  customMaxConstituencies Int?             @map("custom_max_constituencies")
+  customMaxStorageMB    Int?               @map("custom_max_storage_mb")
+  customMaxApiPerDay    Int?               @map("custom_max_api_per_day")
+  customMaxApiPerHour   Int?               @map("custom_max_api_per_hour")
+
+  // Custom Pricing
+  customBasePrice       Float?             @map("custom_base_price")
+  discountPercent       Float              @default(0) @map("discount_percent")
+
+  // License Dates
+  activatedAt           DateTime?          @map("activated_at")
+  expiresAt             DateTime?          @map("expires_at")
+  trialEndsAt           DateTime?          @map("trial_ends_at")
+  suspendedAt           DateTime?          @map("suspended_at")
+  suspendedReason       String?            @map("suspended_reason")
+  cancelledAt           DateTime?          @map("cancelled_at")
+  cancelledReason       String?            @map("cancelled_reason")
+
+  // Renewal
+  autoRenew             Boolean            @default(true) @map("auto_renew")
+  renewalReminderSent   Boolean            @default(false) @map("renewal_reminder_sent")
+  lastRenewalAt         DateTime?          @map("last_renewal_at")
+  nextBillingAt         DateTime?          @map("next_billing_at")
+
+  // Enforcement
+  enforceSessionLimit   Boolean            @default(true) @map("enforce_session_limit")
+  enforceUserLimit      Boolean            @default(true) @map("enforce_user_limit")
+  enforceDataLimit      Boolean            @default(true) @map("enforce_data_limit")
+  enforceApiLimit       Boolean            @default(true) @map("enforce_api_limit")
+  softLimitMode         Boolean            @default(false) @map("soft_limit_mode") // Warn instead of block
+
+  // Notes
+  adminNotes            String?            @map("admin_notes")
+
+  createdBy             String?            @map("created_by")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  licensePlan           LicensePlan        @relation(fields: [licensePlanId], references: [id])
+  sessions              TenantSession[]
+  usageMetrics          TenantUsageMetrics[]
+  usageAlerts           UsageAlert[]
+  billingHistory        BillingHistory[]
+
+  @@index([tenantId])
+  @@index([licensePlanId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("tenant_licenses")
+}
+
+// Active Sessions - Track concurrent sessions per tenant
+model TenantSession {
+  id                    String             @id @default(uuid())
+  tenantLicenseId       String             @map("tenant_license_id")
+  userId                String             @map("user_id")
+
+  sessionToken          String             @unique @map("session_token")
+  deviceId              String?            @map("device_id")
+  deviceType            String?            @map("device_type") // 'web', 'mobile', 'tablet', 'desktop'
+  deviceName            String?            @map("device_name")
+  browserInfo           String?            @map("browser_info")
+  osInfo                String?            @map("os_info")
+  ipAddress             String?            @map("ip_address")
+
+  isActive              Boolean            @default(true) @map("is_active")
+  lastActivityAt        DateTime           @default(now()) @map("last_activity_at")
+  expiresAt             DateTime           @map("expires_at")
+
+  // Session Analytics
+  requestCount          Int                @default(0) @map("request_count")
+  dataTransferredMB     Float              @default(0) @map("data_transferred_mb")
+
+  createdAt             DateTime           @default(now()) @map("created_at")
+  terminatedAt          DateTime?          @map("terminated_at")
+  terminationReason     String?            @map("termination_reason") // 'expired', 'logged_out', 'force_terminated', 'session_limit_exceeded'
+
+  tenantLicense         TenantLicense      @relation(fields: [tenantLicenseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantLicenseId])
+  @@index([userId])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@index([lastActivityAt])
+  @@map("tenant_sessions")
+}
+
+// Usage Metrics - Track daily/hourly usage per tenant
+model TenantUsageMetrics {
+  id                    String             @id @default(uuid())
+  tenantLicenseId       String             @map("tenant_license_id")
+
+  metricDate            DateTime           @map("metric_date") @db.Date
+  metricHour            Int?               @map("metric_hour") // 0-23 for hourly metrics
+
+  // User Metrics
+  activeUsers           Int                @default(0) @map("active_users")
+  totalUsers            Int                @default(0) @map("total_users")
+  newUsersCount         Int                @default(0) @map("new_users_count")
+
+  // Session Metrics
+  peakConcurrentSessions Int               @default(0) @map("peak_concurrent_sessions")
+  totalSessions         Int                @default(0) @map("total_sessions")
+  avgSessionDuration    Float              @default(0) @map("avg_session_duration") // in minutes
+
+  // Data Processing
+  dataProcessedMB       Float              @default(0) @map("data_processed_mb")
+  dataUploadedMB        Float              @default(0) @map("data_uploaded_mb")
+  dataDownloadedMB      Float              @default(0) @map("data_downloaded_mb")
+
+  // API Metrics
+  apiRequestCount       Int                @default(0) @map("api_request_count")
+  apiErrorCount         Int                @default(0) @map("api_error_count")
+
+  // Resource Metrics
+  storageUsedMB         Float              @default(0) @map("storage_used_mb")
+  voterCount            Int                @default(0) @map("voter_count")
+  electionCount         Int                @default(0) @map("election_count")
+
+  // Cost Calculation
+  computedCost          Float              @default(0) @map("computed_cost")
+
+  createdAt             DateTime           @default(now()) @map("created_at")
+
+  tenantLicense         TenantLicense      @relation(fields: [tenantLicenseId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantLicenseId, metricDate, metricHour])
+  @@index([tenantLicenseId])
+  @@index([metricDate])
+  @@map("tenant_usage_metrics")
+}
+
+// Usage Alerts - Notifications when limits are approaching/exceeded
+model UsageAlert {
+  id                    String             @id @default(uuid())
+  tenantLicenseId       String             @map("tenant_license_id")
+
+  alertType             String             @map("alert_type") // 'users', 'sessions', 'data', 'api', 'storage', 'expiry'
+  alertLevel            UsageAlertLevel    @map("alert_level")
+
+  message               String
+  currentValue          Float              @map("current_value")
+  limitValue            Float              @map("limit_value")
+  usagePercent          Float              @map("usage_percent")
+
+  isRead                Boolean            @default(false) @map("is_read")
+  isDismissed           Boolean            @default(false) @map("is_dismissed")
+  isResolved            Boolean            @default(false) @map("is_resolved")
+
+  emailSentAt           DateTime?          @map("email_sent_at")
+  smsSentAt             DateTime?          @map("sms_sent_at")
+
+  createdAt             DateTime           @default(now()) @map("created_at")
+  resolvedAt            DateTime?          @map("resolved_at")
+
+  tenantLicense         TenantLicense      @relation(fields: [tenantLicenseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantLicenseId])
+  @@index([alertLevel])
+  @@index([isResolved])
+  @@index([createdAt])
+  @@map("usage_alerts")
+}
+
+// Billing History - Track payments and invoices
+model BillingHistory {
+  id                    String             @id @default(uuid())
+  tenantLicenseId       String             @map("tenant_license_id")
+
+  invoiceNumber         String             @unique @map("invoice_number")
+  billingPeriodStart    DateTime           @map("billing_period_start")
+  billingPeriodEnd      DateTime           @map("billing_period_end")
+
+  // Breakdown
+  baseAmount            Float              @map("base_amount")
+  userOverageAmount     Float              @default(0) @map("user_overage_amount")
+  sessionOverageAmount  Float              @default(0) @map("session_overage_amount")
+  dataOverageAmount     Float              @default(0) @map("data_overage_amount")
+  discountAmount        Float              @default(0) @map("discount_amount")
+  taxAmount             Float              @default(0) @map("tax_amount")
+  totalAmount           Float              @map("total_amount")
+  currency              String             @default("INR")
+
+  // Usage Summary for the Period
+  usageSummary          Json               @default("{}") @map("usage_summary")
+
+  // Payment
+  paymentStatus         String             @default("pending") @map("payment_status") // 'pending', 'paid', 'failed', 'refunded'
+  paymentMethod         String?            @map("payment_method")
+  paymentReference      String?            @map("payment_reference")
+  paidAt                DateTime?          @map("paid_at")
+
+  // Invoice
+  invoiceUrl            String?            @map("invoice_url")
+
+  notes                 String?
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  tenantLicense         TenantLicense      @relation(fields: [tenantLicenseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantLicenseId])
+  @@index([paymentStatus])
+  @@index([billingPeriodStart])
+  @@map("billing_history")
+}
+
+// ==================== AI FEATURES & CREDITS SYSTEM ====================
+
+enum AIProviderType {
+  OPENAI
+  ANTHROPIC    // Claude
+  GOOGLE       // Gemini
+  XAI          // Grok
+  CUSTOM
+}
+
+enum AIProviderStatus {
+  ACTIVE
+  INACTIVE
+  TESTING
+  ERROR
+}
+
+enum AIFeatureCategory {
+  OCR                    // PDF/Image text extraction
+  DOCUMENT_PROCESSING    // Document analysis, data extraction
+  DATA_TRANSFORMATION    // Excel/CSV generation
+  ANALYTICS              // AI-powered analytics
+  TRANSLATION            // Language translation
+  SUMMARIZATION          // Text summarization
+  CUSTOM                 // Custom use cases
+}
+
+enum AIFeatureStatus {
+  DRAFT           // Being created/configured
+  TRAINING        // Training in progress
+  TESTING         // Being tested
+  PUBLISHED       // Available to tenants
+  DEPRECATED      // No longer available for new subscriptions
+  ARCHIVED        // Completely disabled
+}
+
+enum CreditTransactionType {
+  PURCHASE         // Credits purchased
+  USAGE            // Credits consumed
+  REFUND           // Credits refunded
+  ADJUSTMENT       // Manual adjustment by admin
+  BONUS            // Bonus credits
+  EXPIRY           // Credits expired
+  TRANSFER         // Transfer between tenants
+}
+
+// AI Providers - Configurable AI APIs (Super Admin manages)
+model AIProvider {
+  id                String           @id @default(uuid())
+  providerType      AIProviderType   @map("provider_type")
+  providerName      String           @unique @map("provider_name")
+  displayName       String           @map("display_name")
+  description       String?
+
+  // API Configuration (encrypted)
+  apiKey            String?          @map("api_key") // Encrypted
+  apiEndpoint       String?          @map("api_endpoint")
+  apiVersion        String?          @map("api_version")
+  organizationId    String?          @map("organization_id") // For providers like OpenAI
+  region            String?          // For cloud providers
+
+  // Model Configuration
+  defaultModel      String?          @map("default_model") // e.g., "gpt-4-vision", "claude-3-opus"
+  availableModels   Json             @default("[]") @map("available_models") // List of available models
+
+  // Rate Limiting
+  maxRequestsPerMinute Int           @default(60) @map("max_requests_per_minute")
+  maxTokensPerRequest  Int           @default(4096) @map("max_tokens_per_request")
+
+  // Pricing (cost per unit)
+  costPerInputToken    Float         @default(0) @map("cost_per_input_token")
+  costPerOutputToken   Float         @default(0) @map("cost_per_output_token")
+  costPerImage         Float         @default(0) @map("cost_per_image")
+  costPerPage          Float         @default(0) @map("cost_per_page") // For document processing
+  currency             String        @default("USD")
+
+  // Status & Health
+  status            AIProviderStatus @default(INACTIVE)
+  lastHealthCheck   DateTime?        @map("last_health_check")
+  lastError         String?          @map("last_error")
+  errorCount        Int              @default(0) @map("error_count")
+  successRate       Float            @default(100) @map("success_rate")
+
+  // Capabilities
+  supportsVision    Boolean          @default(false) @map("supports_vision")
+  supportsStreaming Boolean          @default(false) @map("supports_streaming")
+  supportsAsync     Boolean          @default(false) @map("supports_async")
+
+  isDefault         Boolean          @default(false) @map("is_default")
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  features          AIFeature[]
+  usageLogs         AIUsageLog[]
+
+  @@map("ai_providers")
+}
+
+// AI Features - Named AI capabilities (Super Admin creates and configures)
+model AIFeature {
+  id                String             @id @default(uuid())
+  featureKey        String             @unique @map("feature_key") // e.g., "ocr_voter_list", "pdf_to_excel"
+  featureName       String             @map("feature_name")
+  displayName       String             @map("display_name")
+  description       String?
+  category          AIFeatureCategory
+
+  // Provider Configuration
+  providerId        String             @map("provider_id")
+  modelName         String?            @map("model_name") // Specific model to use
+
+  // Processing Configuration
+  systemPrompt      String?            @map("system_prompt") // System instructions for AI
+  userPromptTemplate String?           @map("user_prompt_template") // Template for user prompts
+  outputFormat      String?            @map("output_format") // 'json', 'csv', 'excel', 'text'
+  outputSchema      Json?              @map("output_schema") // JSON schema for structured output
+
+  // Input Configuration
+  acceptedFileTypes Json               @default("[]") @map("accepted_file_types") // ['pdf', 'png', 'jpg']
+  maxFileSize       Int                @default(10) @map("max_file_size") // MB
+  maxPagesPerRequest Int               @default(50) @map("max_pages_per_request")
+
+  // Pricing (credits per usage)
+  creditsPerPage    Float              @default(1) @map("credits_per_page")
+  creditsPerImage   Float              @default(1) @map("credits_per_image")
+  creditsPerRequest Float              @default(0) @map("credits_per_request") // Base credits per request
+  minCreditsRequired Float             @default(1) @map("min_credits_required")
+
+  // Training & Fine-tuning
+  isCustomTrained   Boolean            @default(false) @map("is_custom_trained")
+  trainingData      Json?              @map("training_data") // Custom training examples
+  trainingNotes     String?            @map("training_notes")
+  lastTrainedAt     DateTime?          @map("last_trained_at")
+
+  // Publishing
+  status            AIFeatureStatus    @default(DRAFT)
+  publishedAt       DateTime?          @map("published_at")
+  publishedBy       String?            @map("published_by")
+
+  // Availability
+  isAddon           Boolean            @default(true) @map("is_addon") // Requires separate subscription
+  isPublic          Boolean            @default(false) @map("is_public") // Visible to all tenants
+  availableToTenantTypes Json          @default("[\"POLITICAL_PARTY\", \"INDIVIDUAL_CANDIDATE\", \"ELECTION_MANAGEMENT\"]") @map("available_to_tenant_types")
+
+  // Analytics
+  totalUsageCount   Int                @default(0) @map("total_usage_count")
+  successRate       Float              @default(100) @map("success_rate")
+  avgProcessingTime Float              @default(0) @map("avg_processing_time") // seconds
+
+  displayOrder      Int                @default(0) @map("display_order")
+  iconUrl           String?            @map("icon_url")
+
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  provider          AIProvider         @relation(fields: [providerId], references: [id])
+  tenantSubscriptions TenantAISubscription[]
+  userAccess        TenantUserAIAccess[]
+  usageLogs         AIUsageLog[]
+
+  @@index([category])
+  @@index([status])
+  @@index([providerId])
+  @@map("ai_features")
+}
+
+// Tenant AI Subscriptions - Which features each tenant has access to
+model TenantAISubscription {
+  id                String             @id @default(uuid())
+  tenantId          String             @map("tenant_id")
+  featureId         String             @map("feature_id")
+
+  // Subscription Settings
+  isEnabled         Boolean            @default(true) @map("is_enabled")
+
+  // Custom Pricing (null = use feature defaults)
+  customCreditsPerPage Float?          @map("custom_credits_per_page")
+  customCreditsPerImage Float?         @map("custom_credits_per_image")
+  customCreditsPerRequest Float?       @map("custom_credits_per_request")
+
+  // Usage Limits
+  maxUsagePerDay    Int?               @map("max_usage_per_day")
+  maxUsagePerMonth  Int?               @map("max_usage_per_month")
+  currentMonthUsage Int                @default(0) @map("current_month_usage")
+  currentDayUsage   Int                @default(0) @map("current_day_usage")
+  lastUsageResetAt  DateTime?          @map("last_usage_reset_at")
+
+  // Access Control
+  allowAllUsers     Boolean            @default(true) @map("allow_all_users") // If false, use TenantUserAIAccess
+
+  subscribedAt      DateTime           @default(now()) @map("subscribed_at")
+  expiresAt         DateTime?          @map("expires_at")
+
+  createdBy         String?            @map("created_by")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  feature           AIFeature          @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureId])
+  @@index([tenantId])
+  @@index([featureId])
+  @@map("tenant_ai_subscriptions")
+}
+
+// Tenant AI Credits - Credit balance and management
+model TenantAICredits {
+  id                String             @id @default(uuid())
+  tenantId          String             @unique @map("tenant_id")
+
+  // Credit Balance
+  balance           Float              @default(0)
+  reservedBalance   Float              @default(0) @map("reserved_balance") // Credits reserved for pending operations
+  lifetimeCredits   Float              @default(0) @map("lifetime_credits") // Total credits ever purchased
+  lifetimeUsed      Float              @default(0) @map("lifetime_used") // Total credits ever used
+
+  // Alerts
+  lowBalanceThreshold Float            @default(100) @map("low_balance_threshold")
+  lastLowBalanceAlert DateTime?        @map("last_low_balance_alert")
+  alertSentToAdmin  Boolean            @default(false) @map("alert_sent_to_admin")
+
+  // Auto-recharge (future feature)
+  autoRechargeEnabled Boolean          @default(false) @map("auto_recharge_enabled")
+  autoRechargeThreshold Float          @default(50) @map("auto_recharge_threshold")
+  autoRechargeAmount Float             @default(500) @map("auto_recharge_amount")
+
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  transactions      AICreditTransaction[]
+
+  @@map("tenant_ai_credits")
+}
+
+// AI Credit Transactions - Track all credit movements
+model AICreditTransaction {
+  id                String                @id @default(uuid())
+  tenantCreditsId   String                @map("tenant_credits_id")
+
+  transactionType   CreditTransactionType @map("transaction_type")
+  amount            Float                 // Positive for add, negative for deduct
+  balanceBefore     Float                 @map("balance_before")
+  balanceAfter      Float                 @map("balance_after")
+
+  // Reference
+  referenceType     String?               @map("reference_type") // 'usage', 'purchase', 'admin_adjustment'
+  referenceId       String?               @map("reference_id") // ID of related record
+
+  // For Purchases
+  paymentMethod     String?               @map("payment_method")
+  paymentReference  String?               @map("payment_reference")
+  invoiceNumber     String?               @map("invoice_number")
+  pricePerCredit    Float?                @map("price_per_credit")
+  totalAmount       Float?                @map("total_amount")
+  currency          String                @default("INR")
+
+  description       String?
+  notes             String?
+
+  createdBy         String?               @map("created_by") // User ID or 'system'
+  createdByType     String?               @map("created_by_type") // 'super_admin', 'tenant_admin', 'system'
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  tenantCredits     TenantAICredits       @relation(fields: [tenantCreditsId], references: [id], onDelete: Cascade)
+
+  @@index([tenantCreditsId])
+  @@index([transactionType])
+  @@index([createdAt])
+  @@map("ai_credit_transactions")
+}
+
+// Tenant User AI Access - Tenant admin controls which users can use which features
+model TenantUserAIAccess {
+  id                String             @id @default(uuid())
+  tenantId          String             @map("tenant_id")
+  userId            String             @map("user_id")
+  featureId         String             @map("feature_id")
+
+  isEnabled         Boolean            @default(true) @map("is_enabled")
+
+  // User-specific limits
+  maxUsagePerDay    Int?               @map("max_usage_per_day")
+  maxUsagePerMonth  Int?               @map("max_usage_per_month")
+  currentMonthUsage Int                @default(0) @map("current_month_usage")
+  currentDayUsage   Int                @default(0) @map("current_day_usage")
+
+  grantedBy         String?            @map("granted_by") // Tenant admin who granted access
+  grantedAt         DateTime           @default(now()) @map("granted_at")
+  revokedAt         DateTime?          @map("revoked_at")
+
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  feature           AIFeature          @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, featureId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([featureId])
+  @@map("tenant_user_ai_access")
+}
+
+// AI Usage Logs - Track all AI feature usage
+model AIUsageLog {
+  id                String             @id @default(uuid())
+  tenantId          String             @map("tenant_id")
+  userId            String             @map("user_id")
+  featureId         String             @map("feature_id")
+  providerId        String             @map("provider_id")
+
+  // Request Details
+  requestId         String             @unique @map("request_id") // Unique request identifier
+  inputType         String?            @map("input_type") // 'pdf', 'image', 'text'
+  inputSize         Int                @default(0) @map("input_size") // bytes
+  inputPageCount    Int                @default(0) @map("input_page_count")
+  inputImageCount   Int                @default(0) @map("input_image_count")
+  inputFileName     String?            @map("input_file_name")
+
+  // Processing
+  processingStartedAt DateTime?        @map("processing_started_at")
+  processingCompletedAt DateTime?      @map("processing_completed_at")
+  processingTimeMs  Int?               @map("processing_time_ms")
+
+  // AI Metrics
+  tokensUsed        Int                @default(0) @map("tokens_used")
+  inputTokens       Int                @default(0) @map("input_tokens")
+  outputTokens      Int                @default(0) @map("output_tokens")
+  modelUsed         String?            @map("model_used")
+
+  // Credits & Cost
+  creditsUsed       Float              @default(0) @map("credits_used")
+  estimatedCost     Float              @default(0) @map("estimated_cost") // Actual cost to platform
+
+  // Result
+  status            String             @default("pending") // 'pending', 'processing', 'completed', 'failed'
+  outputSize        Int?               @map("output_size") // bytes
+  outputType        String?            @map("output_type") // 'json', 'excel', 'csv'
+  outputFileUrl     String?            @map("output_file_url")
+
+  // Error Handling
+  errorCode         String?            @map("error_code")
+  errorMessage      String?            @map("error_message")
+  retryCount        Int                @default(0) @map("retry_count")
+
+  // Quality Metrics
+  confidence        Float?             // AI confidence score
+  qualityScore      Float?             @map("quality_score") // Post-processing quality
+  userFeedback      String?            @map("user_feedback") // 'good', 'bad', 'inaccurate'
+
+  // Metadata
+  metadata          Json?              @default("{}")
+  ipAddress         String?            @map("ip_address")
+  userAgent         String?            @map("user_agent")
+
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  feature           AIFeature          @relation(fields: [featureId], references: [id])
+  provider          AIProvider         @relation(fields: [providerId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([featureId])
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
+}
+
+// Credit Purchase Packages - Predefined credit bundles
+model AICreditPackage {
+  id                String             @id @default(uuid())
+  packageName       String             @unique @map("package_name")
+  displayName       String             @map("display_name")
+  description       String?
+
+  credits           Float              // Number of credits in package
+  price             Float              // Price of package
+  currency          String             @default("INR")
+
+  // Bonus
+  bonusCredits      Float              @default(0) @map("bonus_credits")
+  bonusPercent      Float              @default(0) @map("bonus_percent")
+
+  // Validity
+  validityDays      Int?               @map("validity_days") // null = no expiry
+
+  // Availability
+  isActive          Boolean            @default(true) @map("is_active")
+  isPublic          Boolean            @default(true) @map("is_public")
+  availableToTenantTypes Json          @default("[\"POLITICAL_PARTY\", \"INDIVIDUAL_CANDIDATE\", \"ELECTION_MANAGEMENT\"]") @map("available_to_tenant_types")
+
+  displayOrder      Int                @default(0) @map("display_order")
+
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  @@map("ai_credit_packages")
+}
+
+// Super Admin AI Alerts - Notifications for credit depletion
+model AIAdminAlert {
+  id                String             @id @default(uuid())
+  tenantId          String             @map("tenant_id")
+
+  alertType         String             @map("alert_type") // 'credits_low', 'credits_depleted', 'usage_spike', 'error_spike'
+  severity          String             @default("info") // 'info', 'warning', 'critical'
+
+  title             String
+  message           String
+  metadata          Json?              @default("{}")
+
+  isRead            Boolean            @default(false) @map("is_read")
+  isResolved        Boolean            @default(false) @map("is_resolved")
+  resolvedAt        DateTime?          @map("resolved_at")
+  resolvedBy        String?            @map("resolved_by")
+  resolutionNotes   String?            @map("resolution_notes")
+
+  emailSentAt       DateTime?          @map("email_sent_at")
+  smsSentAt         DateTime?          @map("sms_sent_at")
+
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([alertType])
+  @@index([isResolved])
+  @@index([createdAt])
+  @@map("ai_admin_alerts")
+}
+
+// ==================== ELECTION COMMISSION API INTEGRATION ====================
+
+enum ECIntegrationStatus {
+  NOT_CONFIGURED
+  CONFIGURED
+  TESTING
+  ACTIVE
+  ERROR
+  SUSPENDED
+}
+
+enum ECDataSyncStatus {
+  IDLE
+  SYNCING
+  COMPLETED
+  FAILED
+}
+
+// EC Integration Configuration - Per tenant
+model ECIntegration {
+  id                String              @id @default(uuid())
+  tenantId          String              @unique @map("tenant_id")
+
+  // API Configuration
+  apiEndpoint       String?             @map("api_endpoint")
+  apiKey            String?             @map("api_key") // Encrypted
+  apiSecret         String?             @map("api_secret") // Encrypted
+  stateCode         String?             @map("state_code")
+  constituencyCode  String?             @map("constituency_code")
+
+  // Sync Settings
+  autoSyncEnabled   Boolean             @default(false) @map("auto_sync_enabled")
+  syncIntervalHours Int                 @default(24) @map("sync_interval_hours")
+  lastSyncAt        DateTime?           @map("last_sync_at")
+  nextSyncAt        DateTime?           @map("next_sync_at")
+  syncStatus        ECDataSyncStatus    @default(IDLE) @map("sync_status")
+
+  // Status
+  status            ECIntegrationStatus @default(NOT_CONFIGURED)
+  lastError         String?             @map("last_error")
+  errorCount        Int                 @default(0) @map("error_count")
+  successCount      Int                 @default(0) @map("success_count")
+
+  // Data Stats
+  totalVotersSynced Int                 @default(0) @map("total_voters_synced")
+  totalPartsSynced  Int                 @default(0) @map("total_parts_synced")
+
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  syncLogs          ECSyncLog[]
+
+  @@map("ec_integrations")
+}
+
+// EC Sync Logs - Track each sync operation
+model ECSyncLog {
+  id                String              @id @default(uuid())
+  integrationId     String              @map("integration_id")
+
+  syncType          String              @map("sync_type") // 'full', 'incremental', 'manual'
+  startedAt         DateTime            @default(now()) @map("started_at")
+  completedAt       DateTime?           @map("completed_at")
+
+  // Stats
+  votersAdded       Int                 @default(0) @map("voters_added")
+  votersUpdated     Int                 @default(0) @map("voters_updated")
+  votersRemoved     Int                 @default(0) @map("voters_removed")
+  partsAdded        Int                 @default(0) @map("parts_added")
+  partsUpdated      Int                 @default(0) @map("parts_updated")
+
+  status            String              @default("running") // 'running', 'completed', 'failed'
+  errorMessage      String?             @map("error_message")
+  details           Json?               @default("{}")
+
+  triggeredBy       String?             @map("triggered_by") // 'system' or user ID
+
+  integration       ECIntegration       @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([startedAt])
+  @@map("ec_sync_logs")
+}
+
+// ==================== NEWS & INFORMATION SYSTEM ====================
+
+enum GeographicLevel {
+  NATIONAL
+  STATE
+  REGION
+  DISTRICT
+  CONSTITUENCY
+  SECTION
+  BOOTH
+}
+
+enum NewsCategory {
+  POLITICAL
+  ELECTION
+  DEVELOPMENT
+  SOCIAL
+  ECONOMIC
+  LAW_AND_ORDER
+  ENVIRONMENT
+  HEALTH
+  EDUCATION
+  INFRASTRUCTURE
+  GOVERNMENT_SCHEME
+  LOCAL_ISSUE
+  CONTROVERSY
+  ANNOUNCEMENT
+  OTHER
+}
+
+enum NewsPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  FLAGGED
+}
+
+enum NewsSource {
+  OFFICIAL
+  MEDIA
+  SOCIAL_MEDIA
+  PUBLIC_FORUM
+  FIELD_REPORT
+  MANUAL_ENTRY
+}
+
+// News & Information - Aggregated from public forums and manual entry
+model NewsInformation {
+  id                String              @id @default(uuid())
+  tenantId          String?             @map("tenant_id") // null = global news
+
+  // Content
+  title             String
+  titleLocal        String?             @map("title_local")
+  summary           String?
+  content           String?             @db.Text
+  contentLocal      String?             @map("content_local") @db.Text
+
+  // Categorization
+  category          NewsCategory        @default(OTHER)
+  subCategory       String?             @map("sub_category")
+  tags              Json                @default("[]")
+  keywords          Json                @default("[]")
+
+  // Source Information
+  source            NewsSource          @default(MANUAL_ENTRY)
+  sourceUrl         String?             @map("source_url")
+  sourceName        String?             @map("source_name")
+  publishedAt       DateTime?           @map("published_at")
+
+  // Geographic Scope
+  geographicLevel   GeographicLevel     @default(NATIONAL) @map("geographic_level")
+  country           String              @default("India")
+  state             String?
+  region            String?
+  district          String?
+  constituency      String?
+  section           String?
+  booth             String?
+
+  // Priority & Status
+  priority          NewsPriority        @default(MEDIUM)
+  status            NewsStatus          @default(DRAFT)
+
+  // Impact Assessment
+  impactScore       Float?              @map("impact_score") // AI-generated 0-100
+  sentimentScore    Float?              @map("sentiment_score") // -1 to 1
+  reachEstimate     Int?                @map("reach_estimate") // Estimated affected population
+  relevanceScore    Float?              @map("relevance_score") // 0-100
+
+  // AI Analysis
+  aiAnalysis        Json?               @map("ai_analysis") // Structured AI insights
+  aiProcessedAt     DateTime?           @map("ai_processed_at")
+
+  // Media
+  imageUrls         Json                @default("[]") @map("image_urls")
+  videoUrls         Json                @default("[]") @map("video_urls")
+  documentUrls      Json                @default("[]") @map("document_urls")
+
+  // Engagement Stats
+  viewCount         Int                 @default(0) @map("view_count")
+  shareCount        Int                 @default(0) @map("share_count")
+
+  // Audit
+  createdBy         String?             @map("created_by")
+  updatedBy         String?             @map("updated_by")
+  archivedAt        DateTime?           @map("archived_at")
+  archivedBy        String?             @map("archived_by")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  actions           ActionItem[]
+  nbParsedNews      NBParsedNews[]
+
+  @@index([tenantId])
+  @@index([geographicLevel])
+  @@index([category])
+  @@index([status])
+  @@index([state])
+  @@index([district])
+  @@index([constituency])
+  @@index([createdAt])
+  @@map("news_information")
+}
+
+// ==================== AI-POWERED ACTIONS SYSTEM ====================
+
+enum ActionStatus {
+  SUGGESTED           // AI-generated suggestion
+  PENDING_REVIEW      // Awaiting review
+  APPROVED            // Approved for execution
+  IN_PROGRESS         // Currently being executed
+  COMPLETED           // Successfully completed
+  REJECTED            // Rejected by admin
+  CANCELLED           // Cancelled
+  FAILED              // Failed execution
+}
+
+enum ActionPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum ActionType {
+  COMMUNICATION       // Send message/announcement
+  FIELD_VISIT         // Ground team visit
+  MEETING             // Organize meeting
+  MEDIA_RESPONSE      // Media/PR response
+  VOTER_OUTREACH      // Direct voter contact
+  ISSUE_RESOLUTION    // Resolve reported issue
+  CAMPAIGN_ACTIVITY   // Campaign related
+  SURVEY              // Conduct survey
+  MONITORING          // Monitor situation
+  ESCALATION          // Escalate to higher authority
+  INVESTIGATION       // Investigate matter
+  DOCUMENTATION       // Document evidence
+  LEGAL               // Legal action
+  OTHER
+}
+
+// Action Items - AI-generated or manual actions based on news/information
+model ActionItem {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  newsId            String?             @map("news_id")
+
+  // Action Details
+  title             String
+  titleLocal        String?             @map("title_local")
+  description       String?             @db.Text
+  descriptionLocal  String?             @map("description_local") @db.Text
+
+  // Type & Priority
+  actionType        ActionType          @default(OTHER) @map("action_type")
+  priority          ActionPriority      @default(MEDIUM)
+  status            ActionStatus        @default(SUGGESTED)
+
+  // Geographic Scope
+  geographicLevel   GeographicLevel     @default(CONSTITUENCY) @map("geographic_level")
+  state             String?
+  district          String?
+  constituency      String?
+  section           String?
+  booth             String?
+
+  // Target
+  targetAudience    String?             @map("target_audience")
+  targetCount       Int?                @map("target_count")
+  targetRoles       Json                @default("[]") @map("target_roles")
+
+  // Assignment
+  assignedTo        String?             @map("assigned_to") // User ID
+  assignedToName    String?             @map("assigned_to_name")
+  assignedBy        String?             @map("assigned_by")
+  assignedAt        DateTime?           @map("assigned_at")
+
+  // Timeline
+  suggestedDeadline DateTime?           @map("suggested_deadline")
+  deadline          DateTime?
+  startedAt         DateTime?           @map("started_at")
+  completedAt       DateTime?           @map("completed_at")
+
+  // AI-Generated Details
+  isAiGenerated     Boolean             @default(false) @map("is_ai_generated")
+  aiConfidence      Float?              @map("ai_confidence") // 0-100
+  aiReasoning       String?             @map("ai_reasoning") @db.Text
+  aiSuggestedSteps  Json                @default("[]") @map("ai_suggested_steps")
+
+  // Impact Analysis (AI-generated)
+  expectedImpact    Json?               @map("expected_impact")
+  riskAssessment    Json?               @map("risk_assessment")
+  resourceEstimate  Json?               @map("resource_estimate")
+
+  // Execution
+  executionSteps    Json                @default("[]") @map("execution_steps")
+  executionNotes    String?             @map("execution_notes") @db.Text
+  attachments       Json                @default("[]")
+
+  // Outcome
+  outcome           String?             @db.Text
+  outcomeRating     Int?                @map("outcome_rating") // 1-5
+  impactMeasured    Json?               @map("impact_measured")
+  lessonsLearned    String?             @map("lessons_learned") @db.Text
+
+  // Review
+  reviewedBy        String?             @map("reviewed_by")
+  reviewedAt        DateTime?           @map("reviewed_at")
+  reviewNotes       String?             @map("review_notes")
+  rejectionReason   String?             @map("rejection_reason")
+
+  // Audit
+  createdBy         String?             @map("created_by")
+  updatedBy         String?             @map("updated_by")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  news              NewsInformation?    @relation(fields: [newsId], references: [id])
+  impactLogs        ActionImpactLog[]
+
+  @@index([tenantId])
+  @@index([newsId])
+  @@index([status])
+  @@index([priority])
+  @@index([actionType])
+  @@index([assignedTo])
+  @@index([deadline])
+  @@index([createdAt])
+  @@map("action_items")
+}
+
+// Action Impact Logs - Track impact of actions taken
+model ActionImpactLog {
+  id                String              @id @default(uuid())
+  actionId          String              @map("action_id")
+
+  // Impact Type
+  impactType        String              @map("impact_type") // 'positive', 'negative', 'neutral'
+  impactCategory    String?             @map("impact_category")
+
+  // Metrics
+  metricName        String              @map("metric_name")
+  metricValue       Float               @map("metric_value")
+  metricUnit        String?             @map("metric_unit")
+  previousValue     Float?              @map("previous_value")
+  changePercent     Float?              @map("change_percent")
+
+  // Description
+  description       String?
+  evidence          Json?               @default("[]")
+
+  // Source
+  recordedBy        String?             @map("recorded_by")
+  recordedAt        DateTime            @default(now()) @map("recorded_at")
+  verifiedBy        String?             @map("verified_by")
+  verifiedAt        DateTime?           @map("verified_at")
+
+  // AI Analysis
+  isAiDetected      Boolean             @default(false) @map("is_ai_detected")
+  aiConfidence      Float?              @map("ai_confidence")
+
+  action            ActionItem          @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([actionId])
+  @@index([impactType])
+  @@index([recordedAt])
+  @@map("action_impact_logs")
+}
+
+// ==================== ORGANIZATION SETUP - ROLE FEATURE ACCESS ====================
+
+// RoleFeatureAccess - Tenant Admin controls which features are visible to which roles
+model RoleFeatureAccess {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  role        UserRole
+  featureKey  String   @map("feature_key") // Navigation key like 'dashboard', 'voters', 'analytics'
+
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+
+  createdBy   String?  @map("created_by") // User ID who configured this
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, role, featureKey])
+  @@index([tenantId])
+  @@index([role])
+  @@map("role_feature_access")
+}
+
+// ==================== AUDIT LOG ====================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==================== NB (NEWS & BROADCAST) SCHEMA ====================
+// AI-powered news analysis, party line guidelines, speech points, and action generation
+
+enum NBAnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum PartyLineLevel {
+  CENTRAL_COMMITTEE    // National/State level party leadership
+  CONSTITUENCY_HEAD    // MLA/MP candidate level
+  SECTOR_OFFICER       // Zone/Sector level
+  BOOTH_INCHARGE       // Booth level workers
+  VOLUNTEER            // Ground level volunteers
+}
+
+enum SpeechPointType {
+  KEY_MESSAGE          // Main talking points
+  COUNTER_NARRATIVE    // Points to counter opposition
+  LOCAL_ISSUE          // Locality-specific issues
+  SCHEME_HIGHLIGHT     // Government scheme benefits
+  PROMISE_POINT        // Electoral promises
+  EMOTIONAL_APPEAL     // Emotional connect points
+  FACT_STAT            // Facts and statistics
+}
+
+enum SpeechPointPriority {
+  MUST_MENTION         // Critical points - must be included
+  RECOMMENDED          // Should be included if time permits
+  OPTIONAL             // Can be used based on audience
+}
+
+// Parsed News Data - Structured extraction from raw news
+model NBParsedNews {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  newsId            String?             @map("news_id") // Original NewsInformation ID if linked
+  electionId        String?             @map("election_id")
+
+  // Parsed Content
+  originalTitle     String              @map("original_title")
+  originalContent   String?             @map("original_content") @db.Text
+  parsedTitle       String?             @map("parsed_title")
+  parsedSummary     String?             @map("parsed_summary") @db.Text
+  keyPoints         Json                @default("[]") @map("key_points") // Array of key points extracted
+
+  // Entity Extraction
+  mentionedParties  Json                @default("[]") @map("mentioned_parties") // Political parties mentioned
+  mentionedPersons  Json                @default("[]") @map("mentioned_persons") // People mentioned
+  mentionedPlaces   Json                @default("[]") @map("mentioned_places") // Locations mentioned
+  mentionedSchemes  Json                @default("[]") @map("mentioned_schemes") // Government schemes
+  mentionedIssues   Json                @default("[]") @map("mentioned_issues") // Issues/topics
+
+  // Sentiment & Impact
+  sentiment         String?             // 'positive', 'negative', 'neutral', 'mixed'
+  sentimentScore    Float?              @map("sentiment_score") // -1 to 1
+  impactLevel       String?             @map("impact_level") // 'high', 'medium', 'low'
+  relevanceScore    Float?              @map("relevance_score") // 0 to 1
+
+  // Geographic Relevance
+  geographicLevel   GeographicLevel     @default(CONSTITUENCY) @map("geographic_level")
+  state             String?
+  district          String?
+  constituency      String?
+  section           String?
+
+  // Categorization
+  category          String?             // Political, Development, Social, Economic, etc.
+  subCategories     Json                @default("[]") @map("sub_categories")
+  tags              Json                @default("[]")
+
+  // Source & Timing
+  source            String?
+  sourceUrl         String?             @map("source_url")
+  publishedAt       DateTime?           @map("published_at")
+  parsedAt          DateTime            @default(now()) @map("parsed_at")
+
+  // AI Analysis Status
+  analysisStatus    NBAnalysisStatus    @default(PENDING) @map("analysis_status")
+  analysisError     String?             @map("analysis_error")
+
+  // Timestamps
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+  news              NewsInformation?    @relation(fields: [newsId], references: [id])
+  analyses          NBNewsAnalysis[]
+  partyLines        NBPartyLine[]
+  speechPoints      NBSpeechPoint[]
+  actionPlans       NBActionPlan[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([newsId])
+  @@index([analysisStatus])
+  @@index([publishedAt])
+  @@index([createdAt])
+  @@map("nb_parsed_news")
+}
+
+// AI News Analysis - Deep analysis combining news with tenant context
+model NBNewsAnalysis {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  parsedNewsId      String              @map("parsed_news_id")
+  electionId        String?             @map("election_id")
+
+  // Analysis Type
+  analysisType      String              @map("analysis_type") // 'impact', 'opportunity', 'threat', 'counter', 'strategy'
+
+  // Core Analysis
+  summary           String?             @db.Text
+  detailedAnalysis  String?             @map("detailed_analysis") @db.Text
+
+  // Opportunity Analysis
+  opportunities     Json                @default("[]") // Ways to leverage this news
+  threats           Json                @default("[]") // Risks from this news
+  recommendations   Json                @default("[]") // Recommended actions
+
+  // Context Integration (from tenant data)
+  localContext      Json?               @map("local_context") // Local demographic insights used
+  casteAnalysis     Json?               @map("caste_analysis") // Caste-wise impact analysis
+  partyContext      Json?               @map("party_context") // Party's position on related issues
+  historicalContext Json?               @map("historical_context") // Past similar events
+
+  // Impact Scores
+  voterImpactScore  Float?              @map("voter_impact_score") // Expected impact on voters
+  mediaImpactScore  Float?              @map("media_impact_score") // Media coverage impact
+  competitorImpactScore Float?          @map("competitor_impact_score") // Impact on competitors
+
+  // AI Model Info
+  aiModel           String?             @map("ai_model") // Which AI model was used
+  aiConfidence      Float?              @map("ai_confidence") // Confidence score
+  tokensUsed        Int?                @map("tokens_used")
+
+  // Status
+  status            NBAnalysisStatus    @default(COMPLETED)
+
+  // Timestamps
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parsedNews        NBParsedNews        @relation(fields: [parsedNewsId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+
+  @@index([tenantId])
+  @@index([parsedNewsId])
+  @@index([electionId])
+  @@index([analysisType])
+  @@index([createdAt])
+  @@map("nb_news_analyses")
+}
+
+// Party Line Guidelines - What to say at each hierarchy level
+model NBPartyLine {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  electionId        String?             @map("election_id")
+  parsedNewsId      String?             @map("parsed_news_id") // Can be linked to specific news or general
+
+  // Hierarchy Level
+  level             PartyLineLevel
+  roleTargets       Json                @default("[]") @map("role_targets") // Specific UserRoles this applies to
+
+  // Geographic Scope
+  geographicLevel   GeographicLevel     @default(CONSTITUENCY) @map("geographic_level")
+  state             String?
+  district          String?
+  constituency      String?
+  section           String?
+  booth             String?
+
+  // Guidelines Content
+  title             String
+  titleLocal        String?             @map("title_local")
+  mainMessage       String              @map("main_message") @db.Text // Core message to convey
+  mainMessageLocal  String?             @map("main_message_local") @db.Text
+
+  // Detailed Guidelines
+  whatToSay         Json                @default("[]") @map("what_to_say") // Array of talking points
+  howToSay          Json                @default("[]") @map("how_to_say") // Delivery guidelines
+  whatNotToSay      Json                @default("[]") @map("what_not_to_say") // Points to avoid
+  counterPoints     Json                @default("[]") @map("counter_points") // Opposition counter
+
+  // Audience-Specific Messaging
+  audienceGuidelines Json               @default("{}") @map("audience_guidelines") // By caste, religion, age group
+
+  // Supporting Materials
+  facts             Json                @default("[]") // Facts to support the message
+  statistics        Json                @default("[]") // Statistics to cite
+  examples          Json                @default("[]") // Local examples to use
+
+  // Validity
+  validFrom         DateTime            @default(now()) @map("valid_from")
+  validUntil        DateTime?           @map("valid_until")
+  isActive          Boolean             @default(true) @map("is_active")
+
+  // Approval
+  status            String              @default("draft") // 'draft', 'pending_approval', 'approved', 'published'
+  approvedBy        String?             @map("approved_by")
+  approvedAt        DateTime?           @map("approved_at")
+
+  // AI Generation
+  isAiGenerated     Boolean             @default(false) @map("is_ai_generated")
+  aiConfidence      Float?              @map("ai_confidence")
+
+  // Timestamps
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+  parsedNews        NBParsedNews?       @relation(fields: [parsedNewsId], references: [id])
+  broadcasts        NBBroadcast[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([level])
+  @@index([status])
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("nb_party_lines")
+}
+
+// Speech Points - Recommended talking points for candidates
+model NBSpeechPoint {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  electionId        String?             @map("election_id")
+  parsedNewsId      String?             @map("parsed_news_id")
+
+  // Point Details
+  title             String
+  titleLocal        String?             @map("title_local")
+  content           String              @db.Text // The actual speech point
+  contentLocal      String?             @map("content_local") @db.Text
+
+  // Type & Priority
+  pointType         SpeechPointType     @default(KEY_MESSAGE) @map("point_type")
+  priority          SpeechPointPriority @default(RECOMMENDED)
+  order             Int                 @default(0) // Display order
+
+  // Context
+  context           String?             @db.Text // When to use this point
+  targetAudience    Json                @default("[]") @map("target_audience") // Who this resonates with
+  effectiveFor      Json                @default("[]") @map("effective_for") // Caste/religion/demographic groups
+
+  // Supporting Info
+  supportingFacts   Json                @default("[]") @map("supporting_facts")
+  relatedSchemes    Json                @default("[]") @map("related_schemes")
+  localExamples     Json                @default("[]") @map("local_examples")
+
+  // Delivery
+  suggestedTone     String?             @map("suggested_tone") // 'assertive', 'empathetic', 'inspiring'
+  suggestedDuration String?             @map("suggested_duration") // How long to spend on this
+  visualAids        Json                @default("[]") @map("visual_aids") // Suggested images/charts
+
+  // Geographic Scope
+  geographicLevel   GeographicLevel     @default(CONSTITUENCY) @map("geographic_level")
+  state             String?
+  district          String?
+  constituency      String?
+
+  // Validity
+  validFrom         DateTime            @default(now()) @map("valid_from")
+  validUntil        DateTime?           @map("valid_until")
+  isActive          Boolean             @default(true) @map("is_active")
+
+  // Approval & Status
+  status            String              @default("suggested") // 'suggested', 'approved', 'used', 'archived'
+  approvedBy        String?             @map("approved_by")
+  approvedAt        DateTime?           @map("approved_at")
+  usedInCampaigns   Json                @default("[]") @map("used_in_campaigns") // Campaign IDs where used
+
+  // AI Generation
+  isAiGenerated     Boolean             @default(false) @map("is_ai_generated")
+  aiConfidence      Float?              @map("ai_confidence")
+  sourceAnalysisId  String?             @map("source_analysis_id")
+
+  // Impact Tracking
+  usageCount        Int                 @default(0) @map("usage_count")
+  effectivenessScore Float?             @map("effectiveness_score")
+
+  // Timestamps
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+  parsedNews        NBParsedNews?       @relation(fields: [parsedNewsId], references: [id])
+  campaignSpeeches  NBCampaignSpeech[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([pointType])
+  @@index([priority])
+  @@index([status])
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("nb_speech_points")
+}
+
+// Action Plans - AI-generated action items per role from news analysis
+model NBActionPlan {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  electionId        String?             @map("election_id")
+  parsedNewsId      String?             @map("parsed_news_id")
+
+  // Plan Details
+  title             String
+  titleLocal        String?             @map("title_local")
+  description       String?             @db.Text
+  descriptionLocal  String?             @map("description_local") @db.Text
+  objective         String?             // What this plan aims to achieve
+
+  // Target Role
+  targetLevel       PartyLineLevel      @map("target_level")
+  targetRoles       Json                @default("[]") @map("target_roles") // Specific UserRoles
+
+  // Geographic Scope
+  geographicLevel   GeographicLevel     @default(CONSTITUENCY) @map("geographic_level")
+  state             String?
+  district          String?
+  constituency      String?
+  section           String?
+  booth             String?
+
+  // Action Items (structured list)
+  actionItems       Json                @default("[]") @map("action_items") // Array of { task, deadline, assignee_role, priority }
+
+  // Timeline
+  suggestedStartDate DateTime?          @map("suggested_start_date")
+  suggestedEndDate  DateTime?           @map("suggested_end_date")
+  urgency           String?             @default("normal") // 'urgent', 'high', 'normal', 'low'
+
+  // Resources
+  requiredResources Json                @default("[]") @map("required_resources")
+  estimatedCost     Float?              @map("estimated_cost")
+  manpowerNeeded    Int?                @map("manpower_needed")
+
+  // Success Metrics
+  successMetrics    Json                @default("[]") @map("success_metrics")
+  kpis              Json                @default("[]")
+
+  // Approval & Status
+  status            String              @default("suggested") // 'suggested', 'pending_review', 'approved', 'in_progress', 'completed'
+  approvedBy        String?             @map("approved_by")
+  approvedAt        DateTime?           @map("approved_at")
+  validatedBy       String?             @map("validated_by")
+  validatedAt       DateTime?           @map("validated_at")
+
+  // Campaign Integration
+  addedToCampaign   Boolean             @default(false) @map("added_to_campaign")
+  campaignId        String?             @map("campaign_id")
+
+  // AI Generation
+  isAiGenerated     Boolean             @default(false) @map("is_ai_generated")
+  aiConfidence      Float?              @map("ai_confidence")
+  sourceAnalysisId  String?             @map("source_analysis_id")
+
+  // Timestamps
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+  parsedNews        NBParsedNews?       @relation(fields: [parsedNewsId], references: [id])
+  executions        NBActionExecution[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([targetLevel])
+  @@index([status])
+  @@index([urgency])
+  @@index([createdAt])
+  @@map("nb_action_plans")
+}
+
+// Action Execution Tracking
+model NBActionExecution {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  actionPlanId      String              @map("action_plan_id")
+
+  // Assignee
+  assignedTo        String?             @map("assigned_to") // User ID
+  assignedRole      UserRole?           @map("assigned_role")
+
+  // Execution Details
+  taskDescription   String?             @map("task_description")
+  status            String              @default("pending") // 'pending', 'in_progress', 'completed', 'blocked', 'cancelled'
+  progress          Int                 @default(0) // 0-100%
+
+  // Timeline
+  startedAt         DateTime?           @map("started_at")
+  completedAt       DateTime?           @map("completed_at")
+  dueDate           DateTime?           @map("due_date")
+
+  // Notes & Evidence
+  notes             String?             @db.Text
+  evidence          Json                @default("[]") // Photos, documents, etc.
+  blockers          Json                @default("[]")
+
+  // Results
+  outcome           String?
+  impactReported    Json?               @map("impact_reported")
+
+  // Timestamps
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actionPlan        NBActionPlan        @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([actionPlanId])
+  @@index([assignedTo])
+  @@index([status])
+  @@index([dueDate])
+  @@map("nb_action_executions")
+}
+
+// Campaign Speech - Approved speech points used in campaigns
+model NBCampaignSpeech {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  electionId        String?             @map("election_id")
+  campaignId        String?             @map("campaign_id")
+
+  // Speech Details
+  title             String
+  titleLocal        String?             @map("title_local")
+  fullScript        String?             @map("full_script") @db.Text
+  fullScriptLocal   String?             @map("full_script_local") @db.Text
+
+  // Duration & Venue
+  estimatedDuration Int?                @map("estimated_duration") // in minutes
+  targetVenue       String?             @map("target_venue") // 'rally', 'door_to_door', 'public_meeting', 'media'
+  targetAudience    Json                @default("[]") @map("target_audience")
+
+  // Geographic Scope
+  geographicLevel   GeographicLevel     @default(CONSTITUENCY) @map("geographic_level")
+  state             String?
+  district          String?
+  constituency      String?
+  section           String?
+
+  // Speech Points Used
+  speechPointIds    Json                @default("[]") @map("speech_point_ids")
+
+  // Status
+  status            String              @default("draft") // 'draft', 'approved', 'delivered', 'archived'
+  approvedBy        String?             @map("approved_by")
+  approvedAt        DateTime?           @map("approved_at")
+
+  // Delivery Tracking
+  deliveredAt       DateTime?           @map("delivered_at")
+  deliveredBy       String?             @map("delivered_by")
+  deliveryNotes     String?             @map("delivery_notes")
+
+  // Impact Assessment
+  audienceSize      Int?                @map("audience_size")
+  feedbackScore     Float?              @map("feedback_score")
+  mediaReach        Int?                @map("media_reach")
+
+  // Timestamps
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+  speechPoints      NBSpeechPoint[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([campaignId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("nb_campaign_speeches")
+}
+
+// Broadcast - Push guidelines to workers via app/SMS
+model NBBroadcast {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  electionId        String?             @map("election_id")
+  partyLineId       String?             @map("party_line_id")
+
+  // Broadcast Details
+  title             String
+  message           String              @db.Text
+  messageLocal      String?             @map("message_local") @db.Text
+
+  // Target
+  targetLevels      Json                @default("[]") @map("target_levels") // PartyLineLevel array
+  targetRoles       Json                @default("[]") @map("target_roles") // UserRole array
+  geographicScope   Json                @default("{}") @map("geographic_scope") // { state, district, constituency, etc. }
+
+  // Channels
+  channels          Json                @default("[]") // ['app_notification', 'sms', 'whatsapp', 'email']
+
+  // Scheduling
+  scheduledAt       DateTime?           @map("scheduled_at")
+  sentAt            DateTime?           @map("sent_at")
+  status            String              @default("draft") // 'draft', 'scheduled', 'sending', 'sent', 'failed'
+
+  // Stats
+  totalRecipients   Int                 @default(0) @map("total_recipients")
+  deliveredCount    Int                 @default(0) @map("delivered_count")
+  readCount         Int                 @default(0) @map("read_count")
+  failedCount       Int                 @default(0) @map("failed_count")
+
+  // Timestamps
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+  partyLine         NBPartyLine?        @relation(fields: [partyLineId], references: [id])
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@map("nb_broadcasts")
+}
+
+// ==================== WEBSITE BUILDER MODULE ====================
+
+enum WebsiteTemplateType {
+  POLITICAL_PARTY      // Party website with manifesto, leaders, etc.
+  CANDIDATE            // Individual candidate campaign website
+  ELECTION_MANAGEMENT  // EMC company website
+  CORPORATE_PARTY      // Corporate-style party website
+  GRASSROOTS           // Community-focused campaign website
+}
+
+enum WebsiteStatus {
+  DRAFT                // Website not yet published
+  PUBLISHED            // Live and accessible
+  MAINTENANCE          // Under maintenance
+  SUSPENDED            // Suspended by admin
+}
+
+// Pre-built website templates managed by Super Admin
+model WebsiteTemplate {
+  id                String              @id @default(uuid())
+  name              String
+  description       String?             @db.Text
+  templateType      WebsiteTemplateType @map("template_type")
+  thumbnailUrl      String?             @map("thumbnail_url")
+  previewUrl        String?             @map("preview_url")
+
+  // Template Configuration
+  templateCode      String              @unique @map("template_code") // e.g., 'party-modern-1'
+  templateVersion   String              @default("1.0.0") @map("template_version")
+  defaultConfig     Json                @default("{}") @map("default_config")
+  defaultSections   Json                @default("[]") @map("default_sections") // Default page sections
+  colorSchemes      Json                @default("[]") @map("color_schemes") // Available color schemes
+  fontOptions       Json                @default("[]") @map("font_options")
+
+  // Features
+  features          Json                @default("[]") // ['contact_form', 'donation', 'events', 'gallery', etc.]
+  supportedLocales  Json                @default("[\"en\"]") @map("supported_locales")
+
+  // Status
+  isActive          Boolean             @default(true) @map("is_active")
+  isPremium         Boolean             @default(false) @map("is_premium")
+  sortOrder         Int                 @default(0) @map("sort_order")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenantWebsites    TenantWebsite[]
+
+  @@index([templateType])
+  @@index([isActive])
+  @@map("website_templates")
+}
+
+// Tenant's website configuration
+model TenantWebsite {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  templateId        String              @map("template_id")
+
+  // Domain Configuration
+  subdomain         String              @unique // e.g., 'abc-party' -> abc-party.electioncaffe.com
+  customDomain      String?             @unique @map("custom_domain") // Tenant's own domain
+  emAdminUrl        String?             @map("em_admin_url") // Election Management Admin URL link
+
+  // Website Settings
+  siteName          String              @map("site_name")
+  siteNameLocal     String?             @map("site_name_local")
+  tagline           String?
+  taglineLocal      String?             @map("tagline_local")
+  description       String?             @db.Text
+  descriptionLocal  String?             @map("description_local") @db.Text
+
+  // Branding
+  logoUrl           String?             @map("logo_url")
+  faviconUrl        String?             @map("favicon_url")
+  primaryColor      String?             @map("primary_color")
+  secondaryColor    String?             @map("secondary_color")
+  accentColor       String?             @map("accent_color")
+  fontFamily        String?             @map("font_family")
+
+  // Contact Info
+  email             String?
+  phone             String?
+  whatsapp          String?
+  address           String?             @db.Text
+  addressLocal      String?             @map("address_local") @db.Text
+
+  // Social Media
+  socialLinks       Json                @default("{}") @map("social_links") // {facebook, twitter, instagram, youtube, etc.}
+
+  // SEO
+  metaTitle         String?             @map("meta_title")
+  metaDescription   String?             @map("meta_description") @db.Text
+  metaKeywords      Json                @default("[]") @map("meta_keywords")
+  ogImage           String?             @map("og_image")
+
+  // Configuration
+  siteConfig        Json                @default("{}") @map("site_config")
+  enabledSections   Json                @default("[]") @map("enabled_sections")
+  customCss         String?             @map("custom_css") @db.Text
+  headerScripts     String?             @map("header_scripts") @db.Text
+  footerScripts     String?             @map("footer_scripts") @db.Text
+
+  // Analytics
+  googleAnalyticsId String?             @map("google_analytics_id")
+  facebookPixelId   String?             @map("facebook_pixel_id")
+
+  // Status
+  status            WebsiteStatus       @default(DRAFT)
+  publishedAt       DateTime?           @map("published_at")
+  lastDeployedAt    DateTime?           @map("last_deployed_at")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template          WebsiteTemplate     @relation(fields: [templateId], references: [id])
+  pages             WebsitePage[]
+  mediaItems        WebsiteMedia[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("tenant_websites")
+}
+
+// Website pages content
+model WebsitePage {
+  id                String              @id @default(uuid())
+  websiteId         String              @map("website_id")
+
+  // Page Info
+  pageType          String              @map("page_type") // 'home', 'about', 'manifesto', 'team', 'contact', 'events', 'gallery', 'custom'
+  title             String
+  titleLocal        String?             @map("title_local")
+  slug              String
+
+  // Content
+  content           Json                @default("{}") // Page content blocks
+  contentLocal      Json?               @default("{}") @map("content_local")
+
+  // SEO
+  metaTitle         String?             @map("meta_title")
+  metaDescription   String?             @map("meta_description")
+
+  // Settings
+  isPublished       Boolean             @default(false) @map("is_published")
+  showInNav         Boolean             @default(true) @map("show_in_nav")
+  sortOrder         Int                 @default(0) @map("sort_order")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  website           TenantWebsite       @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, slug])
+  @@index([websiteId])
+  @@index([pageType])
+  @@map("website_pages")
+}
+
+// Website media library
+model WebsiteMedia {
+  id                String              @id @default(uuid())
+  websiteId         String              @map("website_id")
+
+  fileName          String              @map("file_name")
+  fileUrl           String              @map("file_url")
+  fileType          String              @map("file_type") // 'image', 'video', 'document'
+  mimeType          String              @map("mime_type")
+  fileSize          Int                 @map("file_size")
+
+  title             String?
+  altText           String?             @map("alt_text")
+  caption           String?
+
+  category          String?             // 'banner', 'gallery', 'team', 'logo', etc.
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  website           TenantWebsite       @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([fileType])
+  @@index([category])
+  @@map("website_media")
+}
+
+// ==================== FUND MANAGEMENT MODULE ====================
+
+enum FundTransactionType {
+  DONATION           // Incoming donation
+  EXPENSE            // Outgoing expense
+  TRANSFER           // Internal transfer
+  REFUND             // Refund of donation
+  ADJUSTMENT         // Manual adjustment
+}
+
+enum FundTransactionStatus {
+  PENDING            // Awaiting approval/processing
+  APPROVED           // Approved by admin
+  COMPLETED          // Transaction completed
+  REJECTED           // Transaction rejected
+  CANCELLED          // Transaction cancelled
+}
+
+enum DonationType {
+  INDIVIDUAL         // Individual donation
+  CORPORATE          // Corporate donation
+  CROWDFUNDING       // Online crowdfunding
+  MEMBERSHIP_FEE     // Party membership fee
+  EVENT_COLLECTION   // Collection at events
+  OTHER              // Other sources
+}
+
+enum ExpenseCategory {
+  CAMPAIGN           // Campaign related expenses
+  ADVERTISING        // Ads, banners, posters
+  TRAVEL             // Travel expenses
+  ACCOMMODATION      // Hotels, lodging
+  FOOD               // Food and refreshments
+  VENUE              // Venue rental
+  EQUIPMENT          // Equipment purchase/rental
+  STAFF_SALARY       // Staff salaries
+  VOLUNTEER_STIPEND  // Volunteer allowances
+  PRINTING           // Printing materials
+  DIGITAL_MARKETING  // Digital ads, social media
+  OFFICE             // Office expenses
+  LEGAL              // Legal fees
+  OTHER              // Other expenses
+}
+
+// Fund Account - Each tenant can have multiple fund accounts
+model FundAccount {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+
+  accountName       String              @map("account_name")
+  accountNameLocal  String?             @map("account_name_local")
+  accountType       String              @default("main") @map("account_type") // 'main', 'campaign', 'constituency', etc.
+  description       String?
+
+  // Balance
+  currentBalance    Decimal             @default(0) @map("current_balance") @db.Decimal(15, 2)
+  currency          String              @default("INR")
+
+  // Bank Details (optional)
+  bankName          String?             @map("bank_name")
+  accountNumber     String?             @map("account_number")
+  ifscCode          String?             @map("ifsc_code")
+  upiId             String?             @map("upi_id")
+
+  isActive          Boolean             @default(true) @map("is_active")
+  isDefault         Boolean             @default(false) @map("is_default")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  donations         FundDonation[]
+  expenses          FundExpense[]
+  transactions      FundTransaction[]
+
+  @@index([tenantId])
+  @@index([accountType])
+  @@map("fund_accounts")
+}
+
+// Donations received
+model FundDonation {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  accountId         String              @map("account_id")
+  electionId        String?             @map("election_id")
+
+  // Donor Info
+  donorName         String              @map("donor_name")
+  donorEmail        String?             @map("donor_email")
+  donorPhone        String?             @map("donor_phone")
+  donorAddress      String?             @map("donor_address")
+  donorPanNumber    String?             @map("donor_pan_number")
+  isAnonymous       Boolean             @default(false) @map("is_anonymous")
+
+  // Donation Details
+  donationType      DonationType        @map("donation_type")
+  amount            Decimal             @db.Decimal(15, 2)
+  currency          String              @default("INR")
+  paymentMethod     String?             @map("payment_method") // 'cash', 'upi', 'bank_transfer', 'cheque', 'online'
+  transactionRef    String?             @map("transaction_ref")
+
+  // Receipt
+  receiptNumber     String?             @unique @map("receipt_number")
+  receiptUrl        String?             @map("receipt_url")
+
+  // For compliance
+  purpose           String?
+  remarks           String?
+
+  // Status
+  status            FundTransactionStatus @default(PENDING)
+  approvedBy        String?             @map("approved_by")
+  approvedAt        DateTime?           @map("approved_at")
+
+  donatedAt         DateTime            @default(now()) @map("donated_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account           FundAccount         @relation(fields: [accountId], references: [id])
+  election          Election?           @relation(fields: [electionId], references: [id])
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@index([electionId])
+  @@index([status])
+  @@index([donatedAt])
+  @@map("fund_donations")
+}
+
+// Expenses
+model FundExpense {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  accountId         String              @map("account_id")
+  electionId        String?             @map("election_id")
+
+  // Expense Details
+  expenseCategory   ExpenseCategory     @map("expense_category")
+  description       String
+  amount            Decimal             @db.Decimal(15, 2)
+  currency          String              @default("INR")
+
+  // Vendor/Payee
+  vendorName        String?             @map("vendor_name")
+  vendorContact     String?             @map("vendor_contact")
+  invoiceNumber     String?             @map("invoice_number")
+  invoiceUrl        String?             @map("invoice_url")
+
+  // Payment
+  paymentMethod     String?             @map("payment_method")
+  paymentRef        String?             @map("payment_ref")
+  paidAt            DateTime?           @map("paid_at")
+
+  // Approval
+  status            FundTransactionStatus @default(PENDING)
+  requestedBy       String?             @map("requested_by")
+  approvedBy        String?             @map("approved_by")
+  approvedAt        DateTime?           @map("approved_at")
+  rejectionReason   String?             @map("rejection_reason")
+
+  // Attachments
+  attachments       Json                @default("[]") // Array of attachment URLs
+  remarks           String?
+
+  expenseDate       DateTime            @default(now()) @map("expense_date")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account           FundAccount         @relation(fields: [accountId], references: [id])
+  election          Election?           @relation(fields: [electionId], references: [id])
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@index([electionId])
+  @@index([status])
+  @@index([expenseCategory])
+  @@index([expenseDate])
+  @@map("fund_expenses")
+}
+
+// Transaction log for all fund movements
+model FundTransaction {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  accountId         String              @map("account_id")
+
+  transactionType   FundTransactionType @map("transaction_type")
+  amount            Decimal             @db.Decimal(15, 2)
+  balanceAfter      Decimal             @map("balance_after") @db.Decimal(15, 2)
+
+  // Reference
+  referenceType     String?             @map("reference_type") // 'donation', 'expense', 'transfer'
+  referenceId       String?             @map("reference_id")
+
+  description       String
+  remarks           String?
+
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account           FundAccount         @relation(fields: [accountId], references: [id])
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@index([transactionType])
+  @@index([createdAt])
+  @@map("fund_transactions")
+}
+
+// ==================== INVENTORY MANAGEMENT MODULE ====================
+
+enum InventoryItemStatus {
+  AVAILABLE          // Available for use
+  IN_USE             // Currently being used
+  MAINTENANCE        // Under maintenance
+  DAMAGED            // Damaged
+  LOST               // Lost
+  DISPOSED           // Disposed/written off
+}
+
+// Inventory categories
+model InventoryCategory {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+
+  name              String
+  nameLocal         String?             @map("name_local")
+  description       String?
+  icon              String?             // Icon identifier
+  parentId          String?             @map("parent_id")
+
+  sortOrder         Int                 @default(0) @map("sort_order")
+  isActive          Boolean             @default(true) @map("is_active")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent            InventoryCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children          InventoryCategory[] @relation("CategoryHierarchy")
+  items             InventoryItem[]
+
+  @@index([tenantId])
+  @@index([parentId])
+  @@map("inventory_categories")
+}
+
+// Inventory items
+model InventoryItem {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  categoryId        String              @map("category_id")
+
+  // Item Details
+  itemCode          String              @map("item_code")
+  name              String
+  nameLocal         String?             @map("name_local")
+  description       String?
+
+  // Stock
+  quantity          Int                 @default(0)
+  unit              String              @default("pcs") // 'pcs', 'kg', 'liters', 'meters', etc.
+  minStockLevel     Int                 @default(0) @map("min_stock_level")
+  maxStockLevel     Int?                @map("max_stock_level")
+  reorderLevel      Int?                @map("reorder_level")
+
+  // Value
+  unitCost          Decimal?            @map("unit_cost") @db.Decimal(12, 2)
+  totalValue        Decimal?            @map("total_value") @db.Decimal(15, 2)
+  currency          String              @default("INR")
+
+  // Location
+  location          String?             // Storage location
+  warehouseId       String?             @map("warehouse_id")
+
+  // Tracking
+  serialNumbers     Json                @default("[]") @map("serial_numbers")
+  batchNumber       String?             @map("batch_number")
+
+  // For vehicles
+  isVehicle         Boolean             @default(false) @map("is_vehicle")
+  vehicleNumber     String?             @map("vehicle_number")
+  vehicleType       String?             @map("vehicle_type")
+
+  // Images
+  imageUrl          String?             @map("image_url")
+  images            Json                @default("[]")
+
+  status            InventoryItemStatus @default(AVAILABLE)
+  notes             String?
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category          InventoryCategory   @relation(fields: [categoryId], references: [id])
+  stockMovements    InventoryMovement[]
+  allocations       InventoryAllocation[]
+
+  @@unique([tenantId, itemCode])
+  @@index([tenantId])
+  @@index([categoryId])
+  @@index([status])
+  @@map("inventory_items")
+}
+
+// Stock movements (in/out)
+model InventoryMovement {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  itemId            String              @map("item_id")
+
+  movementType      String              @map("movement_type") // 'in', 'out', 'adjustment', 'transfer'
+  quantity          Int
+  previousQuantity  Int                 @map("previous_quantity")
+  newQuantity       Int                 @map("new_quantity")
+
+  // Reference
+  referenceType     String?             @map("reference_type") // 'purchase', 'allocation', 'return', 'damage', etc.
+  referenceId       String?             @map("reference_id")
+
+  reason            String?
+  remarks           String?
+
+  // For transfers
+  fromLocation      String?             @map("from_location")
+  toLocation        String?             @map("to_location")
+
+  movedBy           String?             @map("moved_by")
+  movedAt           DateTime            @default(now()) @map("moved_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item              InventoryItem       @relation(fields: [itemId], references: [id])
+
+  @@index([tenantId])
+  @@index([itemId])
+  @@index([movementType])
+  @@index([movedAt])
+  @@map("inventory_movements")
+}
+
+// Inventory allocation to events/campaigns
+model InventoryAllocation {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  itemId            String              @map("item_id")
+  eventId           String?             @map("event_id")
+  electionId        String?             @map("election_id")
+
+  quantity          Int
+  allocatedTo       String?             @map("allocated_to") // User ID or location
+  allocatedToName   String?             @map("allocated_to_name")
+
+  purpose           String?
+
+  // Duration
+  allocatedFrom     DateTime            @map("allocated_from")
+  allocatedUntil    DateTime?           @map("allocated_until")
+  returnedAt        DateTime?           @map("returned_at")
+  returnedQuantity  Int?                @map("returned_quantity")
+
+  status            String              @default("allocated") // 'allocated', 'in_use', 'returned', 'partial_return'
+  condition         String?             // Condition upon return
+  remarks           String?
+
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item              InventoryItem       @relation(fields: [itemId], references: [id])
+  event             PartyEvent?         @relation(fields: [eventId], references: [id])
+  election          Election?           @relation(fields: [electionId], references: [id])
+
+  @@index([tenantId])
+  @@index([itemId])
+  @@index([eventId])
+  @@index([status])
+  @@map("inventory_allocations")
+}
+
+// ==================== EVENT MANAGEMENT MODULE ====================
+
+enum EventType {
+  RALLY              // Public rally
+  MEETING            // Party meeting
+  CAMPAIGN           // Campaign event
+  PRESS_CONFERENCE   // Press conference
+  DOOR_TO_DOOR       // Door-to-door campaign
+  ROADSHOW           // Road show
+  CONVENTION         // Party convention
+  TRAINING           // Training session
+  CELEBRATION        // Victory/anniversary celebration
+  OTHER              // Other events
+}
+
+enum EventStatus {
+  DRAFT              // Event being planned
+  SCHEDULED          // Confirmed and scheduled
+  ONGOING            // Currently happening
+  COMPLETED          // Event completed
+  CANCELLED          // Event cancelled
+  POSTPONED          // Event postponed
+}
+
+// Party Events
+model PartyEvent {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+  electionId        String?             @map("election_id")
+
+  // Event Details
+  title             String
+  titleLocal        String?             @map("title_local")
+  description       String?             @db.Text
+  descriptionLocal  String?             @map("description_local") @db.Text
+  eventType         EventType           @map("event_type")
+
+  // Schedule
+  startDate         DateTime            @map("start_date")
+  endDate           DateTime?           @map("end_date")
+  allDay            Boolean             @default(false) @map("all_day")
+  timezone          String              @default("Asia/Kolkata")
+
+  // Location
+  venue             String?
+  venueLocal        String?             @map("venue_local")
+  address           String?             @db.Text
+  city              String?
+  state             String?
+  pincode           String?
+  latitude          Decimal?            @db.Decimal(10, 8)
+  longitude         Decimal?            @db.Decimal(11, 8)
+  isOnline          Boolean             @default(false) @map("is_online")
+  onlineLink        String?             @map("online_link")
+
+  // Capacity
+  expectedAttendees Int?                @map("expected_attendees")
+  maxCapacity       Int?                @map("max_capacity")
+  actualAttendees   Int?                @map("actual_attendees")
+
+  // Speakers/Guests
+  speakers          Json                @default("[]") // Array of speaker objects
+  chiefGuest        String?             @map("chief_guest")
+
+  // Media
+  coverImage        String?             @map("cover_image")
+  images            Json                @default("[]")
+  videos            Json                @default("[]")
+
+  // Settings
+  isPublic          Boolean             @default(true) @map("is_public")
+  requiresRegistration Boolean          @default(false) @map("requires_registration")
+  registrationDeadline DateTime?        @map("registration_deadline")
+
+  // Budget
+  estimatedBudget   Decimal?            @map("estimated_budget") @db.Decimal(15, 2)
+  actualBudget      Decimal?            @map("actual_budget") @db.Decimal(15, 2)
+
+  // Status
+  status            EventStatus         @default(DRAFT)
+  publishedAt       DateTime?           @map("published_at")
+  cancelReason      String?             @map("cancel_reason")
+
+  // Notifications
+  notifyWorkers     Boolean             @default(true) @map("notify_workers")
+  notificationSent  Boolean             @default(false) @map("notification_sent")
+  reminderSent      Boolean             @default(false) @map("reminder_sent")
+
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  election          Election?           @relation(fields: [electionId], references: [id])
+  attendees         EventAttendee[]
+  tasks             EventTask[]
+  allocations       InventoryAllocation[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([eventType])
+  @@index([status])
+  @@index([startDate])
+  @@map("party_events")
+}
+
+// Event attendees/registrations
+model EventAttendee {
+  id                String              @id @default(uuid())
+  eventId           String              @map("event_id")
+
+  // Attendee Info
+  userId            String?             @map("user_id") // If registered user
+  name              String
+  phone             String?
+  email             String?
+  role              String?             // 'organizer', 'speaker', 'volunteer', 'attendee'
+
+  // Registration
+  registeredAt      DateTime            @default(now()) @map("registered_at")
+  confirmedAt       DateTime?           @map("confirmed_at")
+  checkedInAt       DateTime?           @map("checked_in_at")
+  checkedOutAt      DateTime?           @map("checked_out_at")
+
+  status            String              @default("registered") // 'registered', 'confirmed', 'attended', 'no_show', 'cancelled'
+
+  // Feedback
+  rating            Int?                // 1-5 rating
+  feedback          String?
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  event             PartyEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, phone])
+  @@index([eventId])
+  @@index([status])
+  @@map("event_attendees")
+}
+
+// Event tasks for organization
+model EventTask {
+  id                String              @id @default(uuid())
+  eventId           String              @map("event_id")
+
+  title             String
+  description       String?
+
+  assignedTo        String?             @map("assigned_to") // User ID
+  assignedToName    String?             @map("assigned_to_name")
+
+  dueDate           DateTime?           @map("due_date")
+  priority          String              @default("medium") // 'low', 'medium', 'high', 'urgent'
+  status            String              @default("pending") // 'pending', 'in_progress', 'completed', 'cancelled'
+
+  completedAt       DateTime?           @map("completed_at")
+  completedBy       String?             @map("completed_by")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  event             PartyEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([assignedTo])
+  @@index([status])
+  @@map("event_tasks")
+}
+
+// ==================== INTERNAL NOTIFICATIONS MODULE ====================
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// Internal announcements/notifications
+model InternalNotification {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+
+  // Content
+  title             String
+  titleLocal        String?             @map("title_local")
+  message           String              @db.Text
+  messageLocal      String?             @map("message_local") @db.Text
+
+  // Type
+  notificationType  String              @map("notification_type") // 'announcement', 'alert', 'reminder', 'update', 'instruction'
+  category          String?             // 'general', 'campaign', 'event', 'urgent', etc.
+
+  // Target
+  targetRoles       Json                @default("[]") @map("target_roles") // UserRole array
+  targetUserIds     Json                @default("[]") @map("target_user_ids") // Specific user IDs
+  targetAll         Boolean             @default(false) @map("target_all")
+  geographicScope   Json                @default("{}") @map("geographic_scope")
+
+  // Delivery
+  channels          Json                @default("[\"app\"]") // ['app', 'sms', 'whatsapp', 'email', 'push']
+  priority          NotificationPriority @default(NORMAL)
+
+  // Schedule
+  scheduledAt       DateTime?           @map("scheduled_at")
+  sentAt            DateTime?           @map("sent_at")
+  expiresAt         DateTime?           @map("expires_at")
+
+  // Status
+  status            NotificationStatus  @default(DRAFT)
+
+  // Stats
+  totalRecipients   Int                 @default(0) @map("total_recipients")
+  deliveredCount    Int                 @default(0) @map("delivered_count")
+  readCount         Int                 @default(0) @map("read_count")
+
+  // Actions
+  actionUrl         String?             @map("action_url")
+  actionLabel       String?             @map("action_label")
+  requiresAck       Boolean             @default(false) @map("requires_ack") // Requires acknowledgment
+
+  // Attachments
+  attachments       Json                @default("[]")
+
+  createdBy         String?             @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipients        NotificationRecipient[]
+
+  @@index([tenantId])
+  @@index([notificationType])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@map("internal_notifications")
+}
+
+// Notification delivery tracking
+model NotificationRecipient {
+  id                String              @id @default(uuid())
+  notificationId    String              @map("notification_id")
+  userId            String              @map("user_id")
+
+  // Delivery
+  channel           String              // Channel used for delivery
+  deliveredAt       DateTime?           @map("delivered_at")
+  readAt            DateTime?           @map("read_at")
+  acknowledgedAt    DateTime?           @map("acknowledged_at")
+
+  status            String              @default("pending") // 'pending', 'delivered', 'read', 'acknowledged', 'failed'
+  failReason        String?             @map("fail_reason")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  notification      InternalNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId, channel])
+  @@index([notificationId])
+  @@index([userId])
+  @@index([status])
+  @@map("notification_recipients")
+}
+
+// ==================== INTERNAL CHAT/MAIL MODULE ====================
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  AUDIO
+  VIDEO
+  LOCATION
+  SYSTEM
+}
+
+enum ConversationType {
+  DIRECT             // One-to-one chat
+  GROUP              // Group chat
+  CHANNEL            // Broadcast channel (one-to-many)
+  SUPPORT            // Support ticket
+}
+
+// Chat conversations/threads
+model ChatConversation {
+  id                String              @id @default(uuid())
+  tenantId          String              @map("tenant_id")
+
+  conversationType  ConversationType    @map("conversation_type")
+
+  // For groups/channels
+  name              String?
+  nameLocal         String?             @map("name_local")
+  description       String?
+  avatarUrl         String?             @map("avatar_url")
+
+  // For support tickets
+  subject           String?
+  ticketNumber      String?             @unique @map("ticket_number")
+  ticketStatus      String?             @map("ticket_status") // 'open', 'in_progress', 'resolved', 'closed'
+  ticketPriority    String?             @map("ticket_priority")
+
+  // Settings
+  isArchived        Boolean             @default(false) @map("is_archived")
+  isMuted           Boolean             @default(false) @map("is_muted")
+
+  // For channels
+  isPublic          Boolean             @default(false) @map("is_public")
+
+  createdBy         String?             @map("created_by")
+  lastMessageAt     DateTime?           @map("last_message_at")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participants      ChatParticipant[]
+  messages          ChatMessage[]
+
+  @@index([tenantId])
+  @@index([conversationType])
+  @@index([lastMessageAt])
+  @@map("chat_conversations")
+}
+
+// Chat participants
+model ChatParticipant {
+  id                String              @id @default(uuid())
+  conversationId    String              @map("conversation_id")
+  userId            String              @map("user_id")
+
+  role              String              @default("member") // 'admin', 'moderator', 'member'
+  nickname          String?
+
+  // Status
+  isActive          Boolean             @default(true) @map("is_active")
+  isMuted           Boolean             @default(false) @map("is_muted")
+
+  // Read tracking
+  lastReadAt        DateTime?           @map("last_read_at")
+  lastReadMessageId String?             @map("last_read_message_id")
+  unreadCount       Int                 @default(0) @map("unread_count")
+
+  joinedAt          DateTime            @default(now()) @map("joined_at")
+  leftAt            DateTime?           @map("left_at")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  conversation      ChatConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@map("chat_participants")
+}
+
+// Chat messages
+model ChatMessage {
+  id                String              @id @default(uuid())
+  conversationId    String              @map("conversation_id")
+  senderId          String              @map("sender_id")
+
+  messageType       MessageType         @default(TEXT) @map("message_type")
+  content           String?             @db.Text
+  contentLocal      String?             @map("content_local") @db.Text
+
+  // Media
+  mediaUrl          String?             @map("media_url")
+  mediaType         String?             @map("media_type")
+  mediaSize         Int?                @map("media_size")
+  mediaThumbnail    String?             @map("media_thumbnail")
+
+  // Reply
+  replyToId         String?             @map("reply_to_id")
+
+  // Forward
+  forwardedFromId   String?             @map("forwarded_from_id")
+
+  // Status
+  isEdited          Boolean             @default(false) @map("is_edited")
+  editedAt          DateTime?           @map("edited_at")
+  isDeleted         Boolean             @default(false) @map("is_deleted")
+  deletedAt         DateTime?           @map("deleted_at")
+
+  // System messages
+  systemAction      String?             @map("system_action") // 'user_joined', 'user_left', 'group_renamed', etc.
+  systemData        Json?               @map("system_data")
+
+  // Metadata
+  metadata          Json?               @default("{}")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  conversation      ChatConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo           ChatMessage?        @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies           ChatMessage[]       @relation("MessageReplies")
+  reactions         MessageReaction[]
+  readReceipts      MessageReadReceipt[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// Message reactions
+model MessageReaction {
+  id                String              @id @default(uuid())
+  messageId         String              @map("message_id")
+  userId            String              @map("user_id")
+
+  emoji             String              // Emoji reaction
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  message           ChatMessage         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("message_reactions")
+}
+
+// Read receipts
+model MessageReadReceipt {
+  id                String              @id @default(uuid())
+  messageId         String              @map("message_id")
+  userId            String              @map("user_id")
+
+  readAt            DateTime            @default(now()) @map("read_at")
+
+  message           ChatMessage         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@map("message_read_receipts")
+}

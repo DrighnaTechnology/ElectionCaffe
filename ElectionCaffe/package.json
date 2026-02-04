@@ -1,0 +1,48 @@
+{
+  "name": "electioncaffe",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@10.2.4",
+  "description": "ElectionCaffe - Election Management Platform with Advanced Analytics & AI",
+  "workspaces": [
+    "services/*",
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --concurrency=15",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "db:generate": "npm run db:generate --workspace=@electioncaffe/database",
+    "db:migrate": "npm run db:migrate --workspace=@electioncaffe/database",
+    "db:push": "npm run db:push --workspace=@electioncaffe/database",
+    "db:seed": "npm run db:seed --workspace=@electioncaffe/database",
+    "db:studio": "npm run db:studio --workspace=@electioncaffe/database",
+    "gateway:dev": "npm run dev --workspace=@electioncaffe/gateway",
+    "auth:dev": "npm run dev --workspace=@electioncaffe/auth-service",
+    "election:dev": "npm run dev --workspace=@electioncaffe/election-service",
+    "voter:dev": "npm run dev --workspace=@electioncaffe/voter-service",
+    "cadre:dev": "npm run dev --workspace=@electioncaffe/cadre-service",
+    "analytics:dev": "npm run dev --workspace=@electioncaffe/analytics-service",
+    "reporting:dev": "npm run dev --workspace=@electioncaffe/reporting-service",
+    "ai:dev": "npm run dev --workspace=@electioncaffe/ai-analytics-service",
+    "web:dev": "npm run dev --workspace=@electioncaffe/web",
+    "super-admin:dev": "npm run dev --workspace=@electioncaffe/super-admin",
+    "services:dev": "concurrently \"npm run gateway:dev\" \"npm run auth:dev\" \"npm run election:dev\" \"npm run voter:dev\" \"npm run cadre:dev\" \"npm run analytics:dev\" \"npm run reporting:dev\" \"npm run ai:dev\"",
+    "setup": "npm install && npm run db:generate && npm run db:push && npm run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv-cli": "^11.0.0",
+    "esbuild": "^0.27.2",
+    "tsx": "^4.21.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

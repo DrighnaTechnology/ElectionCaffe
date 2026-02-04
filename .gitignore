@@ -75,3 +75,9 @@ test-api-quick.js
 # Backup files
 *.bak
 *.backup
+
+# Large media files
+*.mov
+*.mp4
+DataXls/
+*.xlsx

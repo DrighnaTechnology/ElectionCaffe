@@ -1,0 +1,478 @@
+// Core Database Schema - ElectionCaffeCore
+// This schema contains Super Admin specific tables and global platform configuration
+// Database: ElectionCaffeCore
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/core-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CORE_DATABASE_URL")
+}
+
+// ==================== SUPER ADMIN & SYSTEM CONFIG ====================
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  configKey   String   @unique @map("config_key")
+  configValue Json     @map("config_value")
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
+
+model SuperAdmin {
+  id              String   @id @default(uuid())
+  firstName       String   @map("first_name")
+  lastName        String?  @map("last_name")
+  email           String   @unique
+  mobile          String   @unique
+  passwordHash    String   @map("password_hash")
+  profilePhotoUrl String?  @map("profile_photo_url")
+  isActive        Boolean  @default(true) @map("is_active")
+  lastLoginAt     DateTime? @map("last_login_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("super_admins")
+}
+
+// ==================== FEATURE FLAGS ====================
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  featureKey  String   @unique @map("feature_key")
+  featureName String   @map("feature_name")
+  description String?
+  category    String?
+  isGlobal    Boolean  @default(true) @map("is_global")
+  defaultEnabled Boolean @default(true) @map("default_enabled")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenantFeatures TenantFeature[]
+
+  @@map("feature_flags")
+}
+
+model TenantFeature {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  featureId   String   @map("feature_id")
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  settings    Json?    @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feature FeatureFlag @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureId])
+  @@map("tenant_features")
+}
+
+// ==================== ENUMS ====================
+
+enum TenantType {
+  POLITICAL_PARTY      // Full party with multiple candidates/constituencies
+  INDIVIDUAL_CANDIDATE // Single candidate managing their constituency
+  ELECTION_MANAGEMENT  // Company managing elections for others
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  EXPIRED
+  TRIAL
+}
+
+enum DatabaseType {
+  SHARED               // Uses shared ElectionCaffe platform database with tenant isolation
+  DEDICATED_MANAGED    // Super Admin creates and manages the dedicated database
+  DEDICATED_SELF       // Tenant admin provides their own database connection
+  NONE                 // No database configured yet (tenant needs to set up)
+}
+
+enum DatabaseStatus {
+  NOT_CONFIGURED       // Database not set up yet
+  PENDING_SETUP        // Waiting for tenant to provide connection
+  CONNECTING           // Testing connection
+  CONNECTED            // Successfully connected
+  CONNECTION_FAILED    // Failed to connect
+  MIGRATING            // Running migrations
+  READY                // Fully operational
+  SUSPENDED            // Suspended by super admin
+}
+
+// ==================== TENANT MANAGEMENT (Core) ====================
+
+model Tenant {
+  id                String       @id @default(uuid())
+  name              String
+  slug              String       @unique
+  tenantType        TenantType   @default(INDIVIDUAL_CANDIDATE) @map("tenant_type")
+  organizationName  String?      @map("organization_name")
+  displayName       String?      @map("display_name")
+  tenantUrl         String?      @unique @map("tenant_url")
+  customDomain      String?      @unique @map("custom_domain")
+  logoUrl           String?      @map("logo_url")
+  logoPosition      String?      @default("before") @map("logo_position")
+  primaryColor      String?      @map("primary_color") @default("#1890FF")
+  secondaryColor    String?      @map("secondary_color")
+  faviconUrl        String?      @map("favicon_url")
+
+  // Contact & Location
+  contactEmail      String?      @map("contact_email")
+  contactPhone      String?      @map("contact_phone")
+  address           String?
+  state             String?
+  country           String?      @default("India")
+
+  // For Political Party tenants
+  partyName         String?      @map("party_name")
+  partySymbolUrl    String?      @map("party_symbol_url")
+
+  // Database Configuration
+  databaseType          DatabaseType   @default(DEDICATED_MANAGED) @map("database_type")
+  databaseStatus        DatabaseStatus @default(NOT_CONFIGURED) @map("database_status")
+  databaseHost          String?        @map("database_host")
+  databaseName          String?        @map("database_name") // e.g., EC_Demo, EC_BJP
+  databaseUser          String?        @map("database_user")
+  databasePassword      String?        @map("database_password") // Encrypted
+  databasePort          Int?           @map("database_port") @default(5432)
+  databaseSSL           Boolean        @default(true) @map("database_ssl")
+  databaseConnectionUrl String?        @map("database_connection_url") // Full connection string (encrypted)
+
+  // Database Management
+  canTenantEditDb       Boolean        @default(false) @map("can_tenant_edit_db")
+  databaseManagedBy     String?        @map("database_managed_by")
+  databaseLastCheckedAt DateTime?      @map("database_last_checked_at")
+  databaseLastError     String?        @map("database_last_error")
+  databaseMigrationVersion String?     @map("database_migration_version")
+
+  // Subscription & Limits
+  subscriptionPlan  String?      @map("subscription_plan") @default("free")
+  subscriptionId    String?      @map("subscription_id")
+  maxVoters         Int          @map("max_voters") @default(10000)
+  maxCadres         Int          @map("max_cadres") @default(100)
+  maxElections      Int          @map("max_elections") @default(5)
+  maxUsers          Int          @map("max_users") @default(50)
+  maxConstituencies Int          @map("max_constituencies") @default(1)
+  storageQuotaMB    Int          @map("storage_quota_mb") @default(5000)
+  storageUsedMB     Int          @map("storage_used_mb") @default(0)
+
+  // Status & Dates
+  status            TenantStatus @default(PENDING)
+  trialEndsAt       DateTime?    @map("trial_ends_at")
+  expiresAt         DateTime?    @map("expires_at")
+  suspendedAt       DateTime?    @map("suspended_at")
+  suspendedReason   String?      @map("suspended_reason")
+
+  // Audit
+  createdBy         String?      @map("created_by")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  tenantFeatures    TenantFeature[]
+  license           TenantLicense?
+  sessions          TenantSession[]
+  invitations       Invitation[]
+
+  @@map("tenants")
+}
+
+// ==================== LICENSE & BILLING (Core) ====================
+
+model LicensePlan {
+  id              String   @id @default(uuid())
+  planCode        String   @unique @map("plan_code")
+  planName        String   @map("plan_name")
+  description     String?
+  monthlyPrice    Decimal  @map("monthly_price") @db.Decimal(10, 2)
+  yearlyPrice     Decimal  @map("yearly_price") @db.Decimal(10, 2)
+  features        Json     @default("[]")
+  limits          Json     @default("{}")
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenantLicenses  TenantLicense[]
+
+  @@map("license_plans")
+}
+
+model TenantLicense {
+  id              String   @id @default(uuid())
+  tenantId        String   @unique @map("tenant_id")
+  planId          String   @map("plan_id")
+  billingCycle    String   @default("monthly") @map("billing_cycle")
+  startDate       DateTime @map("start_date")
+  endDate         DateTime @map("end_date")
+  autoRenew       Boolean  @default(true) @map("auto_renew")
+  status          String   @default("active")
+  paymentMethod   String?  @map("payment_method")
+  lastPaymentDate DateTime? @map("last_payment_date")
+  nextBillingDate DateTime? @map("next_billing_date")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan            LicensePlan @relation(fields: [planId], references: [id])
+
+  @@map("tenant_licenses")
+}
+
+model TenantSession {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  userId          String   @map("user_id")
+  sessionToken    String   @unique @map("session_token")
+  deviceInfo      Json?    @map("device_info")
+  ipAddress       String?  @map("ip_address")
+  lastActivityAt  DateTime @default(now()) @map("last_activity_at")
+  expiresAt       DateTime @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_sessions")
+}
+
+// ==================== INVITATIONS (Cross-tenant) ====================
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+  RESENT
+}
+
+enum InvitationType {
+  TENANT_ADMIN     // Super Admin invites Tenant Admin
+  TENANT_USER      // Tenant Admin invites users within tenant
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  CENTRAL_ADMIN
+  CENTRAL_CAMPAIGN_TEAM
+  CONSTITUENCY_ADMIN
+  CAMPAIGN_MANAGER
+  COORDINATOR
+  SECTOR_OFFICER
+  BOOTH_INCHARGE
+  VOLUNTEER
+  AGENT
+  POLLING_AGENT
+  COUNTING_AGENT
+  CANDIDATE
+  CANDIDATE_ADMIN
+  EMC_ADMIN
+  EMC_MANAGER
+  EMC_OPERATOR
+}
+
+model Invitation {
+  id                String           @id @default(uuid())
+  invitationType    InvitationType   @map("invitation_type")
+
+  // For TENANT_ADMIN invitations
+  tenantId          String?          @map("tenant_id")
+
+  // For TENANT_USER invitations
+  invitedByTenantId String?          @map("invited_by_tenant_id")
+  electionId        String?          @map("election_id")
+
+  // Invitee details
+  email             String?
+  mobile            String
+  firstName         String           @map("first_name")
+  lastName          String?          @map("last_name")
+  role              UserRole
+
+  // Invitation token and status
+  token             String           @unique
+  status            InvitationStatus @default(PENDING)
+  message           String?
+
+  // Tracking
+  invitedBy         String           @map("invited_by")
+  invitedByName     String?          @map("invited_by_name")
+  invitedByType     String           @map("invited_by_type")
+
+  // Dates
+  expiresAt         DateTime         @map("expires_at")
+  acceptedAt        DateTime?        @map("accepted_at")
+  cancelledAt       DateTime?        @map("cancelled_at")
+  lastResentAt      DateTime?        @map("last_resent_at")
+  resentCount       Int              @default(0) @map("resent_count")
+
+  // Result
+  createdUserId     String?          @map("created_user_id")
+
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  tenant            Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([mobile])
+  @@index([email])
+  @@index([token])
+  @@index([status])
+  @@map("invitations")
+}
+
+// ==================== AI CONFIGURATION (Global) ====================
+
+model AIProvider {
+  id              String   @id @default(uuid())
+  providerName    String   @unique @map("provider_name")
+  apiEndpoint     String?  @map("api_endpoint")
+  apiKey          String?  @map("api_key") // Encrypted
+  models          Json     @default("[]")
+  isActive        Boolean  @default(true) @map("is_active")
+  rateLimits      Json?    @map("rate_limits")
+  costPerToken    Decimal? @map("cost_per_token") @db.Decimal(10, 8)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  features        AIFeature[]
+
+  @@map("ai_providers")
+}
+
+model AIFeature {
+  id              String   @id @default(uuid())
+  featureKey      String   @unique @map("feature_key")
+  featureName     String   @map("feature_name")
+  description     String?
+  providerId      String   @map("provider_id")
+  modelName       String?  @map("model_name")
+  isActive        Boolean  @default(true) @map("is_active")
+  creditsPerUse   Int      @default(1) @map("credits_per_use")
+  category        String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  provider        AIProvider @relation(fields: [providerId], references: [id])
+
+  @@map("ai_features")
+}
+
+model AICreditPackage {
+  id              String   @id @default(uuid())
+  packageName     String   @map("package_name")
+  credits         Int
+  price           Decimal  @db.Decimal(10, 2)
+  bonusCredits    Int      @default(0) @map("bonus_credits")
+  validityDays    Int      @default(365) @map("validity_days")
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_credit_packages")
+}
+
+// ==================== WEBSITE TEMPLATES (Global) ====================
+
+enum WebsiteTemplateType {
+  POLITICAL_PARTY
+  INDIVIDUAL_CANDIDATE
+  CAMPAIGN
+  NEWS_PORTAL
+  ELECTION_COMMISSION
+}
+
+model WebsiteTemplate {
+  id              String              @id @default(uuid())
+  templateName    String              @map("template_name")
+  templateCode    String              @unique @map("template_code")
+  templateType    WebsiteTemplateType @map("template_type")
+  description     String?
+  thumbnailUrl    String?             @map("thumbnail_url")
+  previewUrl      String?             @map("preview_url")
+  colorSchemes    Json                @default("[]") @map("color_schemes")
+  defaultSections Json                @default("[]") @map("default_sections")
+  defaultConfig   Json                @default("{}") @map("default_config")
+  isPremium       Boolean             @default(false) @map("is_premium")
+  isActive        Boolean             @default(true) @map("is_active")
+  sortOrder       Int                 @default(0) @map("sort_order")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  @@map("website_templates")
+}
+
+// ==================== EC INTEGRATION CONFIG (Global) ====================
+
+model ECIntegrationConfig {
+  id              String   @id @default(uuid())
+  configKey       String   @unique @map("config_key")
+  state           String?
+  apiEndpoint     String?  @map("api_endpoint")
+  apiKey          String?  @map("api_key") // Encrypted
+  authMethod      String?  @map("auth_method")
+  settings        Json?
+  isActive        Boolean  @default(true) @map("is_active")
+  lastTestedAt    DateTime? @map("last_tested_at")
+  lastError       String?  @map("last_error")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("ec_integration_configs")
+}
+
+// ==================== AUDIT & MONITORING (Core) ====================
+
+model PlatformAuditLog {
+  id              String   @id @default(uuid())
+  actorId         String   @map("actor_id")
+  actorType       String   @map("actor_type") // 'super_admin' | 'system'
+  action          String
+  entityType      String   @map("entity_type")
+  entityId        String?  @map("entity_id")
+  tenantId        String?  @map("tenant_id")
+  metadata        Json?
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("platform_audit_logs")
+}
+
+model AIAdminAlert {
+  id              String   @id @default(uuid())
+  alertType       String   @map("alert_type")
+  severity        String   @default("info")
+  title           String
+  message         String
+  tenantId        String?  @map("tenant_id")
+  metadata        Json?
+  isRead          Boolean  @default(false) @map("is_read")
+  readAt          DateTime? @map("read_at")
+  readBy          String?  @map("read_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([alertType])
+  @@index([severity])
+  @@index([tenantId])
+  @@index([isRead])
+  @@map("ai_admin_alerts")
+}

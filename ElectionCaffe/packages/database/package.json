@@ -1,0 +1,70 @@
+{
+  "name": "@electioncaffe/database",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "db:generate": "npm run db:generate:legacy && npm run db:generate:core && npm run db:generate:tenant",
+    "db:generate:legacy": "prisma generate --schema=./prisma/schema.prisma",
+    "db:generate:core": "prisma generate --schema=./prisma/core/schema.prisma",
+    "db:generate:tenant": "prisma generate --schema=./prisma/tenant/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=./prisma/schema.prisma",
+    "db:migrate:core": "prisma migrate dev --schema=./prisma/core/schema.prisma",
+    "db:migrate:tenant": "prisma migrate dev --schema=./prisma/tenant/schema.prisma",
+    "db:migrate:prod": "prisma migrate deploy --schema=./prisma/schema.prisma",
+    "db:migrate:prod:core": "prisma migrate deploy --schema=./prisma/core/schema.prisma",
+    "db:migrate:prod:tenant": "prisma migrate deploy --schema=./prisma/tenant/schema.prisma",
+    "db:push": "prisma db push --schema=./prisma/schema.prisma",
+    "db:push:core": "prisma db push --schema=./prisma/core/schema.prisma",
+    "db:push:tenant": "prisma db push --schema=./prisma/tenant/schema.prisma",
+    "db:studio": "prisma studio --schema=./prisma/schema.prisma",
+    "db:studio:core": "prisma studio --schema=./prisma/core/schema.prisma",
+    "db:studio:tenant": "prisma studio --schema=./prisma/tenant/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:core": "tsx prisma/seed-core.ts",
+    "db:seed:demo": "tsx prisma/seed-demo-data/index.ts",
+    "db:setup": "npm run db:generate && npm run db:push:core",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.7.1",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "prisma": "^5.7.1",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3",
+    "xlsx": "^0.18.5"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./client": {
+      "import": "./dist/client.js",
+      "require": "./dist/client.js",
+      "types": "./dist/client.d.ts"
+    },
+    "./core-client": {
+      "import": "./dist/clients/core-client.js",
+      "require": "./dist/clients/core-client.js",
+      "types": "./dist/clients/core-client.d.ts"
+    },
+    "./tenant-client": {
+      "import": "./dist/clients/tenant-client.js",
+      "require": "./dist/clients/tenant-client.js",
+      "types": "./dist/clients/tenant-client.d.ts"
+    },
+    "./db-manager": {
+      "import": "./dist/clients/db-manager.js",
+      "require": "./dist/clients/db-manager.js",
+      "types": "./dist/clients/db-manager.d.ts"
+    }
+  }
+}

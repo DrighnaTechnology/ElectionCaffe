@@ -1,0 +1,2108 @@
+// Tenant Database Schema - EC_<TenantName>
+// This schema contains all tenant-specific data
+// Database: EC_Demo, EC_BJP, etc. (one per tenant)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/tenant-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("TENANT_DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  CENTRAL_ADMIN
+  CENTRAL_CAMPAIGN_TEAM
+  CONSTITUENCY_ADMIN
+  CAMPAIGN_MANAGER
+  COORDINATOR
+  SECTOR_OFFICER
+  BOOTH_INCHARGE
+  VOLUNTEER
+  AGENT
+  POLLING_AGENT
+  COUNTING_AGENT
+  CANDIDATE
+  CANDIDATE_ADMIN
+  EMC_ADMIN
+  EMC_MANAGER
+  EMC_OPERATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+  PENDING
+}
+
+enum ElectionType {
+  ASSEMBLY
+  PARLIAMENT
+  LOCAL_BODY
+  PANCHAYAT
+  MUNICIPAL
+  BY_ELECTION
+}
+
+enum ElectionStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum RelationType {
+  FATHER
+  MOTHER
+  HUSBAND
+  WIFE
+  GUARDIAN
+}
+
+enum PoliticalLeaning {
+  LOYAL
+  SWING
+  OPPOSITION
+  UNKNOWN
+}
+
+enum InfluenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+  NONE
+}
+
+enum PartType {
+  URBAN
+  RURAL
+  SEMI_URBAN
+}
+
+enum VulnerabilityType {
+  NOT_ASSIGNED
+  NONE
+  CRITICAL
+  SENSITIVE
+  HYPERSENSITIVE
+}
+
+enum WebsiteStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+  MAINTENANCE
+}
+
+enum WebsiteTemplateType {
+  POLITICAL_PARTY
+  INDIVIDUAL_CANDIDATE
+  CAMPAIGN
+  NEWS_PORTAL
+  ELECTION_COMMISSION
+}
+
+enum FundTransactionType {
+  DONATION
+  EXPENSE
+  TRANSFER
+  REFUND
+  ADJUSTMENT
+}
+
+enum EventStatus {
+  DRAFT
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+  POSTPONED
+}
+
+enum NotificationStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  CANCELLED
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+  BROADCAST
+  SUPPORT
+}
+
+// ==================== TENANT CONFIG ====================
+
+model TenantConfig {
+  id              String   @id @default(uuid())
+  tenantId        String   @unique @map("tenant_id") // Reference to core DB tenant
+  configKey       String   @map("config_key")
+  configValue     Json     @map("config_value")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, configKey])
+  @@map("tenant_configs")
+}
+
+// ==================== USERS & AUTHENTICATION ====================
+
+model User {
+  id              String     @id @default(uuid())
+  tenantId        String     @map("tenant_id") // Reference to core DB tenant
+  constituencyId  String?    @map("constituency_id")
+  firstName       String     @map("first_name")
+  lastName        String?    @map("last_name")
+  email           String?
+  mobile          String
+  passwordHash    String     @map("password_hash")
+  profilePhotoUrl String?    @map("profile_photo_url")
+  role            UserRole   @default(VOLUNTEER)
+  permissions     Json?      @default("[]")
+  status          UserStatus @default(ACTIVE)
+
+  isCandidate     Boolean    @default(false) @map("is_candidate")
+  candidateProfile Json?     @map("candidate_profile")
+
+  canAccessAllConstituencies Boolean @default(false) @map("can_access_all_constituencies")
+  accessibleConstituencies   Json?   @default("[]") @map("accessible_constituencies")
+  accessibleElections        Json?   @default("[]") @map("accessible_elections")
+
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  constituency  Constituency?  @relation(fields: [constituencyId], references: [id])
+  refreshTokens RefreshToken[]
+  otps          OTP[]
+  cadre         Cadre?
+  auditLogs     AuditLog[]
+
+  @@unique([tenantId, mobile])
+  @@index([tenantId])
+  @@index([constituencyId])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model OTP {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  code      String
+  type      String   @default("password_reset")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("otps")
+}
+
+// ==================== CONSTITUENCY ====================
+
+model Constituency {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  nameLocal       String?  @map("name_local")
+  constituencyType String  @map("constituency_type")
+  state           String
+  district        String?
+  code            String?
+  totalVoters     Int      @default(0) @map("total_voters")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  elections       Election[]
+  users           User[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("constituencies")
+}
+
+// ==================== ELECTIONS ====================
+
+model Election {
+  id                String         @id @default(uuid())
+  tenantId          String         @map("tenant_id")
+  constituencyId    String?        @map("constituency_id")
+  name              String
+  nameLocal         String?        @map("name_local")
+  electionType      ElectionType   @map("election_type")
+  state             String
+  constituency      String
+  district          String?
+  candidateName     String?        @map("candidate_name")
+  candidatePhotoUrl String?        @map("candidate_photo_url")
+  partyId           String?        @map("party_id")
+  startDate         DateTime?      @map("start_date")
+  endDate           DateTime?      @map("end_date")
+  pollDate          DateTime?      @map("poll_date")
+  resultDate        DateTime?      @map("result_date")
+  status            ElectionStatus @default(DRAFT)
+  isLocked          Boolean        @default(false) @map("is_locked")
+  totalVoters       Int            @default(0) @map("total_voters")
+  totalMaleVoters   Int            @default(0) @map("total_male_voters")
+  totalFemaleVoters Int            @default(0) @map("total_female_voters")
+  totalOtherVoters  Int            @default(0) @map("total_other_voters")
+  totalBooths       Int            @default(0) @map("total_booths")
+  totalParts        Int            @default(0) @map("total_parts")
+  settings          Json?          @default("{}")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  constituencyRef    Constituency?     @relation(fields: [constituencyId], references: [id])
+  candidateParty     Party?            @relation(fields: [partyId], references: [id])
+  candidates       Candidate[]
+  parts            Part[]
+  sections         Section[]
+  booths           Booth[]
+  voters           Voter[]
+  families         Family[]
+  cadres           Cadre[]
+  religions        Religion[]
+  casteCategories  CasteCategory[]
+  castes           Caste[]
+  subCastes        SubCaste[]
+  languages        Language[]
+  voterCategories  VoterCategory[]
+  voterSchemes     VoterScheme[]
+  parties          Party[]        @relation("ElectionParties")
+  schemes          Scheme[]
+  surveys          Survey[]
+  pollDayVotes     PollDayVote[]
+  boothAgents      BoothAgent[]
+  reports          Report[]
+  aiResults        AIAnalyticsResult[]
+  voterSlipTemplates VoterSlipTemplate[]
+  appBanners       AppBanner[]
+  ecIntegrations   ECIntegration[]
+  ecSyncLogs       ECSyncLog[]
+  partyEvents      PartyEvent[]
+  inventoryAllocations InventoryAllocation[]
+
+  @@index([tenantId])
+  @@index([constituencyId])
+  @@map("elections")
+}
+
+// ==================== PARTS, SECTIONS, BOOTHS ====================
+
+model Part {
+  id                  String            @id @default(uuid())
+  electionId          String            @map("election_id")
+  partNumber          Int               @map("part_number")
+  boothName           String            @map("booth_name")
+  boothNameLocal      String?           @map("booth_name_local")
+  partType            PartType          @default(URBAN) @map("part_type")
+  address             String?
+  landmark            String?
+  pincode             String?
+  latitude            Float?
+  longitude           Float?
+  schoolName          String?           @map("school_name")
+  schoolLatitude      Float?            @map("school_latitude")
+  schoolLongitude     Float?            @map("school_longitude")
+  buildingType        String?           @map("building_type")
+  imageUrl            String?           @map("image_url")
+  totalVoters         Int               @default(0) @map("total_voters")
+  totalSections       Int               @default(0) @map("total_sections")
+  maleVoters          Int               @default(0) @map("male_voters")
+  femaleVoters        Int               @default(0) @map("female_voters")
+  otherVoters         Int               @default(0) @map("other_voters")
+  isVulnerable        Boolean           @default(false) @map("is_vulnerable")
+  vulnerability       VulnerabilityType @default(NOT_ASSIGNED)
+  vulnerabilityNotes  String?           @map("vulnerability_notes")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  election            Election          @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  sections            Section[]
+  booths              Booth[]
+  voters              Voter[]
+  families            Family[]
+
+  @@unique([electionId, partNumber])
+  @@index([electionId])
+  @@map("parts")
+}
+
+model Section {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  partId          String?  @map("part_id")
+  sectionNumber   Int      @map("section_number")
+  sectionName     String?  @map("section_name")
+  sectionNameLocal String? @map("section_name_local")
+  totalVoters     Int      @default(0) @map("total_voters")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part            Part?    @relation(fields: [partId], references: [id])
+  voters          Voter[]
+
+  @@unique([electionId, sectionNumber])
+  @@index([electionId])
+  @@index([partId])
+  @@map("sections")
+}
+
+model Booth {
+  id                  String           @id @default(uuid())
+  electionId          String           @map("election_id")
+  partId              String?          @map("part_id")
+  boothNumber         String           @map("booth_number")
+  boothName           String?          @map("booth_name")
+  boothNameLocal      String?          @map("booth_name_local")
+  address             String?
+  latitude            Float?
+  longitude           Float?
+  totalVoters         Int              @default(0) @map("total_voters")
+  maleVoters          Int              @default(0) @map("male_voters")
+  femaleVoters        Int              @default(0) @map("female_voters")
+  otherVoters         Int              @default(0) @map("other_voters")
+  vulnerabilityStatus VulnerabilityType @default(NONE) @map("vulnerability_status")
+  isActive            Boolean          @default(true) @map("is_active")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  election            Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part                Part?            @relation(fields: [partId], references: [id])
+  voters              Voter[]
+  boothAgents         BoothAgent[]
+  pollDayVotes        PollDayVote[]
+
+  @@unique([electionId, boothNumber])
+  @@index([electionId])
+  @@index([partId])
+  @@map("booths")
+}
+
+// ==================== VOTERS & FAMILIES ====================
+
+model Voter {
+  id                String   @id @default(uuid())
+  electionId        String   @map("election_id")
+  partId            String   @map("part_id")
+  sectionId         String?  @map("section_id")
+  boothId           String?  @map("booth_id")
+  familyId          String?  @map("family_id")
+
+  // Voter Identity
+  epicNumber        String?  @map("epic_number")
+  slNumber          Int?     @map("sl_number")
+  name              String   @map("name")
+  nameLocal         String?  @map("name_local")
+  fatherName        String?  @map("father_name")
+  motherName        String?  @map("mother_name")
+  husbandName       String?  @map("husband_name")
+  relationType      RelationType? @map("relation_type")
+
+  // Demographics
+  gender            Gender   @default(MALE)
+  age               Int?
+  dateOfBirth       DateTime? @map("date_of_birth")
+
+  // Contact
+  mobile            String?
+  alternateMobile   String?  @map("alternate_mobile")
+  email             String?
+
+  // Address
+  houseNumber       String?  @map("house_number")
+  address           String?
+
+  // Photo
+  photoUrl          String?  @map("photo_url")
+
+  // Classification
+  religionId        String?  @map("religion_id")
+  casteCategoryId   String?  @map("caste_category_id")
+  casteId           String?  @map("caste_id")
+  subCasteId        String?  @map("sub_caste_id")
+  languageId        String?  @map("language_id")
+  profession        String?
+  education         String?
+
+  // Political Info
+  partyId           String?  @map("party_id")
+  voterCategoryId   String?  @map("voter_category_id")
+  politicalLeaning  PoliticalLeaning @default(UNKNOWN) @map("political_leaning")
+  influenceLevel    InfluenceLevel   @default(NONE) @map("influence_level")
+
+  // Status flags
+  isFamilyCaptain   Boolean  @default(false) @map("is_family_captain")
+  isAadhaarVerified Boolean  @default(false) @map("is_aadhaar_verified")
+  isMobileVerified  Boolean  @default(false) @map("is_mobile_verified")
+  isDead            Boolean  @default(false) @map("is_dead")
+  isShifted         Boolean  @default(false) @map("is_shifted")
+  isDoubleEntry     Boolean  @default(false) @map("is_double_entry")
+
+  // Location
+  latitude          Float?
+  longitude         Float?
+
+  // Contact tracking
+  lastContactedAt   DateTime? @map("last_contacted_at")
+  lastContactedBy   String?   @map("last_contacted_by")
+  notes             String?
+
+  // Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  // Relations
+  election          Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part              Part           @relation(fields: [partId], references: [id])
+  section           Section?       @relation(fields: [sectionId], references: [id])
+  booth             Booth?         @relation(fields: [boothId], references: [id])
+  family            Family?        @relation(fields: [familyId], references: [id])
+  religion          Religion?      @relation(fields: [religionId], references: [id])
+  casteCategory     CasteCategory? @relation(fields: [casteCategoryId], references: [id])
+  caste             Caste?         @relation(fields: [casteId], references: [id])
+  subCaste          SubCaste?      @relation(fields: [subCasteId], references: [id])
+  language          Language?      @relation(fields: [languageId], references: [id])
+  party             Party?         @relation(fields: [partyId], references: [id])
+  voterCategory     VoterCategory? @relation(fields: [voterCategoryId], references: [id])
+  votingHistories   VoterVotingHistory[]
+  feedbackIssues    FeedbackIssue[]
+  surveyResponses   SurveyResponse[]
+
+  @@unique([electionId, epicNumber])
+  @@index([electionId])
+  @@index([partId])
+  @@index([sectionId])
+  @@index([boothId])
+  @@index([familyId])
+  @@index([mobile])
+  @@map("voters")
+}
+
+model Family {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  partId          String?  @map("part_id")
+  familyName      String?  @map("family_name")
+  headName        String?  @map("head_name")
+  address         String?
+  houseNo         String?  @map("house_no")
+  mobile          String?
+  totalMembers    Int      @default(0) @map("total_members")
+  partyAffiliation String? @map("party_affiliation")
+  supportLevel    Int?     @map("support_level")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part            Part?    @relation(fields: [partId], references: [id])
+  voters          Voter[]
+
+  @@index([electionId])
+  @@index([partId])
+  @@map("families")
+}
+
+// ==================== CLASSIFICATION MASTERS ====================
+
+model Religion {
+  id                String   @id @default(uuid())
+  electionId        String   @map("election_id")
+  religionName      String   @map("religion_name")
+  religionNameLocal String?  @map("religion_name_local")
+  religionImageUrl  String?  @map("religion_image_url")
+  religionColor     String?  @map("religion_color") @default("#808080")
+  displayOrder      Int      @default(0) @map("display_order")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters          Voter[]
+  castes          Caste[]
+
+  @@unique([electionId, religionName])
+  @@index([electionId])
+  @@map("religions")
+}
+
+model CasteCategory {
+  id                  String   @id @default(uuid())
+  electionId          String   @map("election_id")
+  categoryName        String   @map("category_name")
+  categoryFullName    String?  @map("category_full_name")
+  reservationPercent  Float?   @map("reservation_percent")
+  displayOrder        Int      @default(0) @map("display_order")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  castes          Caste[]
+  voters          Voter[]
+
+  @@unique([electionId, categoryName])
+  @@index([electionId])
+  @@map("caste_categories")
+}
+
+model Caste {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  casteCategoryId String   @map("caste_category_id")
+  religionId      String?  @map("religion_id")
+  casteName       String   @map("caste_name")
+  casteNameLocal  String?  @map("caste_name_local")
+  casteCode       String?  @map("caste_code")
+  displayOrder    Int      @default(0) @map("display_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  election        Election      @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  casteCategory   CasteCategory @relation(fields: [casteCategoryId], references: [id], onDelete: Cascade)
+  religion        Religion?     @relation(fields: [religionId], references: [id])
+  subCastes       SubCaste[]
+  voters          Voter[]
+
+  @@unique([electionId, casteName])
+  @@index([electionId])
+  @@index([casteCategoryId])
+  @@map("castes")
+}
+
+model SubCaste {
+  id                String   @id @default(uuid())
+  electionId        String   @map("election_id")
+  casteId           String   @map("caste_id")
+  subCasteName      String   @map("sub_caste_name")
+  subCasteNameLocal String?  @map("sub_caste_name_local")
+  voterCount        Int      @default(0) @map("voter_count")
+  displayOrder      Int      @default(0) @map("display_order")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  caste           Caste    @relation(fields: [casteId], references: [id], onDelete: Cascade)
+  voters          Voter[]
+
+  @@unique([electionId, subCasteName])
+  @@index([electionId])
+  @@index([casteId])
+  @@map("sub_castes")
+}
+
+model Language {
+  id                String   @id @default(uuid())
+  electionId        String   @map("election_id")
+  languageName      String   @map("language_name")
+  languageNameLocal String?  @map("language_name_local")
+  languageCode      String?  @map("language_code")
+  script            String?
+  writingDirection  String   @default("ltr") @map("writing_direction")
+  voterCount        Int      @default(0) @map("voter_count")
+  displayOrder      Int      @default(0) @map("display_order")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters          Voter[]
+
+  @@unique([electionId, languageName])
+  @@index([electionId])
+  @@map("languages")
+}
+
+model VoterCategory {
+  id                   String   @id @default(uuid())
+  electionId           String   @map("election_id")
+  categoryName         String   @map("category_name")
+  categoryNameLocal    String?  @map("category_name_local")
+  categoryDescription  String?  @map("category_description")
+  categoryImageUrl     String?  @map("category_image_url")
+  categoryColor        String?  @default("#808080") @map("category_color")
+  iconType             String?  @map("icon_type")
+  isSystem             Boolean  @default(false) @map("is_system")
+  displayOrder         Int      @default(0) @map("display_order")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  election             Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voters               Voter[]
+
+  @@unique([electionId, categoryName])
+  @@index([electionId])
+  @@map("voter_categories")
+}
+
+model VoterScheme {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  name            String
+  nameLocal       String?  @map("name_local")
+  code            String?
+  description     String?
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@unique([electionId, code])
+  @@index([electionId])
+  @@map("voter_schemes")
+}
+
+// ==================== PARTIES & SCHEMES ====================
+
+model Party {
+  id              String   @id @default(uuid())
+  electionId      String?  @map("election_id")
+  allianceName    String?  @map("alliance_name")
+  partyName       String   @map("party_name")
+  partyShortName  String?  @map("party_short_name")
+  partyFullName   String?  @map("party_full_name")
+  partyImageUrl   String?  @map("party_image_url")
+  partyColor      String?  @default("#808080") @map("party_color")
+  isDefault       Boolean  @default(false) @map("is_default")
+  isNeutral       Boolean  @default(false) @map("is_neutral")
+  displayOrder    Int      @default(0) @map("display_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  elections       Election[]
+  electionParties Election[] @relation("ElectionParties")
+  voters          Voter[]
+  candidates      Candidate[]
+
+  @@index([electionId])
+  @@map("parties")
+}
+
+enum SchemeProvider {
+  CENTRAL_GOVT
+  UNION_GOVT
+  STATE_GOVT
+  LOCAL_GOVT
+  NGO
+  PRIVATE
+}
+
+enum SchemeValueType {
+  ONE_TIME
+  MONTHLY
+  YEARLY
+  PER_UNIT
+}
+
+model Scheme {
+  id                String           @id @default(uuid())
+  electionId        String           @map("election_id")
+  schemeName        String           @map("scheme_name")
+  schemeShortName   String?          @map("scheme_short_name")
+  schemeDescription String?          @map("scheme_description")
+  schemeBy          SchemeProvider   @default(STATE_GOVT) @map("scheme_by")
+  schemeImageUrl    String?          @map("scheme_image_url")
+  schemeValue       Float?           @map("scheme_value")
+  valueType         SchemeValueType  @default(ONE_TIME) @map("value_type")
+  currency          String           @default("INR")
+  category          String?
+  beneficiaryCount  Int              @default(0) @map("beneficiary_count")
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  election          Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("schemes")
+}
+
+// ==================== CADRE & ASSIGNMENTS ====================
+
+model Cadre {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  electionId      String   @map("election_id")
+  cadreType       String   @map("cadre_type")
+  designation     String?
+  zone            String?
+  sector          String?
+  ward            String?
+  locality        String?
+  assignedParts   Json?    @default("[]") @map("assigned_parts")
+  assignedBooths  Json?    @default("[]") @map("assigned_booths")
+  targetVoters    Int?     @map("target_voters")
+  isActive        Boolean  @default(true) @map("is_active")
+  joinedAt        DateTime @default(now()) @map("joined_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  assignments     CadreAssignment[]
+  locations       CadreLocation[]
+
+  @@index([electionId])
+  @@index([userId])
+  @@map("cadres")
+}
+
+model CadreAssignment {
+  id              String   @id @default(uuid())
+  cadreId         String   @map("cadre_id")
+  assignmentType  String   @map("assignment_type")
+  entityId        String   @map("entity_id")
+  entityType      String   @map("entity_type")
+  startDate       DateTime @map("start_date")
+  endDate         DateTime? @map("end_date")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  cadre           Cadre    @relation(fields: [cadreId], references: [id], onDelete: Cascade)
+
+  @@index([cadreId])
+  @@map("cadre_assignments")
+}
+
+model CadreLocation {
+  id              String   @id @default(uuid())
+  cadreId         String   @map("cadre_id")
+  latitude        Float
+  longitude       Float
+  accuracy        Float?
+  timestamp       DateTime @default(now())
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  cadre           Cadre    @relation(fields: [cadreId], references: [id], onDelete: Cascade)
+
+  @@index([cadreId])
+  @@index([timestamp])
+  @@map("cadre_locations")
+}
+
+// ==================== VOTING HISTORY ====================
+
+model VotingHistory {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  electionYear    Int      @map("election_year")
+  electionType    String   @map("election_type")
+  electionName    String   @map("election_name")
+  state           String
+  constituency    String
+  pollDate        DateTime? @map("poll_date")
+  totalVoters     Int?     @map("total_voters")
+  votesPolled     Int?     @map("votes_polled")
+  turnoutPercent  Float?   @map("turnout_percent")
+  results         Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  voterHistories  VoterVotingHistory[]
+
+  @@unique([tenantId, electionYear, electionType, constituency])
+  @@index([tenantId])
+  @@map("voting_histories")
+}
+
+model VoterVotingHistory {
+  id              String   @id @default(uuid())
+  voterId         String   @map("voter_id")
+  historyId       String   @map("history_id")
+  hasVoted        Boolean  @default(false) @map("has_voted")
+  votedFor        String?  @map("voted_for")
+  remarks         String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  voter           Voter         @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  history         VotingHistory @relation(fields: [historyId], references: [id], onDelete: Cascade)
+
+  @@unique([voterId, historyId])
+  @@index([voterId])
+  @@index([historyId])
+  @@map("voter_voting_histories")
+}
+
+// ==================== SURVEYS ====================
+
+model Survey {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  title           String
+  titleLocal      String?  @map("title_local")
+  description     String?
+  questions       Json     @default("[]")
+  targetAudience  Json?    @default("{}") @map("target_audience")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  isActive        Boolean  @default(true) @map("is_active")
+  totalResponses  Int      @default(0) @map("total_responses")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  responses       SurveyResponse[]
+
+  @@index([electionId])
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id              String   @id @default(uuid())
+  surveyId        String   @map("survey_id")
+  voterId         String?  @map("voter_id")
+  respondentInfo  Json?    @map("respondent_info")
+  answers         Json     @default("{}")
+  latitude        Float?
+  longitude       Float?
+  submittedBy     String?  @map("submitted_by")
+  submittedAt     DateTime @default(now()) @map("submitted_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  survey          Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  voter           Voter?   @relation(fields: [voterId], references: [id])
+
+  @@index([surveyId])
+  @@index([voterId])
+  @@map("survey_responses")
+}
+
+// ==================== POLL DAY ====================
+
+model PollDayVote {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  boothId         String   @map("booth_id")
+  voterId         String?  @map("voter_id")
+  epicNo          String?  @map("epic_no")
+  serialNo        Int?     @map("serial_no")
+  hasVoted        Boolean  @default(false) @map("has_voted")
+  votedAt         DateTime? @map("voted_at")
+  markedBy        String?  @map("marked_by")
+  latitude        Float?
+  longitude       Float?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  booth           Booth    @relation(fields: [boothId], references: [id], onDelete: Cascade)
+
+  @@unique([electionId, boothId, epicNo])
+  @@index([electionId])
+  @@index([boothId])
+  @@map("poll_day_votes")
+}
+
+model BoothAgent {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  boothId         String   @map("booth_id")
+  name            String
+  mobile          String
+  agentType       String   @map("agent_type")
+  isActive        Boolean  @default(true) @map("is_active")
+  assignedAt      DateTime @default(now()) @map("assigned_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  booth           Booth    @relation(fields: [boothId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@index([boothId])
+  @@map("booth_agents")
+}
+
+// ==================== FEEDBACK & ISSUES ====================
+
+model FeedbackIssue {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  voterId         String?  @map("voter_id")
+  issueType       String   @map("issue_type")
+  category        String?
+  title           String
+  description     String?
+  priority        String   @default("medium")
+  status          String   @default("open")
+  assignedTo      String?  @map("assigned_to")
+  resolvedBy      String?  @map("resolved_by")
+  resolvedAt      DateTime? @map("resolved_at")
+  resolution      String?
+  attachments     Json?    @default("[]")
+  latitude        Float?
+  longitude       Float?
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  voter           Voter?   @relation(fields: [voterId], references: [id])
+
+  @@index([tenantId])
+  @@index([voterId])
+  @@index([status])
+  @@map("feedback_issues")
+}
+
+// ==================== REPORTS & ANALYTICS ====================
+
+model Report {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  reportType      String   @map("report_type")
+  title           String
+  parameters      Json?    @default("{}")
+  generatedData   Json?    @map("generated_data")
+  fileUrl         String?  @map("file_url")
+  status          String   @default("pending")
+  generatedBy     String?  @map("generated_by")
+  generatedAt     DateTime? @map("generated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("reports")
+}
+
+model AIAnalyticsResult {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  analysisType    String   @map("analysis_type")
+  parameters      Json?    @default("{}")
+  results         Json?    @default("{}")
+  insights        Json?    @default("[]")
+  confidence      Float?
+  modelUsed       String?  @map("model_used")
+  creditsUsed     Int      @default(0) @map("credits_used")
+  status          String   @default("pending")
+  errorMessage    String?  @map("error_message")
+  requestedBy     String?  @map("requested_by")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("ai_analytics_results")
+}
+
+// ==================== TEMPLATES & BANNERS ====================
+
+model VoterSlipTemplate {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  templateName    String   @map("template_name")
+  templateType    String   @map("template_type")
+  templateData    Json     @map("template_data")
+  isDefault       Boolean  @default(false) @map("is_default")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("voter_slip_templates")
+}
+
+model AppBanner {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  title           String
+  imageUrl        String   @map("image_url")
+  linkUrl         String?  @map("link_url")
+  linkType        String?  @map("link_type")
+  position        String   @default("top")
+  sortOrder       Int      @default(0) @map("sort_order")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("app_banners")
+}
+
+// ==================== EC INTEGRATION ====================
+
+model ECIntegration {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  integrationType String   @map("integration_type")
+  config          Json?    @default("{}")
+  lastSyncAt      DateTime? @map("last_sync_at")
+  syncStatus      String?  @map("sync_status")
+  errorLog        String?  @map("error_log")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("ec_integrations")
+}
+
+model ECSyncLog {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  syncType        String   @map("sync_type")
+  status          String
+  recordsProcessed Int     @default(0) @map("records_processed")
+  recordsFailed   Int      @default(0) @map("records_failed")
+  errorDetails    Json?    @map("error_details")
+  startedAt       DateTime @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("ec_sync_logs")
+}
+
+// ==================== DATA CAFFE EMBED ====================
+
+model DataCaffeEmbed {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  embedType       String   @map("embed_type")
+  title           String
+  config          Json     @default("{}")
+  accessKey       String   @unique @map("access_key")
+  isActive        Boolean  @default(true) @map("is_active")
+  expiresAt       DateTime? @map("expires_at")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([accessKey])
+  @@map("data_caffe_embeds")
+}
+
+// ==================== AUDIT LOG ====================
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  userId          String?  @map("user_id")
+  action          String
+  entityType      String   @map("entity_type")
+  entityId        String?  @map("entity_id")
+  oldValue        Json?    @map("old_value")
+  newValue        Json?    @map("new_value")
+  metadata        Json?
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==================== NEWS & BROADCAST ====================
+
+model NBParsedNews {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  originalUrl     String?  @map("original_url")
+  title           String
+  content         String?
+  summary         String?
+  source          String?
+  publishedAt     DateTime? @map("published_at")
+  language        String?
+  category        String?
+  sentiment       String?
+  relevanceScore  Float?   @map("relevance_score")
+  entities        Json?    @default("[]")
+  keywords        Json?    @default("[]")
+  imageUrl        String?  @map("image_url")
+  isProcessed     Boolean  @default(false) @map("is_processed")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  analyses        NBNewsAnalysis[]
+
+  @@index([tenantId])
+  @@index([publishedAt])
+  @@map("nb_parsed_news")
+}
+
+model NBNewsAnalysis {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  newsId          String   @map("news_id")
+  analysisType    String   @map("analysis_type")
+  analysis        Json     @default("{}")
+  confidence      Float?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  news            NBParsedNews @relation(fields: [newsId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([newsId])
+  @@map("nb_news_analyses")
+}
+
+model NBPartyLine {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  topic           String
+  partyLine       String   @map("party_line")
+  talkingPoints   Json     @default("[]") @map("talking_points")
+  counterPoints   Json?    @default("[]") @map("counter_points")
+  sourceRefs      Json?    @default("[]") @map("source_refs")
+  isActive        Boolean  @default(true) @map("is_active")
+  validFrom       DateTime? @map("valid_from")
+  validUntil      DateTime? @map("valid_until")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([topic])
+  @@map("nb_party_lines")
+}
+
+model NBSpeechPoint {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  category        String
+  title           String
+  content         String
+  language        String?
+  targetAudience  String?  @map("target_audience")
+  tags            Json?    @default("[]")
+  usageCount      Int      @default(0) @map("usage_count")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([category])
+  @@map("nb_speech_points")
+}
+
+model NBActionPlan {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  title           String
+  description     String?
+  priority        String   @default("medium")
+  dueDate         DateTime? @map("due_date")
+  assignedTo      Json?    @default("[]") @map("assigned_to")
+  status          String   @default("pending")
+  completedAt     DateTime? @map("completed_at")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  executions      NBActionExecution[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("nb_action_plans")
+}
+
+model NBActionExecution {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  actionPlanId    String   @map("action_plan_id")
+  executedBy      String   @map("executed_by")
+  notes           String?
+  evidence        Json?    @default("[]")
+  status          String   @default("completed")
+  executedAt      DateTime @default(now()) @map("executed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  actionPlan      NBActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([actionPlanId])
+  @@map("nb_action_executions")
+}
+
+model NBCampaignSpeech {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  title           String
+  speechType      String   @map("speech_type")
+  content         String
+  language        String?
+  duration        Int?
+  targetAudience  String?  @map("target_audience")
+  occasion        String?
+  tags            Json?    @default("[]")
+  usageCount      Int      @default(0) @map("usage_count")
+  lastUsedAt      DateTime? @map("last_used_at")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([speechType])
+  @@map("nb_campaign_speeches")
+}
+
+model NBBroadcast {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  title           String
+  content         String
+  broadcastType   String   @map("broadcast_type")
+  targetAudience  Json?    @default("{}") @map("target_audience")
+  channels        Json?    @default("[]")
+  scheduledAt     DateTime? @map("scheduled_at")
+  sentAt          DateTime? @map("sent_at")
+  status          String   @default("draft")
+  recipientCount  Int      @default(0) @map("recipient_count")
+  deliveredCount  Int      @default(0) @map("delivered_count")
+  readCount       Int      @default(0) @map("read_count")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("nb_broadcasts")
+}
+
+// ==================== WEBSITE BUILDER ====================
+
+model TenantWebsite {
+  id              String        @id @default(uuid())
+  tenantId        String        @map("tenant_id")
+  templateId      String?       @map("template_id")
+  subdomain       String        @unique
+  customDomain    String?       @unique @map("custom_domain")
+  siteName        String        @map("site_name")
+  siteNameLocal   String?       @map("site_name_local")
+  tagline         String?
+  description     String?
+  logoUrl         String?       @map("logo_url")
+  faviconUrl      String?       @map("favicon_url")
+  primaryColor    String?       @map("primary_color")
+  secondaryColor  String?       @map("secondary_color")
+  emAdminUrl      String?       @map("em_admin_url")
+  socialLinks     Json?         @default("{}") @map("social_links")
+  contactInfo     Json?         @default("{}") @map("contact_info")
+  seoConfig       Json?         @default("{}") @map("seo_config")
+  analyticsConfig Json?         @default("{}") @map("analytics_config")
+  enabledSections Json?         @default("[]") @map("enabled_sections")
+  siteConfig      Json?         @default("{}") @map("site_config")
+  status          WebsiteStatus @default(DRAFT)
+  publishedAt     DateTime?     @map("published_at")
+  lastDeployedAt  DateTime?     @map("last_deployed_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  pages           WebsitePage[]
+  media           WebsiteMedia[]
+
+  @@index([tenantId])
+  @@map("tenant_websites")
+}
+
+model WebsitePage {
+  id              String   @id @default(uuid())
+  websiteId       String   @map("website_id")
+  slug            String
+  title           String
+  titleLocal      String?  @map("title_local")
+  content         Json     @default("{}")
+  pageType        String   @default("custom") @map("page_type")
+  metaTitle       String?  @map("meta_title")
+  metaDescription String?  @map("meta_description")
+  isPublished     Boolean  @default(false) @map("is_published")
+  showInNav       Boolean  @default(true) @map("show_in_nav")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  website         TenantWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, slug])
+  @@index([websiteId])
+  @@map("website_pages")
+}
+
+model WebsiteMedia {
+  id              String   @id @default(uuid())
+  websiteId       String   @map("website_id")
+  fileName        String   @map("file_name")
+  fileUrl         String   @map("file_url")
+  fileType        String   @map("file_type")
+  fileSize        Int      @map("file_size")
+  altText         String?  @map("alt_text")
+  category        String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  website         TenantWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@map("website_media")
+}
+
+// ==================== FUND MANAGEMENT ====================
+
+model FundAccount {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  accountName     String   @map("account_name")
+  accountType     String   @map("account_type")
+  bankName        String?  @map("bank_name")
+  accountNumber   String?  @map("account_number")
+  ifscCode        String?  @map("ifsc_code")
+  upiId           String?  @map("upi_id")
+  currentBalance  Decimal  @default(0) @map("current_balance") @db.Decimal(15, 2)
+  isDefault       Boolean  @default(false) @map("is_default")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  donations       FundDonation[]
+  expenses        FundExpense[]
+  transactions    FundTransaction[]
+
+  @@index([tenantId])
+  @@map("fund_accounts")
+}
+
+model FundDonation {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  accountId       String   @map("account_id")
+  donorName       String   @map("donor_name")
+  donorContact    String?  @map("donor_contact")
+  donorEmail      String?  @map("donor_email")
+  donorAddress    String?  @map("donor_address")
+  donorPan        String?  @map("donor_pan")
+  amount          Decimal  @db.Decimal(15, 2)
+  paymentMode     String   @map("payment_mode")
+  paymentRef      String?  @map("payment_ref")
+  donationDate    DateTime @map("donation_date")
+  receiptNo       String?  @map("receipt_no")
+  isAnonymous     Boolean  @default(false) @map("is_anonymous")
+  purpose         String?
+  remarks         String?
+  attachments     Json?    @default("[]")
+  verifiedBy      String?  @map("verified_by")
+  verifiedAt      DateTime? @map("verified_at")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  account         FundAccount @relation(fields: [accountId], references: [id])
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@map("fund_donations")
+}
+
+model FundExpense {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  accountId       String   @map("account_id")
+  category        String
+  description     String
+  amount          Decimal  @db.Decimal(15, 2)
+  paymentMode     String   @map("payment_mode")
+  paymentRef      String?  @map("payment_ref")
+  expenseDate     DateTime @map("expense_date")
+  vendorName      String?  @map("vendor_name")
+  vendorContact   String?  @map("vendor_contact")
+  invoiceNo       String?  @map("invoice_no")
+  attachments     Json?    @default("[]")
+  status          String   @default("pending")
+  approvedBy      String?  @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  rejectedBy      String?  @map("rejected_by")
+  rejectedAt      DateTime? @map("rejected_at")
+  rejectionReason String?  @map("rejection_reason")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  account         FundAccount @relation(fields: [accountId], references: [id])
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@map("fund_expenses")
+}
+
+model FundTransaction {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  accountId       String   @map("account_id")
+  transactionType FundTransactionType @map("transaction_type")
+  amount          Decimal  @db.Decimal(15, 2)
+  balanceAfter    Decimal  @map("balance_after") @db.Decimal(15, 2)
+  description     String?
+  referenceType   String?  @map("reference_type")
+  referenceId     String?  @map("reference_id")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  account         FundAccount @relation(fields: [accountId], references: [id])
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@index([createdAt])
+  @@map("fund_transactions")
+}
+
+// ==================== INVENTORY MANAGEMENT ====================
+
+model InventoryCategory {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  nameLocal       String?  @map("name_local")
+  description     String?
+  parentId        String?  @map("parent_id")
+  sortOrder       Int      @default(0) @map("sort_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  items           InventoryItem[]
+
+  @@index([tenantId])
+  @@map("inventory_categories")
+}
+
+model InventoryItem {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  categoryId      String?  @map("category_id")
+  name            String
+  nameLocal       String?  @map("name_local")
+  sku             String?
+  description     String?
+  unit            String   @default("pcs")
+  quantity        Int      @default(0)
+  minStock        Int      @default(0) @map("min_stock")
+  maxStock        Int?     @map("max_stock")
+  costPrice       Decimal? @map("cost_price") @db.Decimal(10, 2)
+  imageUrl        String?  @map("image_url")
+  location        String?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  category        InventoryCategory? @relation(fields: [categoryId], references: [id])
+  stockMovements  InventoryMovement[]
+  allocations     InventoryAllocation[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([categoryId])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  itemId          String   @map("item_id")
+  movementType    String   @map("movement_type")
+  quantity        Int
+  previousQuantity Int     @map("previous_quantity")
+  newQuantity     Int      @map("new_quantity")
+  reason          String?
+  referenceType   String?  @map("reference_type")
+  referenceId     String?  @map("reference_id")
+  remarks         String?
+  movedBy         String?  @map("moved_by")
+  movedAt         DateTime @default(now()) @map("moved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  item            InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([itemId])
+  @@index([movedAt])
+  @@map("inventory_movements")
+}
+
+model InventoryAllocation {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  itemId          String   @map("item_id")
+  electionId      String?  @map("election_id")
+  eventId         String?  @map("event_id")
+  allocatedTo     String?  @map("allocated_to")
+  allocatedToName String?  @map("allocated_to_name")
+  quantity        Int
+  status          String   @default("allocated")
+  allocatedAt     DateTime @default(now()) @map("allocated_at")
+  returnedAt      DateTime? @map("returned_at")
+  returnedQuantity Int?    @map("returned_quantity")
+  remarks         String?
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  item            InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  election        Election?     @relation(fields: [electionId], references: [id])
+
+  @@index([tenantId])
+  @@index([itemId])
+  @@index([electionId])
+  @@map("inventory_allocations")
+}
+
+// ==================== EVENT MANAGEMENT ====================
+
+model PartyEvent {
+  id              String      @id @default(uuid())
+  tenantId        String      @map("tenant_id")
+  electionId      String?     @map("election_id")
+  title           String
+  titleLocal      String?     @map("title_local")
+  description     String?
+  descriptionLocal String?    @map("description_local")
+  eventType       String      @map("event_type")
+  startDate       DateTime    @map("start_date")
+  endDate         DateTime?   @map("end_date")
+  allDay          Boolean     @default(false) @map("all_day")
+  timezone        String?     @default("Asia/Kolkata")
+  venue           String?
+  venueLocal      String?     @map("venue_local")
+  address         String?
+  city            String?
+  state           String?
+  pincode         String?
+  latitude        Float?
+  longitude       Float?
+  isOnline        Boolean     @default(false) @map("is_online")
+  onlineLink      String?     @map("online_link")
+  expectedAttendees Int?      @map("expected_attendees")
+  maxCapacity     Int?        @map("max_capacity")
+  actualAttendees Int?        @map("actual_attendees")
+  speakers        Json?       @default("[]")
+  chiefGuest      String?     @map("chief_guest")
+  coverImage      String?     @map("cover_image")
+  images          Json?       @default("[]")
+  videos          Json?       @default("[]")
+  isPublic        Boolean     @default(true) @map("is_public")
+  requiresRegistration Boolean @default(false) @map("requires_registration")
+  registrationDeadline DateTime? @map("registration_deadline")
+  estimatedBudget Decimal?    @map("estimated_budget") @db.Decimal(15, 2)
+  actualBudget    Decimal?    @map("actual_budget") @db.Decimal(15, 2)
+  status          EventStatus @default(DRAFT)
+  cancellationReason String?  @map("cancellation_reason")
+  createdBy       String?     @map("created_by")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  election        Election?      @relation(fields: [electionId], references: [id])
+  attendees       EventAttendee[]
+  tasks           EventTask[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([startDate])
+  @@map("party_events")
+}
+
+model EventAttendee {
+  id              String   @id @default(uuid())
+  eventId         String   @map("event_id")
+  userId          String?  @map("user_id")
+  name            String
+  phone           String?
+  email           String?
+  role            String   @default("attendee")
+  status          String   @default("registered")
+  checkedInAt     DateTime? @map("checked_in_at")
+  checkedInBy     String?  @map("checked_in_by")
+  feedback        String?
+  rating          Int?
+  registeredAt    DateTime @default(now()) @map("registered_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  event           PartyEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([userId])
+  @@map("event_attendees")
+}
+
+model EventTask {
+  id              String   @id @default(uuid())
+  eventId         String   @map("event_id")
+  title           String
+  description     String?
+  assignedTo      String?  @map("assigned_to")
+  assignedToName  String?  @map("assigned_to_name")
+  dueDate         DateTime? @map("due_date")
+  priority        String   @default("medium")
+  status          String   @default("pending")
+  completedAt     DateTime? @map("completed_at")
+  completedBy     String?  @map("completed_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  event           PartyEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([assignedTo])
+  @@map("event_tasks")
+}
+
+// ==================== INTERNAL NOTIFICATIONS ====================
+
+model InternalNotification {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  title           String
+  message         String
+  notificationType String  @map("notification_type")
+  priority        String   @default("normal")
+  targetAudience  String   @default("all") @map("target_audience")
+  targetUserIds   Json?    @default("[]") @map("target_user_ids")
+  targetRoles     Json?    @default("[]") @map("target_roles")
+  actionUrl       String?  @map("action_url")
+  actionLabel     String?  @map("action_label")
+  metadata        Json?    @default("{}")
+  channels        Json?    @default("[]")
+  requiresAck     Boolean  @default(false) @map("requires_ack")
+  expiresAt       DateTime? @map("expires_at")
+  scheduledAt     DateTime? @map("scheduled_at")
+  sentAt          DateTime? @map("sent_at")
+  status          NotificationStatus @default(DRAFT)
+  totalRecipients Int      @default(0) @map("total_recipients")
+  deliveredCount  Int      @default(0) @map("delivered_count")
+  readCount       Int      @default(0) @map("read_count")
+  ackedCount      Int      @default(0) @map("acked_count")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  recipients      NotificationRecipient[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("internal_notifications")
+}
+
+model NotificationRecipient {
+  id              String   @id @default(uuid())
+  notificationId  String   @map("notification_id")
+  userId          String   @map("user_id")
+  channel         String   @default("app")
+  status          String   @default("pending")
+  deliveredAt     DateTime? @map("delivered_at")
+  readAt          DateTime? @map("read_at")
+  ackedAt         DateTime? @map("acked_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  notification    InternalNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId, channel])
+  @@index([notificationId])
+  @@index([userId])
+  @@map("notification_recipients")
+}
+
+// ==================== INTERNAL CHAT ====================
+
+model ChatConversation {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  title           String?
+  conversationType ConversationType @default(DIRECT) @map("conversation_type")
+  createdBy       String   @map("created_by")
+  lastMessageAt   DateTime? @map("last_message_at")
+  isActive        Boolean  @default(true) @map("is_active")
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  participants    ChatParticipant[]
+  messages        ChatMessage[]
+
+  @@index([tenantId])
+  @@index([lastMessageAt])
+  @@map("chat_conversations")
+}
+
+model ChatParticipant {
+  id              String   @id @default(uuid())
+  conversationId  String   @map("conversation_id")
+  userId          String   @map("user_id")
+  role            String   @default("member")
+  joinedAt        DateTime @default(now()) @map("joined_at")
+  leftAt          DateTime? @map("left_at")
+  lastReadAt      DateTime? @map("last_read_at")
+  isActive        Boolean  @default(true) @map("is_active")
+  isMuted         Boolean  @default(false) @map("is_muted")
+  unreadCount     Int      @default(0) @map("unread_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  conversation    ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@map("chat_participants")
+}
+
+model ChatMessage {
+  id              String   @id @default(uuid())
+  conversationId  String   @map("conversation_id")
+  senderId        String   @map("sender_id")
+  content         String?
+  messageType     String   @default("TEXT") @map("message_type")
+  mediaUrl        String?  @map("media_url")
+  mediaType       String?  @map("media_type")
+  mediaSize       Int?     @map("media_size")
+  replyToId       String?  @map("reply_to_id")
+  isEdited        Boolean  @default(false) @map("is_edited")
+  editedAt        DateTime? @map("edited_at")
+  isDeleted       Boolean  @default(false) @map("is_deleted")
+  deletedAt       DateTime? @map("deleted_at")
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  conversation    ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reactions       MessageReaction[]
+  readReceipts    MessageReadReceipt[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+model MessageReaction {
+  id              String   @id @default(uuid())
+  messageId       String   @map("message_id")
+  userId          String   @map("user_id")
+  emoji           String
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  message         ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("message_reactions")
+}
+
+model MessageReadReceipt {
+  id              String   @id @default(uuid())
+  messageId       String   @map("message_id")
+  userId          String   @map("user_id")
+  readAt          DateTime @default(now()) @map("read_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  message         ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@map("message_read_receipts")
+}
+
+// ==================== AI CREDITS (Tenant Level) ====================
+
+model TenantAICredits {
+  id              String   @id @default(uuid())
+  tenantId        String   @unique @map("tenant_id")
+  totalCredits    Int      @default(0) @map("total_credits")
+  usedCredits     Int      @default(0) @map("used_credits")
+  bonusCredits    Int      @default(0) @map("bonus_credits")
+  expiresAt       DateTime? @map("expires_at")
+  lastPurchasedAt DateTime? @map("last_purchased_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  transactions    AICreditTransaction[]
+  usageLogs       AIUsageLog[]
+
+  @@map("tenant_ai_credits")
+}
+
+model AICreditTransaction {
+  id              String   @id @default(uuid())
+  tenantCreditsId String   @map("tenant_credits_id")
+  transactionType String   @map("transaction_type")
+  credits         Int
+  description     String?
+  referenceType   String?  @map("reference_type")
+  referenceId     String?  @map("reference_id")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenantCredits   TenantAICredits @relation(fields: [tenantCreditsId], references: [id], onDelete: Cascade)
+
+  @@index([tenantCreditsId])
+  @@map("ai_credit_transactions")
+}
+
+model AIUsageLog {
+  id              String   @id @default(uuid())
+  tenantCreditsId String   @map("tenant_credits_id")
+  userId          String?  @map("user_id")
+  featureKey      String   @map("feature_key")
+  creditsUsed     Int      @map("credits_used")
+  inputTokens     Int?     @map("input_tokens")
+  outputTokens    Int?     @map("output_tokens")
+  modelUsed       String?  @map("model_used")
+  requestData     Json?    @map("request_data")
+  responseTime    Int?     @map("response_time")
+  status          String   @default("success")
+  errorMessage    String?  @map("error_message")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenantCredits   TenantAICredits @relation(fields: [tenantCreditsId], references: [id], onDelete: Cascade)
+
+  @@index([tenantCreditsId])
+  @@index([userId])
+  @@index([featureKey])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
+}
+
+// ==================== CANDIDATES ====================
+
+enum NominationStatus {
+  FILED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum SocialMediaPlatform {
+  WEBSITE
+  FACEBOOK
+  TWITTER
+  INSTAGRAM
+  YOUTUBE
+  LINKEDIN
+  TIKTOK
+  THREADS
+  WHATSAPP
+  TELEGRAM
+  OTHER
+}
+
+enum DocumentStorageProvider {
+  LOCAL
+  ONEDRIVE
+  GOOGLE_DRIVE
+  S3
+}
+
+model Candidate {
+  id                String           @id @default(uuid())
+  electionId        String           @map("election_id")
+  name              String
+  nameLocal         String?          @map("name_local")
+  photoUrl          String?          @map("photo_url")
+  partyId           String?          @map("party_id")
+  nominationNumber  String?          @map("nomination_number")
+  isOurCandidate    Boolean          @default(false) @map("is_our_candidate")
+
+  // Background Info
+  age               Int?
+  dateOfBirth       DateTime?        @map("date_of_birth")
+  gender            Gender?
+  education         String?
+  profession        String?
+  experience        String?          @db.Text
+  biography         String?          @db.Text
+  achievements      Json?            @default("[]")
+  politicalCareer   String?          @map("political_career") @db.Text
+
+  // Contact
+  mobile            String?
+  alternateMobile   String?          @map("alternate_mobile")
+  email             String?
+  address           String?
+  constituency      String?
+  district          String?
+  state             String?
+
+  // Status
+  nominationStatus  NominationStatus? @map("nomination_status")
+  nominationDate    DateTime?         @map("nomination_date")
+  isActive          Boolean           @default(true) @map("is_active")
+
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  election          Election          @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  party             Party?            @relation(fields: [partyId], references: [id])
+  documents         CandidateDocument[]
+  socialMedia       CandidateSocialMedia[]
+  battleCards       CandidateBattleCard[] @relation("CandidateBattleCards")
+  opponentBattleCards CandidateBattleCard[] @relation("OpponentBattleCards")
+
+  @@index([electionId])
+  @@index([partyId])
+  @@map("candidates")
+}
+
+model CandidateDocument {
+  id              String                  @id @default(uuid())
+  candidateId     String                  @map("candidate_id")
+  documentName    String                  @map("document_name")
+  documentType    String                  @map("document_type") // RESUME, AFFIDAVIT, CRIMINAL_RECORD, ASSETS, PHOTO_ID, OTHER
+  storageProvider DocumentStorageProvider @default(LOCAL) @map("storage_provider")
+  fileUrl         String                  @map("file_url")
+  fileId          String?                 @map("file_id") // Provider-specific file ID
+  folderId        String?                 @map("folder_id")
+  mimeType        String?                 @map("mime_type")
+  fileSize        Int?                    @map("file_size")
+  description     String?
+  isPublic        Boolean                 @default(false) @map("is_public")
+  uploadedBy      String?                 @map("uploaded_by")
+  uploadedAt      DateTime                @default(now()) @map("uploaded_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  candidate       Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@map("candidate_documents")
+}
+
+model CandidateSocialMedia {
+  id              String              @id @default(uuid())
+  candidateId     String              @map("candidate_id")
+  platform        SocialMediaPlatform
+  profileUrl      String              @map("profile_url")
+  username        String?
+  displayName     String?             @map("display_name")
+  followers       Int                 @default(0)
+  following       Int                 @default(0)
+  posts           Int                 @default(0)
+  subscribers     Int                 @default(0)
+  likes           Int                 @default(0)
+  views           Int                 @default(0)
+  comments        Int                 @default(0)
+  shares          Int                 @default(0)
+  engagementRate  Float?              @map("engagement_rate")
+  verifiedStatus  Boolean             @default(false) @map("verified_status")
+  description     String?             @db.Text
+  lastUpdated     DateTime            @default(now()) @map("last_updated")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  candidate       Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  stats           SocialMediaStats[]
+
+  @@unique([candidateId, platform])
+  @@index([candidateId])
+  @@map("candidate_social_media")
+}
+
+model SocialMediaStats {
+  id                String               @id @default(uuid())
+  socialMediaId     String               @map("social_media_id")
+  recordedAt        DateTime             @default(now()) @map("recorded_at")
+  followers         Int                  @default(0)
+  following         Int                  @default(0)
+  posts             Int                  @default(0)
+  likes             Int                  @default(0)
+  comments          Int                  @default(0)
+  shares            Int                  @default(0)
+  views             Int                  @default(0)
+  engagementRate    Float?               @map("engagement_rate")
+  reachEstimate     Int?                 @map("reach_estimate")
+  metadata          Json?                @default("{}")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  socialMedia       CandidateSocialMedia @relation(fields: [socialMediaId], references: [id], onDelete: Cascade)
+
+  @@index([socialMediaId])
+  @@index([recordedAt])
+  @@map("social_media_stats")
+}
+
+model CandidateBattleCard {
+  id                  String   @id @default(uuid())
+  candidateId         String   @map("candidate_id")
+  opponentId          String   @map("opponent_id")
+  title               String
+  summary             String?  @db.Text
+  ourStrengths        Json     @default("[]") @map("our_strengths")
+  opponentWeaknesses  Json     @default("[]") @map("opponent_weaknesses")
+  keyIssues           Json     @default("[]") @map("key_issues")
+  talkingPoints       Json     @default("[]") @map("talking_points")
+  counterArguments    Json     @default("[]") @map("counter_arguments")
+  voterAppeal         Json     @default("{}") @map("voter_appeal") // Demographics appeal comparison
+  headToHeadStats     Json     @default("{}") @map("head_to_head_stats")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdBy           String?  @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  candidate           Candidate @relation("CandidateBattleCards", fields: [candidateId], references: [id], onDelete: Cascade)
+  opponent            Candidate @relation("OpponentBattleCards", fields: [opponentId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, opponentId])
+  @@index([candidateId])
+  @@index([opponentId])
+  @@map("candidate_battle_cards")
+}
