@@ -1,4 +1,4 @@
-modules = ["nodejs-20"]
+modules = ["nodejs-20", "postgresql-16"]
 [agent]
 expertMode = true
 
@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace/apps/web && npm run dev"
+args = "cd /home/runner/workspace && (npm run gateway:dev &) && (npm run auth:dev &) && (npm run election:dev &) && (npm run voter:dev &) && (npm run cadre:dev &) && (npm run analytics:dev &) && (npm run super-admin:dev &) && npm run web:dev"
 waitForPort = 5000
 
 [[ports]]
@@ -69,8 +69,6 @@ run = ["node", "index.js"]
 [userenv]
 
 [userenv.shared]
-CORE_DATABASE_URL = "${DATABASE_URL}"
-TENANT_DATABASE_URL = "${DATABASE_URL}"
 JWT_SECRET = "electioncaffe-jwt-secret-key-production-ready-32chars"
 JWT_REFRESH_SECRET = "electioncaffe-refresh-secret-key-production-ready-32"
 GATEWAY_PORT = "3000"
@@ -87,3 +85,5 @@ LOG_LEVEL = "info"
 STORAGE_TYPE = "local"
 STORAGE_PATH = "./uploads"
 NODE_ENV = "development"
+CORE_DATABASE_URL = "postgresql://postgres:password@helium/heliumdb?sslmode=disable"
+TENANT_DATABASE_URL = "postgresql://postgres:password@helium/heliumdb?sslmode=disable"
