@@ -6,7 +6,10 @@ import {
   paginationSchema,
   createPaginationMeta,
   calculateSkip,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('election-service');
 
 export class CandidateController {
   // ==================== CANDIDATES ====================
@@ -93,7 +96,7 @@ export class CandidateController {
 
       res.json(successResponse(candidates, createPaginationMeta(total, page, limit)));
     } catch (error) {
-      console.error('Get candidates error:', error);
+      logger.error({ err: error }, 'Get candidates error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -156,7 +159,7 @@ export class CandidateController {
 
       res.json(successResponse(candidate));
     } catch (error) {
-      console.error('Get candidate by ID error:', error);
+      logger.error({ err: error }, 'Get candidate by ID error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -223,7 +226,7 @@ export class CandidateController {
 
       res.status(201).json(successResponse(candidate));
     } catch (error) {
-      console.error('Create candidate error:', error);
+      logger.error({ err: error }, 'Create candidate error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -286,7 +289,7 @@ export class CandidateController {
 
       res.json(successResponse(candidate));
     } catch (error) {
-      console.error('Update candidate error:', error);
+      logger.error({ err: error }, 'Update candidate error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -309,7 +312,7 @@ export class CandidateController {
 
       res.json(successResponse({ message: 'Candidate deleted successfully' }));
     } catch (error) {
-      console.error('Delete candidate error:', error);
+      logger.error({ err: error }, 'Delete candidate error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -337,7 +340,7 @@ export class CandidateController {
 
       res.json(successResponse(documents));
     } catch (error) {
-      console.error('Get candidate documents error:', error);
+      logger.error({ err: error }, 'Get candidate documents error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -381,7 +384,7 @@ export class CandidateController {
 
       res.status(201).json(successResponse(document));
     } catch (error) {
-      console.error('Add candidate document error:', error);
+      logger.error({ err: error }, 'Add candidate document error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -404,7 +407,7 @@ export class CandidateController {
 
       res.json(successResponse({ message: 'Document deleted successfully' }));
     } catch (error) {
-      console.error('Delete candidate document error:', error);
+      logger.error({ err: error }, 'Delete candidate document error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -437,7 +440,7 @@ export class CandidateController {
 
       res.json(successResponse(socialMedia));
     } catch (error) {
-      console.error('Get candidate social media error:', error);
+      logger.error({ err: error }, 'Get candidate social media error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -494,7 +497,7 @@ export class CandidateController {
 
       res.status(201).json(successResponse(socialMedia));
     } catch (error) {
-      console.error('Add candidate social media error:', error);
+      logger.error({ err: error }, 'Add candidate social media error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -550,7 +553,7 @@ export class CandidateController {
 
       res.json(successResponse(updated));
     } catch (error) {
-      console.error('Update candidate social media error:', error);
+      logger.error({ err: error }, 'Update candidate social media error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -573,7 +576,7 @@ export class CandidateController {
 
       res.json(successResponse({ message: 'Social media profile deleted successfully' }));
     } catch (error) {
-      console.error('Delete candidate social media error:', error);
+      logger.error({ err: error }, 'Delete candidate social media error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -619,7 +622,7 @@ export class CandidateController {
 
       res.json(successResponse(battleCards));
     } catch (error) {
-      console.error('Get candidate battle cards error:', error);
+      logger.error({ err: error }, 'Get candidate battle cards error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -699,7 +702,7 @@ export class CandidateController {
 
       res.status(201).json(successResponse(battleCard));
     } catch (error) {
-      console.error('Create battle card error:', error);
+      logger.error({ err: error }, 'Create battle card error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -753,7 +756,7 @@ export class CandidateController {
 
       res.json(successResponse(updated));
     } catch (error) {
-      console.error('Update battle card error:', error);
+      logger.error({ err: error }, 'Update battle card error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -776,7 +779,7 @@ export class CandidateController {
 
       res.json(successResponse({ message: 'Battle card deleted successfully' }));
     } catch (error) {
-      console.error('Delete battle card error:', error);
+      logger.error({ err: error }, 'Delete battle card error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -833,7 +836,7 @@ export class CandidateController {
 
       res.json(successResponse(stats));
     } catch (error) {
-      console.error('Get candidate stats error:', error);
+      logger.error({ err: error }, 'Get candidate stats error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

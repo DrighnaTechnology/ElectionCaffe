@@ -38,10 +38,18 @@ const navItems = [
 ];
 
 export function DashboardLayout() {
-  const { isAuthenticated, admin, logout } = useAuthStore();
+  const { isAuthenticated, admin, logout, _hasHydrated } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const navigate = useNavigate();
+
+  if (!_hasHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

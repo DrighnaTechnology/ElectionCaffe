@@ -1,19 +1,23 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '@electioncaffe/database';
+import { createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('auth-service');
 
 /**
  * Middleware to check if a feature is enabled for the tenant
  * Use this to protect routes that should only be accessible when a feature is enabled
  */
 export const requireFeature = (featureKey: string) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const tenantId = req.user?.tenantId;
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const tenantId = (req as any).user?.tenantId;
 
     if (!tenantId) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Unauthorized',
         message: 'You must be logged in to access this feature',
       });
+      return;
     }
 
     try {
@@ -32,11 +36,12 @@ export const requireFeature = (featureKey: string) => {
       });
 
       if (!tenantFeature) {
-        return res.status(403).json({
+        res.status(403).json({
           error: 'Feature not enabled',
           message: `The ${featureKey.replace('_', ' ')} feature is not enabled for your organization. Please contact your administrator.`,
           featureKey,
         });
+        return;
       }
 
       // Attach feature info to request for later use if needed
@@ -44,11 +49,12 @@ export const requireFeature = (featureKey: string) => {
 
       next();
     } catch (error) {
-      console.error('Error checking feature access:', error);
-      return res.status(500).json({
+      logger.error({ err: error }, 'Error checking feature access');
+      res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to verify feature access',
       });
+      return;
     }
   };
 };
@@ -58,15 +64,16 @@ export const requireFeature = (featureKey: string) => {
  * Use this for role-based feature access control
  */
 export const requireRoleFeature = (featureKey: string) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const role = req.user?.role;
-    const tenantId = req.user?.tenantId;
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const role = (req as any).user?.role;
+    const tenantId = (req as any).user?.tenantId;
 
     if (!role || !tenantId) {
-      return res.status(401).json({
+      res.status(401).json({
         error: 'Unauthorized',
         message: 'You must be logged in to access this feature',
       });
+      return;
     }
 
     try {
@@ -81,15 +88,16 @@ export const requireRoleFeature = (featureKey: string) => {
       });
 
       if (!tenantFeature) {
-        return res.status(403).json({
+        res.status(403).json({
           error: 'Feature not enabled',
           message: `The ${featureKey.replace('_', ' ')} feature is not enabled for your organization.`,
           featureKey,
         });
+        return;
       }
 
       // Then check if user's role has access to this feature
-      const roleFeature = await prisma.organizationRoleFeature.findFirst({
+      const roleFeature = await (prisma as any).organizationRoleFeature.findFirst({
         where: {
           tenantId,
           role,
@@ -99,20 +107,22 @@ export const requireRoleFeature = (featureKey: string) => {
       });
 
       if (!roleFeature) {
-        return res.status(403).json({
+        res.status(403).json({
           error: 'Insufficient permissions',
           message: `Your role (${role}) does not have access to the ${featureKey.replace('_', ' ')} feature.`,
           featureKey,
         });
+        return;
       }
 
       next();
     } catch (error) {
-      console.error('Error checking role feature access:', error);
-      return res.status(500).json({
+      logger.error({ err: error }, 'Error checking role feature access');
+      res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to verify feature access',
       });
+      return;
     }
   };
 };

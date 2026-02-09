@@ -1,11 +1,14 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import pino from 'pino';
 import type { UserPayload } from '@electioncaffe/shared';
-import { WS_EVENTS } from '@electioncaffe/shared';
+import { WS_EVENTS, createLogger } from '@electioncaffe/shared';
 
-const logger = pino({ level: 'info' });
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const logger = createLogger('gateway');
+
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const JWT_SECRET: string = process.env.JWT_SECRET;
 
 interface AuthenticatedSocket extends Socket {
   user?: UserPayload;
@@ -21,7 +24,7 @@ export function setupSocketIO(io: SocketIOServer): void {
     }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as UserPayload;
+      const decoded = jwt.verify(token, JWT_SECRET) as unknown as UserPayload;
       socket.user = decoded;
       next();
     } catch (error) {

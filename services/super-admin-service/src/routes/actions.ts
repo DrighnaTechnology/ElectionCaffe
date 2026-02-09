@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { coreDb as prisma } from '@electioncaffe/database';
+import { createLogger } from '@electioncaffe/shared';
 import { superAdminAuth } from '../middleware/superAdminAuth.js';
+
+const logger = createLogger('super-admin-service');
 
 const router = Router();
 
@@ -59,7 +62,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     const [actions, total] = await Promise.all([
-      prisma.actionItem.findMany({
+      (prisma as any).actionItem.findMany({
         where,
         skip,
         take: Number(limit),
@@ -77,7 +80,7 @@ router.get('/', async (req: Request, res: Response) => {
           },
         },
       }),
-      prisma.actionItem.count({ where }),
+      (prisma as any).actionItem.count({ where }),
     ]);
 
     res.json({
@@ -91,7 +94,7 @@ router.get('/', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching actions:', error);
+    logger.error({ err: error }, 'Error fetching actions');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch actions',
@@ -105,7 +108,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const action = await prisma.actionItem.findUnique({
+    const action = await (prisma as any).actionItem.findUnique({
       where: { id },
       include: {
         news: true,
@@ -127,7 +130,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       data: action,
     });
   } catch (error: any) {
-    console.error('Error fetching action:', error);
+    logger.error({ err: error }, 'Error fetching action');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch action',
@@ -172,7 +175,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const action = await prisma.actionItem.create({
+    const action = await (prisma as any).actionItem.create({
       data: {
         tenantId,
         newsId: newsId || null,
@@ -210,7 +213,7 @@ router.post('/', async (req: Request, res: Response) => {
       message: 'Action created successfully',
     });
   } catch (error: any) {
-    console.error('Error creating action:', error);
+    logger.error({ err: error }, 'Error creating action');
     res.status(500).json({
       success: false,
       error: 'Failed to create action',
@@ -232,7 +235,7 @@ router.post('/generate', async (req: Request, res: Response) => {
       });
     }
 
-    const news = await prisma.newsInformation.findUnique({
+    const news = await (prisma as any).newsInformation.findUnique({
       where: { id: newsId },
     });
 
@@ -243,14 +246,26 @@ router.post('/generate', async (req: Request, res: Response) => {
       });
     }
 
+    // Check if AI provider is configured
+    const aiProvider = await prisma.aIProvider.findFirst({
+      where: { status: 'ACTIVE', apiKey: { not: null } } as any,
+    });
+
+    if (!aiProvider) {
+      return res.status(503).json({
+        success: false,
+        error: 'No AI provider configured. Please configure an AI provider with a valid API key to generate AI actions.',
+      });
+    }
+
     // TODO: Integrate with actual AI service (OpenAI, Claude, etc.)
-    // For now, generate simulated AI actions based on news content
+    // For now, generate rule-based actions based on news content
     const aiActions = generateSimulatedAIActions(news, tenantId, superAdminId);
 
     // Create all AI-generated actions
     const createdActions = await Promise.all(
       aiActions.map((action: any) =>
-        prisma.actionItem.create({
+        (prisma as any).actionItem.create({
           data: action,
         })
       )
@@ -262,7 +277,7 @@ router.post('/generate', async (req: Request, res: Response) => {
       message: `${createdActions.length} AI actions generated successfully`,
     });
   } catch (error: any) {
-    console.error('Error generating AI actions:', error);
+    logger.error({ err: error }, 'Error generating AI actions');
     res.status(500).json({
       success: false,
       error: 'Failed to generate AI actions',
@@ -277,7 +292,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const superAdminId = (req as any).superAdmin?.id;
 
-    const existing = await prisma.actionItem.findUnique({
+    const existing = await (prisma as any).actionItem.findUnique({
       where: { id },
     });
 
@@ -310,7 +325,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       attachments,
     } = req.body;
 
-    const action = await prisma.actionItem.update({
+    const action = await (prisma as any).actionItem.update({
       where: { id },
       data: {
         title,
@@ -342,7 +357,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       message: 'Action updated successfully',
     });
   } catch (error: any) {
-    console.error('Error updating action:', error);
+    logger.error({ err: error }, 'Error updating action');
     res.status(500).json({
       success: false,
       error: 'Failed to update action',
@@ -358,7 +373,7 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
     const superAdminId = (req as any).superAdmin?.id;
     const { reviewNotes } = req.body;
 
-    const action = await prisma.actionItem.update({
+    const action = await (prisma as any).actionItem.update({
       where: { id },
       data: {
         status: 'APPROVED',
@@ -374,7 +389,7 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
       message: 'Action approved successfully',
     });
   } catch (error: any) {
-    console.error('Error approving action:', error);
+    logger.error({ err: error }, 'Error approving action');
     res.status(500).json({
       success: false,
       error: 'Failed to approve action',
@@ -397,7 +412,7 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
       });
     }
 
-    const action = await prisma.actionItem.update({
+    const action = await (prisma as any).actionItem.update({
       where: { id },
       data: {
         status: 'REJECTED',
@@ -414,7 +429,7 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
       message: 'Action rejected',
     });
   } catch (error: any) {
-    console.error('Error rejecting action:', error);
+    logger.error({ err: error }, 'Error rejecting action');
     res.status(500).json({
       success: false,
       error: 'Failed to reject action',
@@ -437,7 +452,7 @@ router.post('/:id/assign', async (req: Request, res: Response) => {
       });
     }
 
-    const action = await prisma.actionItem.update({
+    const action = await (prisma as any).actionItem.update({
       where: { id },
       data: {
         assignedTo,
@@ -453,7 +468,7 @@ router.post('/:id/assign', async (req: Request, res: Response) => {
       message: 'Action assigned successfully',
     });
   } catch (error: any) {
-    console.error('Error assigning action:', error);
+    logger.error({ err: error }, 'Error assigning action');
     res.status(500).json({
       success: false,
       error: 'Failed to assign action',
@@ -467,7 +482,7 @@ router.post('/:id/start', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const existing = await prisma.actionItem.findUnique({
+    const existing = await (prisma as any).actionItem.findUnique({
       where: { id },
     });
 
@@ -485,7 +500,7 @@ router.post('/:id/start', async (req: Request, res: Response) => {
       });
     }
 
-    const action = await prisma.actionItem.update({
+    const action = await (prisma as any).actionItem.update({
       where: { id },
       data: {
         status: 'IN_PROGRESS',
@@ -499,7 +514,7 @@ router.post('/:id/start', async (req: Request, res: Response) => {
       message: 'Action execution started',
     });
   } catch (error: any) {
-    console.error('Error starting action:', error);
+    logger.error({ err: error }, 'Error starting action');
     res.status(500).json({
       success: false,
       error: 'Failed to start action',
@@ -515,7 +530,7 @@ router.post('/:id/complete', async (req: Request, res: Response) => {
     const superAdminId = (req as any).superAdmin?.id;
     const { outcome, outcomeRating, impactMeasured, lessonsLearned } = req.body;
 
-    const existing = await prisma.actionItem.findUnique({
+    const existing = await (prisma as any).actionItem.findUnique({
       where: { id },
     });
 
@@ -533,7 +548,7 @@ router.post('/:id/complete', async (req: Request, res: Response) => {
       });
     }
 
-    const action = await prisma.actionItem.update({
+    const action = await (prisma as any).actionItem.update({
       where: { id },
       data: {
         status: 'COMPLETED',
@@ -552,7 +567,7 @@ router.post('/:id/complete', async (req: Request, res: Response) => {
       message: 'Action completed successfully',
     });
   } catch (error: any) {
-    console.error('Error completing action:', error);
+    logger.error({ err: error }, 'Error completing action');
     res.status(500).json({
       success: false,
       error: 'Failed to complete action',
@@ -568,7 +583,7 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
     const superAdminId = (req as any).superAdmin?.id;
     const { reason } = req.body;
 
-    const action = await prisma.actionItem.update({
+    const action = await (prisma as any).actionItem.update({
       where: { id },
       data: {
         status: 'CANCELLED',
@@ -583,7 +598,7 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
       message: 'Action cancelled',
     });
   } catch (error: any) {
-    console.error('Error cancelling action:', error);
+    logger.error({ err: error }, 'Error cancelling action');
     res.status(500).json({
       success: false,
       error: 'Failed to cancel action',
@@ -620,7 +635,7 @@ router.post('/:id/impact', async (req: Request, res: Response) => {
         ? ((metricValue - previousValue) / previousValue) * 100
         : null;
 
-    const impactLog = await prisma.actionImpactLog.create({
+    const impactLog = await (prisma as any).actionImpactLog.create({
       data: {
         actionId: id,
         impactType: impactType || 'neutral',
@@ -642,7 +657,7 @@ router.post('/:id/impact', async (req: Request, res: Response) => {
       message: 'Impact logged successfully',
     });
   } catch (error: any) {
-    console.error('Error logging impact:', error);
+    logger.error({ err: error }, 'Error logging impact');
     res.status(500).json({
       success: false,
       error: 'Failed to log impact',
@@ -656,7 +671,7 @@ router.get('/:id/impact', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const impactLogs = await prisma.actionImpactLog.findMany({
+    const impactLogs = await (prisma as any).actionImpactLog.findMany({
       where: { actionId: id },
       orderBy: { recordedAt: 'desc' },
     });
@@ -666,7 +681,7 @@ router.get('/:id/impact', async (req: Request, res: Response) => {
       data: impactLogs,
     });
   } catch (error: any) {
-    console.error('Error fetching impact logs:', error);
+    logger.error({ err: error }, 'Error fetching impact logs');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch impact logs',
@@ -680,7 +695,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const action = await prisma.actionItem.findUnique({
+    const action = await (prisma as any).actionItem.findUnique({
       where: { id },
     });
 
@@ -698,7 +713,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.actionItem.delete({
+    await (prisma as any).actionItem.delete({
       where: { id },
     });
 
@@ -707,7 +722,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       message: 'Action deleted successfully',
     });
   } catch (error: any) {
-    console.error('Error deleting action:', error);
+    logger.error({ err: error }, 'Error deleting action');
     res.status(500).json({
       success: false,
       error: 'Failed to delete action',
@@ -737,28 +752,28 @@ router.get('/stats/overview', async (req: Request, res: Response) => {
       aiGenerated,
       recentActions,
     ] = await Promise.all([
-      prisma.actionItem.count({ where }),
-      prisma.actionItem.groupBy({
+      (prisma as any).actionItem.count({ where }),
+      (prisma as any).actionItem.groupBy({
         by: ['status'],
         where,
         _count: true,
       }),
-      prisma.actionItem.groupBy({
+      (prisma as any).actionItem.groupBy({
         by: ['priority'],
         where,
         _count: true,
       }),
-      prisma.actionItem.groupBy({
+      (prisma as any).actionItem.groupBy({
         by: ['actionType'],
         where,
         _count: true,
         orderBy: { _count: { actionType: 'desc' } },
         take: 10,
       }),
-      prisma.actionItem.count({
+      (prisma as any).actionItem.count({
         where: { ...where, isAiGenerated: true },
       }),
-      prisma.actionItem.findMany({
+      (prisma as any).actionItem.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         take: 5,
@@ -779,15 +794,15 @@ router.get('/stats/overview', async (req: Request, res: Response) => {
       data: {
         totalActions,
         aiGeneratedCount: aiGenerated,
-        byStatus: byStatus.reduce((acc: any, item) => {
+        byStatus: byStatus.reduce((acc: any, item: any) => {
           acc[item.status] = item._count;
           return acc;
         }, {}),
-        byPriority: byPriority.reduce((acc: any, item) => {
+        byPriority: byPriority.reduce((acc: any, item: any) => {
           acc[item.priority] = item._count;
           return acc;
         }, {}),
-        byType: byType.map((item) => ({
+        byType: byType.map((item: any) => ({
           type: item.actionType,
           count: item._count,
         })),
@@ -795,7 +810,7 @@ router.get('/stats/overview', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching action stats:', error);
+    logger.error({ err: error }, 'Error fetching action stats');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch action statistics',
@@ -814,7 +829,7 @@ router.post('/analyze-impact', async (req: Request, res: Response) => {
     if (newsId) where.newsId = newsId;
     if (actionId) where.id = actionId;
 
-    const actions = await prisma.actionItem.findMany({
+    const actions = await (prisma as any).actionItem.findMany({
       where: {
         ...where,
         status: 'COMPLETED',
@@ -873,7 +888,7 @@ router.post('/analyze-impact', async (req: Request, res: Response) => {
       data: analysis,
     });
   } catch (error: any) {
-    console.error('Error analyzing impact:', error);
+    logger.error({ err: error }, 'Error analyzing impact');
     res.status(500).json({
       success: false,
       error: 'Failed to analyze impact',
@@ -946,7 +961,7 @@ function generateSimulatedAIActions(news: any, tenantId: string, createdBy: stri
   } else if (news.priority === 'HIGH') {
     selectedActions = actionTypes.slice(0, 2);
   } else {
-    selectedActions = [actionTypes[1], actionTypes[3]]; // Communication and monitoring
+    selectedActions = [actionTypes[1]!, actionTypes[3]!]; // Communication and monitoring
   }
 
   return selectedActions.map((action, index) => ({

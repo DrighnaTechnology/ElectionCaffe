@@ -1,7 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import pino from 'pino';
-import pinoHttp from 'pino-http';
 
 import { electionRoutes } from './routes/elections.js';
 import { partRoutes } from './routes/parts.js';
@@ -10,25 +8,18 @@ import { masterDataRoutes } from './routes/masterData.js';
 import { candidateRoutes } from './routes/candidates.js';
 import { surveyRoutes } from './routes/surveys.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { SERVICE_PORTS } from '@electioncaffe/shared';
+import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
 
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true },
-  },
-});
+export const logger = createLogger('election-service');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-app.use(pinoHttp({ logger }));
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'election-service', timestamp: new Date().toISOString() });
 });
 
@@ -46,5 +37,5 @@ app.use(errorHandler);
 const PORT = process.env.PORT || SERVICE_PORTS.ELECTION;
 
 app.listen(PORT, () => {
-  logger.info(`🗳️ Election Service running on http://localhost:${PORT}`);
+  logger.info({ port: PORT }, 'Election Service running');
 });

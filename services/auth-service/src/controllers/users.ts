@@ -7,7 +7,10 @@ import {
   errorResponse,
   createPaginationMeta,
   calculateSkip,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('auth-service');
 
 export class UserController {
   async getUsers(req: Request, res: Response): Promise<void> {
@@ -58,7 +61,7 @@ export class UserController {
 
       res.json(successResponse(users, createPaginationMeta(total, page, limit)));
     } catch (error) {
-      console.error('Get users error:', error);
+      logger.error({ err: error }, 'Get users error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -93,7 +96,7 @@ export class UserController {
 
       res.json(successResponse(user));
     } catch (error) {
-      console.error('Get user by ID error:', error);
+      logger.error({ err: error }, 'Get user by ID error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -114,7 +117,12 @@ export class UserController {
         return;
       }
 
-      const passwordHash = await bcrypt.hash(password || 'password123', 10);
+      if (!password) {
+        res.status(400).json(errorResponse('E2001', 'Password is required'));
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
 
       const user = await tenantDb.user.create({
         data: {
@@ -141,7 +149,7 @@ export class UserController {
 
       res.status(201).json(successResponse(user));
     } catch (error) {
-      console.error('Create user error:', error);
+      logger.error({ err: error }, 'Create user error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -186,7 +194,7 @@ export class UserController {
 
       res.json(successResponse(user));
     } catch (error) {
-      console.error('Update user error:', error);
+      logger.error({ err: error }, 'Update user error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -215,7 +223,7 @@ export class UserController {
 
       res.json(successResponse({ message: 'User deleted successfully' }));
     } catch (error) {
-      console.error('Delete user error:', error);
+      logger.error({ err: error }, 'Delete user error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -264,7 +272,7 @@ export class UserController {
 
       res.json(successResponse(user));
     } catch (error) {
-      console.error('Update user status error:', error);
+      logger.error({ err: error }, 'Update user status error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -316,7 +324,7 @@ export class UserController {
 
       res.json(successResponse(user));
     } catch (error) {
-      console.error('Update user role error:', error);
+      logger.error({ err: error }, 'Update user role error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

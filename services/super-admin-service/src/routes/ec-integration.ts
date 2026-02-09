@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { coreDb as prisma } from '@electioncaffe/database';
+import { createLogger } from '@electioncaffe/shared';
 import { superAdminAuth } from '../middleware/superAdminAuth.js';
+
+const logger = createLogger('super-admin-service');
 
 const router = Router();
 
@@ -12,7 +15,7 @@ router.get('/tenants/:tenantId', async (req: Request, res: Response) => {
   try {
     const { tenantId } = req.params;
 
-    const integration = await prisma.eCIntegration.findUnique({
+    const integration = await (prisma as any).eCIntegration.findUnique({
       where: { tenantId },
       include: {
         syncLogs: {
@@ -39,7 +42,7 @@ router.get('/tenants/:tenantId', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching EC integration:', error);
+    logger.error({ err: error }, 'Error fetching EC integration');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch EC integration',
@@ -60,17 +63,17 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     const [integrations, total] = await Promise.all([
-      prisma.eCIntegration.findMany({
+      (prisma as any).eCIntegration.findMany({
         where,
         skip,
         take: Number(limit),
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.eCIntegration.count({ where }),
+      (prisma as any).eCIntegration.count({ where }),
     ]);
 
     // Get tenant names
-    const tenantIds = integrations.map((i) => i.tenantId);
+    const tenantIds = integrations.map((i: any) => i.tenantId);
     const tenants = await prisma.tenant.findMany({
       where: { id: { in: tenantIds } },
       select: { id: true, name: true },
@@ -78,7 +81,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     const tenantMap = new Map(tenants.map((t) => [t.id, t.name]));
 
-    const data = integrations.map((i) => ({
+    const data = integrations.map((i: any) => ({
       ...i,
       apiKey: i.apiKey ? '********' : null,
       apiSecret: i.apiSecret ? '********' : null,
@@ -96,7 +99,7 @@ router.get('/', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching EC integrations:', error);
+    logger.error({ err: error }, 'Error fetching EC integrations');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch EC integrations',
@@ -133,7 +136,7 @@ router.put('/tenants/:tenantId', async (req: Request, res: Response) => {
       });
     }
 
-    const integration = await prisma.eCIntegration.upsert({
+    const integration = await (prisma as any).eCIntegration.upsert({
       where: { tenantId },
       create: {
         tenantId,
@@ -169,7 +172,7 @@ router.put('/tenants/:tenantId', async (req: Request, res: Response) => {
       message: 'EC integration configured successfully',
     });
   } catch (error: any) {
-    console.error('Error configuring EC integration:', error);
+    logger.error({ err: error }, 'Error configuring EC integration');
     res.status(500).json({
       success: false,
       error: 'Failed to configure EC integration',
@@ -183,7 +186,7 @@ router.post('/tenants/:tenantId/test', async (req: Request, res: Response) => {
   try {
     const { tenantId } = req.params;
 
-    const integration = await prisma.eCIntegration.findUnique({
+    const integration = await (prisma as any).eCIntegration.findUnique({
       where: { tenantId },
     });
 
@@ -194,35 +197,22 @@ router.post('/tenants/:tenantId/test', async (req: Request, res: Response) => {
       });
     }
 
-    // TODO: Implement actual EC API connection test
-    // For now, simulate a test
-    const testResult = {
-      connected: true,
-      responseTime: 245,
-      apiVersion: '2.0',
-      dataAvailable: {
-        voters: true,
-        parts: true,
-        sections: true,
-      },
-    };
-
-    // Update integration status
-    await prisma.eCIntegration.update({
+    // EC API connection test not yet implemented
+    // Update status to reflect test was attempted
+    await (prisma as any).eCIntegration.update({
       where: { id: integration.id },
       data: {
         status: 'TESTING',
-        lastError: null,
+        lastError: 'EC API integration not yet configured',
       },
     });
 
-    res.json({
-      success: true,
-      data: testResult,
-      message: 'Connection test successful',
+    res.status(503).json({
+      success: false,
+      error: 'EC API connection test is not yet implemented. Please configure the EC API endpoint and credentials first.',
     });
   } catch (error: any) {
-    console.error('Error testing EC integration:', error);
+    logger.error({ err: error }, 'Error testing EC integration');
     res.status(500).json({
       success: false,
       error: 'Connection test failed',
@@ -236,7 +226,7 @@ router.post('/tenants/:tenantId/activate', async (req: Request, res: Response) =
   try {
     const { tenantId } = req.params;
 
-    const integration = await prisma.eCIntegration.findUnique({
+    const integration = await (prisma as any).eCIntegration.findUnique({
       where: { tenantId },
     });
 
@@ -247,7 +237,7 @@ router.post('/tenants/:tenantId/activate', async (req: Request, res: Response) =
       });
     }
 
-    await prisma.eCIntegration.update({
+    await (prisma as any).eCIntegration.update({
       where: { id: integration.id },
       data: {
         status: 'ACTIVE',
@@ -262,7 +252,7 @@ router.post('/tenants/:tenantId/activate', async (req: Request, res: Response) =
       message: 'EC integration activated successfully',
     });
   } catch (error: any) {
-    console.error('Error activating EC integration:', error);
+    logger.error({ err: error }, 'Error activating EC integration');
     res.status(500).json({
       success: false,
       error: 'Failed to activate EC integration',
@@ -276,7 +266,7 @@ router.post('/tenants/:tenantId/suspend', async (req: Request, res: Response) =>
   try {
     const { tenantId } = req.params;
 
-    const integration = await prisma.eCIntegration.findUnique({
+    const integration = await (prisma as any).eCIntegration.findUnique({
       where: { tenantId },
     });
 
@@ -287,7 +277,7 @@ router.post('/tenants/:tenantId/suspend', async (req: Request, res: Response) =>
       });
     }
 
-    await prisma.eCIntegration.update({
+    await (prisma as any).eCIntegration.update({
       where: { id: integration.id },
       data: {
         status: 'SUSPENDED',
@@ -300,7 +290,7 @@ router.post('/tenants/:tenantId/suspend', async (req: Request, res: Response) =>
       message: 'EC integration suspended successfully',
     });
   } catch (error: any) {
-    console.error('Error suspending EC integration:', error);
+    logger.error({ err: error }, 'Error suspending EC integration');
     res.status(500).json({
       success: false,
       error: 'Failed to suspend EC integration',
@@ -316,7 +306,7 @@ router.post('/tenants/:tenantId/sync', async (req: Request, res: Response) => {
     const { syncType = 'full' } = req.body;
     const superAdminId = (req as any).superAdmin?.id;
 
-    const integration = await prisma.eCIntegration.findUnique({
+    const integration = await (prisma as any).eCIntegration.findUnique({
       where: { tenantId },
     });
 
@@ -342,7 +332,7 @@ router.post('/tenants/:tenantId/sync', async (req: Request, res: Response) => {
     }
 
     // Create sync log
-    const syncLog = await prisma.eCSyncLog.create({
+    const syncLog = await (prisma as any).eCSyncLog.create({
       data: {
         integrationId: integration.id,
         syncType,
@@ -351,63 +341,42 @@ router.post('/tenants/:tenantId/sync', async (req: Request, res: Response) => {
     });
 
     // Update integration status
-    await prisma.eCIntegration.update({
+    await (prisma as any).eCIntegration.update({
       where: { id: integration.id },
       data: {
         syncStatus: 'SYNCING',
       },
     });
 
-    // TODO: Implement actual sync logic in background job
-    // For now, simulate completion after a delay
-    setTimeout(async () => {
-      try {
-        // Simulated sync results
-        const votersAdded = Math.floor(Math.random() * 100);
-        const votersUpdated = Math.floor(Math.random() * 50);
-        const partsAdded = Math.floor(Math.random() * 5);
-        const partsUpdated = Math.floor(Math.random() * 3);
+    // EC sync not yet implemented - mark as failed
+    await (prisma as any).eCSyncLog.update({
+      where: { id: syncLog.id },
+      data: {
+        completedAt: new Date(),
+        status: 'failed',
+        errorMessage: 'EC API sync is not yet implemented',
+      },
+    });
 
-        await prisma.eCSyncLog.update({
-          where: { id: syncLog.id },
-          data: {
-            completedAt: new Date(),
-            status: 'completed',
-            votersAdded,
-            votersUpdated,
-            partsAdded,
-            partsUpdated,
-          },
-        });
+    await (prisma as any).eCIntegration.update({
+      where: { id: integration.id },
+      data: {
+        syncStatus: 'FAILED',
+        lastError: 'EC API sync is not yet implemented',
+        failureCount: { increment: 1 },
+      },
+    });
 
-        await prisma.eCIntegration.update({
-          where: { id: integration.id },
-          data: {
-            syncStatus: 'COMPLETED',
-            lastSyncAt: new Date(),
-            successCount: { increment: 1 },
-            totalVotersSynced: { increment: votersAdded },
-            totalPartsSynced: { increment: partsAdded },
-            nextSyncAt: integration.autoSyncEnabled
-              ? new Date(Date.now() + integration.syncIntervalHours * 60 * 60 * 1000)
-              : null,
-          },
-        });
-      } catch (err) {
-        console.error('Error completing sync:', err);
-      }
-    }, 5000);
-
-    res.json({
-      success: true,
+    res.status(503).json({
+      success: false,
       data: {
         syncLogId: syncLog.id,
-        status: 'started',
+        status: 'failed',
       },
-      message: 'Sync started successfully',
+      error: 'EC API sync is not yet implemented. Configure EC API connection before triggering sync.',
     });
   } catch (error: any) {
-    console.error('Error triggering sync:', error);
+    logger.error({ err: error }, 'Error triggering sync');
     res.status(500).json({
       success: false,
       error: 'Failed to trigger sync',
@@ -423,7 +392,7 @@ router.get('/tenants/:tenantId/sync-logs', async (req: Request, res: Response) =
     const { page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const integration = await prisma.eCIntegration.findUnique({
+    const integration = await (prisma as any).eCIntegration.findUnique({
       where: { tenantId },
     });
 
@@ -435,13 +404,13 @@ router.get('/tenants/:tenantId/sync-logs', async (req: Request, res: Response) =
     }
 
     const [syncLogs, total] = await Promise.all([
-      prisma.eCSyncLog.findMany({
+      (prisma as any).eCSyncLog.findMany({
         where: { integrationId: integration.id },
         skip,
         take: Number(limit),
         orderBy: { startedAt: 'desc' },
       }),
-      prisma.eCSyncLog.count({ where: { integrationId: integration.id } }),
+      (prisma as any).eCSyncLog.count({ where: { integrationId: integration.id } }),
     ]);
 
     res.json({
@@ -455,7 +424,7 @@ router.get('/tenants/:tenantId/sync-logs', async (req: Request, res: Response) =
       },
     });
   } catch (error: any) {
-    console.error('Error fetching sync logs:', error);
+    logger.error({ err: error }, 'Error fetching sync logs');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch sync logs',
@@ -469,7 +438,7 @@ router.delete('/tenants/:tenantId', async (req: Request, res: Response) => {
   try {
     const { tenantId } = req.params;
 
-    const integration = await prisma.eCIntegration.findUnique({
+    const integration = await (prisma as any).eCIntegration.findUnique({
       where: { tenantId },
     });
 
@@ -480,7 +449,7 @@ router.delete('/tenants/:tenantId', async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.eCIntegration.delete({
+    await (prisma as any).eCIntegration.delete({
       where: { id: integration.id },
     });
 
@@ -489,7 +458,7 @@ router.delete('/tenants/:tenantId', async (req: Request, res: Response) => {
       message: 'EC integration deleted successfully',
     });
   } catch (error: any) {
-    console.error('Error deleting EC integration:', error);
+    logger.error({ err: error }, 'Error deleting EC integration');
     res.status(500).json({
       success: false,
       error: 'Failed to delete EC integration',

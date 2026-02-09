@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, createLogger } from '@electioncaffe/shared';
 import axios from 'axios';
+
+const logger = createLogger('reporting-service');
 
 const router = Router();
 
@@ -83,7 +85,7 @@ router.post('/embeds', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse(embed));
   } catch (error) {
-    console.error('Create embed error:', error);
+    logger.error({ err: error }, 'Create embed error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -201,7 +203,7 @@ router.post('/proxy', async (req: Request, res: Response) => {
 
     res.json(successResponse(response.data));
   } catch (error: any) {
-    console.error('DataCaffe proxy error:', error.message);
+    logger.error({ err: error }, 'DataCaffe proxy error');
     res.status(error.response?.status || 500).json(
       errorResponse('E5004', error.response?.data?.message || 'DataCaffe API error')
     );
@@ -257,13 +259,13 @@ router.post('/sync/:electionId', async (req: Request, res: Response) => {
       syncData,
     }));
   } catch (error) {
-    console.error('DataCaffe sync error:', error);
+    logger.error({ err: error }, 'DataCaffe sync error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
 
 // Get available DataCaffe dashboard templates
-router.get('/templates', async (req: Request, res: Response) => {
+router.get('/templates', async (_req: Request, res: Response) => {
   try {
     // These would typically come from the DataCaffe API
     const templates = [

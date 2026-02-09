@@ -5,21 +5,12 @@ import rateLimit from 'express-rate-limit';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import pino from 'pino';
-import pinoHttp from 'pino-http';
-
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { setupSocketIO } from './config/socket.js';
-import { SERVICE_PORTS } from '@electioncaffe/shared';
+import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
 
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true },
-  },
-});
+export const logger = createLogger('gateway');
 
 const app = express();
 const httpServer = createServer(app);
@@ -45,7 +36,14 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(pinoHttp({ logger }));
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    logger.info({ method: req.method, url: req.url, statusCode: res.statusCode, durationMs: Date.now() - start }, 'request completed');
+  });
+  next();
+});
 
 // Rate limiting
 const limiter = rateLimit({
@@ -56,12 +54,9 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'gateway', timestamp: new Date().toISOString() });
 });
-
-// Public routes (no auth required) - these go directly to proxy without auth check
-const publicPaths = ['/api/auth/login', '/api/auth/register', '/api/auth/refresh', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/auth/verify-otp'];
 
 // Create proxy - NO body parsing, just forward the raw request
 const createServiceProxy = (target: string, pathRewrite?: Record<string, string>) => {
@@ -140,7 +135,7 @@ masterDataRoutes.forEach(route => {
 app.use(errorHandler);
 
 // 404 handler
-app.use((req, res) => {
+app.use((_req, res) => {
   res.status(404).json({
     success: false,
     error: {
@@ -153,16 +148,19 @@ app.use((req, res) => {
 const PORT = process.env.PORT || SERVICE_PORTS.GATEWAY;
 
 httpServer.listen(PORT, () => {
-  logger.info(`🚀 API Gateway running on http://localhost:${PORT}`);
-  logger.info('Services routing:');
-  logger.info(`  /api/auth -> http://localhost:${SERVICE_PORTS.AUTH}`);
-  logger.info(`  /api/elections -> http://localhost:${SERVICE_PORTS.ELECTION}`);
-  logger.info(`  /api/voters -> http://localhost:${SERVICE_PORTS.VOTER}`);
-  logger.info(`  /api/cadres -> http://localhost:${SERVICE_PORTS.CADRE}`);
-  logger.info(`  /api/analytics -> http://localhost:${SERVICE_PORTS.ANALYTICS}`);
-  logger.info(`  /api/reports -> http://localhost:${SERVICE_PORTS.REPORTING}`);
-  logger.info(`  /api/ai-analytics -> http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`);
-  logger.info(`  /api/super-admin -> http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`);
+  logger.info({ port: PORT }, 'API Gateway started');
+  logger.info({
+    routes: {
+      auth: `http://localhost:${SERVICE_PORTS.AUTH}`,
+      elections: `http://localhost:${SERVICE_PORTS.ELECTION}`,
+      voters: `http://localhost:${SERVICE_PORTS.VOTER}`,
+      cadres: `http://localhost:${SERVICE_PORTS.CADRE}`,
+      analytics: `http://localhost:${SERVICE_PORTS.ANALYTICS}`,
+      reports: `http://localhost:${SERVICE_PORTS.REPORTING}`,
+      aiAnalytics: `http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`,
+      superAdmin: `http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`,
+    },
+  }, 'Services routing configured');
 });
 
 export { io };

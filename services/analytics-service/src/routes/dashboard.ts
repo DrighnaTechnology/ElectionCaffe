@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getTenantDb } from '../utils/tenantDb.js';
-import { successResponse, errorResponse, calculatePercentage, CHART_COLORS } from '@electioncaffe/shared';
+import { successResponse, errorResponse, calculatePercentage, CHART_COLORS, createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('analytics-service');
 
 const router = Router();
 
@@ -39,16 +41,16 @@ router.get('/election/:electionId', async (req: Request, res: Response) => {
       genderStats,
       voterCategoryStats,
     ] = await Promise.all([
-      (tenantDb as any).voter.count({ where: { electionId, isDeleted: false } }),
-      (tenantDb as any).voter.count({ where: { electionId, isDeleted: false, gender: 'MALE' } }),
-      (tenantDb as any).voter.count({ where: { electionId, isDeleted: false, gender: 'FEMALE' } }),
-      (tenantDb as any).voter.count({ where: { electionId, isDeleted: false, gender: 'OTHER' } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, gender: 'MALE' } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, gender: 'FEMALE' } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, gender: 'OTHER' } }),
       (tenantDb as any).part.count({ where: { electionId } }),
       (tenantDb as any).family.count({ where: { electionId } }),
       (tenantDb as any).cadre.count({ where: { electionId, isActive: true } }),
-      (tenantDb as any).voter.count({ where: { electionId, isDeleted: false, mobile: { not: null } } }),
-      (tenantDb as any).voter.count({ where: { electionId, isDeleted: false, dateOfBirth: { not: null } } }),
-      Promise.resolve(0), // isCrossBooth field not in tenant schema
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, mobile: { not: null } } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, dateOfBirth: { not: null } } }),
+      getCrossBoothFamilyCount(tenantDb, electionId as string),
       (tenantDb as any).family.count({ where: { electionId, totalMembers: 1 } }),
       getReligionStats(tenantDb, electionId as string),
       getCasteStats(tenantDb, electionId as string),
@@ -105,7 +107,7 @@ router.get('/election/:electionId', async (req: Request, res: Response) => {
 
     res.json(successResponse(dashboard));
   } catch (error) {
-    console.error('Get election dashboard error:', error);
+    logger.error({ err: error }, 'Get election dashboard error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -167,7 +169,7 @@ router.get('/cadre/:electionId', async (req: Request, res: Response) => {
 
     res.json(successResponse(dashboard));
   } catch (error) {
-    console.error('Get cadre dashboard error:', error);
+    logger.error({ err: error }, 'Get cadre dashboard error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -179,7 +181,7 @@ router.get('/poll-day/:electionId', async (req: Request, res: Response) => {
     const { electionId } = req.params;
 
     const [totalVoters, votedCount, hourlyTurnout, boothTurnout] = await Promise.all([
-      (tenantDb as any).voter.count({ where: { electionId, isDeleted: false } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null } }),
       (tenantDb as any).pollDayVote.count({ where: { electionId } }),
       getHourlyTurnout(tenantDb, electionId as string),
       getBoothTurnout(tenantDb, electionId as string),
@@ -195,7 +197,7 @@ router.get('/poll-day/:electionId', async (req: Request, res: Response) => {
 
     res.json(successResponse(dashboard));
   } catch (error) {
-    console.error('Get poll day dashboard error:', error);
+    logger.error({ err: error }, 'Get poll day dashboard error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -265,13 +267,13 @@ router.get('/stats/schemes/:electionId', async (req: Request, res: Response) => 
 async function getReligionStats(tenantDb: any, electionId: string) {
   const stats = await tenantDb.voter.groupBy({
     by: ['religionId'],
-    where: { electionId, isDeleted: false },
+    where: { electionId, deletedAt: null },
     _count: { id: true },
   });
 
   const religions = await tenantDb.religion.findMany({
     where: { electionId },
-    select: { id: true, name: true },
+    select: { id: true, religionName: true },
   });
 
   const total = stats.reduce((sum: number, s: any) => sum + s._count.id, 0);
@@ -279,7 +281,7 @@ async function getReligionStats(tenantDb: any, electionId: string) {
   return stats.map((s: any, i: number) => {
     const religion = religions.find((r: any) => r.id === s.religionId);
     return {
-      label: religion?.name || 'Unknown',
+      label: religion?.religionName || 'Unknown',
       value: s._count.id,
       color: CHART_COLORS[i % CHART_COLORS.length],
       percentage: calculatePercentage(s._count.id, total),
@@ -290,13 +292,13 @@ async function getReligionStats(tenantDb: any, electionId: string) {
 async function getCasteStats(tenantDb: any, electionId: string) {
   const stats = await tenantDb.voter.groupBy({
     by: ['casteId'],
-    where: { electionId, isDeleted: false },
+    where: { electionId, deletedAt: null },
     _count: { id: true },
   });
 
   const castes = await tenantDb.caste.findMany({
     where: { electionId },
-    select: { id: true, name: true },
+    select: { id: true, casteName: true },
   });
 
   const total = stats.reduce((sum: number, s: any) => sum + s._count.id, 0);
@@ -304,7 +306,7 @@ async function getCasteStats(tenantDb: any, electionId: string) {
   return stats.map((s: any, i: number) => {
     const caste = castes.find((c: any) => c.id === s.casteId);
     return {
-      label: caste?.name || 'Unknown',
+      label: caste?.casteName || 'Unknown',
       value: s._count.id,
       color: CHART_COLORS[i % CHART_COLORS.length],
       percentage: calculatePercentage(s._count.id, total),
@@ -315,13 +317,13 @@ async function getCasteStats(tenantDb: any, electionId: string) {
 async function getCasteCategoryStats(tenantDb: any, electionId: string) {
   const stats = await tenantDb.voter.groupBy({
     by: ['casteCategoryId'],
-    where: { electionId, isDeleted: false },
+    where: { electionId, deletedAt: null },
     _count: { id: true },
   });
 
   const categories = await tenantDb.casteCategory.findMany({
     where: { electionId },
-    select: { id: true, name: true },
+    select: { id: true, categoryName: true },
   });
 
   const total = stats.reduce((sum: number, s: any) => sum + s._count.id, 0);
@@ -329,7 +331,7 @@ async function getCasteCategoryStats(tenantDb: any, electionId: string) {
   return stats.map((s: any, i: number) => {
     const category = categories.find((c: any) => c.id === s.casteCategoryId);
     return {
-      label: category?.name || 'Unknown',
+      label: category?.categoryName || 'Unknown',
       value: s._count.id,
       color: CHART_COLORS[i % CHART_COLORS.length],
       percentage: calculatePercentage(s._count.id, total),
@@ -340,13 +342,13 @@ async function getCasteCategoryStats(tenantDb: any, electionId: string) {
 async function getLanguageStats(tenantDb: any, electionId: string) {
   const stats = await tenantDb.voter.groupBy({
     by: ['languageId'],
-    where: { electionId, isDeleted: false },
+    where: { electionId, deletedAt: null },
     _count: { id: true },
   });
 
   const languages = await tenantDb.language.findMany({
     where: { electionId },
-    select: { id: true, name: true },
+    select: { id: true, languageName: true },
   });
 
   const total = stats.reduce((sum: number, s: any) => sum + s._count.id, 0);
@@ -354,7 +356,7 @@ async function getLanguageStats(tenantDb: any, electionId: string) {
   return stats.map((s: any, i: number) => {
     const language = languages.find((l: any) => l.id === s.languageId);
     return {
-      label: language?.name || 'Unknown',
+      label: language?.languageName || 'Unknown',
       value: s._count.id,
       color: CHART_COLORS[i % CHART_COLORS.length],
       percentage: calculatePercentage(s._count.id, total),
@@ -363,27 +365,33 @@ async function getLanguageStats(tenantDb: any, electionId: string) {
 }
 
 async function getPartyStats(tenantDb: any, electionId: string) {
-  // Note: Voter model uses partyAffiliation (string) not partyId (relation)
   const stats = await tenantDb.voter.groupBy({
-    by: ['partyAffiliation'],
-    where: { electionId, isDeleted: false, partyAffiliation: { not: null } },
+    by: ['partyId'],
+    where: { electionId, deletedAt: null, partyId: { not: null } },
     _count: { id: true },
+  });
+
+  const parties = await tenantDb.party.findMany({
+    select: { id: true, partyName: true, partyColor: true },
   });
 
   const total = stats.reduce((sum: number, s: any) => sum + s._count.id, 0);
 
-  return stats.map((s: any, i: number) => ({
-    label: s.partyAffiliation || 'Unknown',
-    value: s._count.id,
-    color: CHART_COLORS[i % CHART_COLORS.length],
-    percentage: calculatePercentage(s._count.id, total),
-  }));
+  return stats.map((s: any, i: number) => {
+    const party = parties.find((p: any) => p.id === s.partyId);
+    return {
+      label: party?.partyName || 'Unknown',
+      value: s._count.id,
+      color: party?.partyColor || CHART_COLORS[i % CHART_COLORS.length],
+      percentage: calculatePercentage(s._count.id, total),
+    };
+  });
 }
 
 async function getGenderStats(tenantDb: any, electionId: string) {
   const stats = await tenantDb.voter.groupBy({
     by: ['gender'],
-    where: { electionId, isDeleted: false },
+    where: { electionId, deletedAt: null },
     _count: { id: true },
   });
 
@@ -399,21 +407,28 @@ async function getGenderStats(tenantDb: any, electionId: string) {
 }
 
 async function getVoterCategoryStats(tenantDb: any, electionId: string) {
-  // Note: Voter model stores categories in JSON field 'categories', not as a relation
-  // This function returns voter categories from the VoterCategory table with voter counts
-  const categories = await tenantDb.voterCategory.findMany({
-    where: { electionId },
-    select: { id: true, name: true, color: true },
+  const stats = await tenantDb.voter.groupBy({
+    by: ['voterCategoryId'],
+    where: { electionId, deletedAt: null, voterCategoryId: { not: null } },
+    _count: { id: true },
   });
 
-  // Since categories is a JSON array in Voter, we can't easily groupBy
-  // Return categories without voter count for now
-  return categories.map((cat: any, i: number) => ({
-    label: cat.name || 'Unknown',
-    value: 0, // Would need to parse JSON to count
-    color: cat.color || CHART_COLORS[i % CHART_COLORS.length],
-    percentage: 0,
-  }));
+  const categories = await tenantDb.voterCategory.findMany({
+    where: { electionId },
+    select: { id: true, categoryName: true, categoryColor: true },
+  });
+
+  const total = stats.reduce((sum: number, s: any) => sum + s._count.id, 0);
+
+  return stats.map((s: any, i: number) => {
+    const category = categories.find((c: any) => c.id === s.voterCategoryId);
+    return {
+      label: category?.categoryName || 'Unknown',
+      value: s._count.id,
+      color: category?.categoryColor || CHART_COLORS[i % CHART_COLORS.length],
+      percentage: calculatePercentage(s._count.id, total),
+    };
+  });
 }
 
 async function getSchemeStats(tenantDb: any, electionId: string) {
@@ -446,7 +461,7 @@ async function getHourlyTurnout(tenantDb: any, electionId: string) {
     hourlyData[hour] = (hourlyData[hour] || 0) + 1;
   });
 
-  const totalVoters = await tenantDb.voter.count({ where: { electionId, isDeleted: false } });
+  const totalVoters = await tenantDb.voter.count({ where: { electionId, deletedAt: null } });
   let cumulative = 0;
 
   return Object.entries(hourlyData)
@@ -482,6 +497,25 @@ async function getBoothTurnout(tenantDb: any, electionId: string) {
     votedCount: booth._count.pollDayVotes,
     percentage: calculatePercentage(booth._count.pollDayVotes, booth.totalVoters),
   }));
+}
+
+async function getCrossBoothFamilyCount(tenantDb: any, electionId: string) {
+  // Count families whose members span multiple parts (booths)
+  const families = await tenantDb.family.findMany({
+    where: { electionId, totalMembers: { gt: 1 } },
+    select: {
+      id: true,
+      voters: {
+        where: { deletedAt: null },
+        select: { partId: true },
+      },
+    },
+  });
+
+  return families.filter((f: any) => {
+    const uniqueParts = new Set(f.voters.map((m: any) => m.partId).filter(Boolean));
+    return uniqueParts.size > 1;
+  }).length;
 }
 
 export { router as dashboardRoutes };

@@ -13,7 +13,6 @@ import {
   XCircleIcon,
   RefreshCwIcon,
   CopyIcon,
-  SearchIcon,
 } from 'lucide-react';
 
 type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED' | 'RESENT';

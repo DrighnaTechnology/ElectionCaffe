@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 import { Decimal } from '@prisma/client/runtime/library';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // ==================== FUND ACCOUNTS ====================
@@ -37,7 +38,7 @@ router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(accounts));
   } catch (error) {
-    console.error('Get fund accounts error:', error);
+    logger.error({ err: error }, 'Get fund accounts error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -88,7 +89,7 @@ router.post('/accounts', async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(successResponse({ account, message: 'Fund account created successfully' }));
   } catch (error) {
-    console.error('Create fund account error:', error);
+    logger.error({ err: error }, 'Create fund account error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -144,7 +145,7 @@ router.put('/accounts/:id', async (req: Request, res: Response): Promise<void> =
 
     res.json(successResponse({ account: updatedAccount, message: 'Account updated successfully' }));
   } catch (error) {
-    console.error('Update fund account error:', error);
+    logger.error({ err: error }, 'Update fund account error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -193,7 +194,7 @@ router.get('/donations', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ donations, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
   } catch (error) {
-    console.error('Get donations error:', error);
+    logger.error({ err: error }, 'Get donations error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -286,7 +287,7 @@ router.post('/donations', async (req: Request, res: Response): Promise<void> => 
 
     res.status(201).json(successResponse({ donation, message: 'Donation recorded successfully' }));
   } catch (error) {
-    console.error('Create donation error:', error);
+    logger.error({ err: error }, 'Create donation error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -336,7 +337,7 @@ router.get('/expenses', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ expenses, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
   } catch (error) {
-    console.error('Get expenses error:', error);
+    logger.error({ err: error }, 'Get expenses error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -401,7 +402,7 @@ router.post('/expenses', async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(successResponse({ expense, message: 'Expense request submitted' }));
   } catch (error) {
-    console.error('Create expense error:', error);
+    logger.error({ err: error }, 'Create expense error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -496,7 +497,7 @@ router.patch('/expenses/:id/status', async (req: Request, res: Response): Promis
 
     res.json(successResponse({ expense: updatedExpense, message: `Expense ${status.toLowerCase()}` }));
   } catch (error) {
-    console.error('Update expense status error:', error);
+    logger.error({ err: error }, 'Update expense status error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -545,7 +546,7 @@ router.get('/transactions', async (req: Request, res: Response): Promise<void> =
 
     res.json(successResponse({ transactions, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
   } catch (error) {
-    console.error('Get transactions error:', error);
+    logger.error({ err: error }, 'Get transactions error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -622,7 +623,7 @@ router.get('/summary', async (req: Request, res: Response): Promise<void> => {
       recentTransactions,
     }));
   } catch (error) {
-    console.error('Get fund summary error:', error);
+    logger.error({ err: error }, 'Get fund summary error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

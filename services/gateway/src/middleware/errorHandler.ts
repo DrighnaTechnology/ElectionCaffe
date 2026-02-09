@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import pino from 'pino';
+import { createLogger } from '@electioncaffe/shared';
 
-const logger = pino({ level: 'error' });
+const logger = createLogger('gateway');
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -13,7 +13,7 @@ export function errorHandler(
   err: AppError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void {
   logger.error({
     err,

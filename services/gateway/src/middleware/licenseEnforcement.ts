@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient, LicenseStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('gateway');
 
 const prisma = new PrismaClient();
 
@@ -62,7 +65,7 @@ export async function licenseEnforcementMiddleware(
 
     next();
   } catch (error) {
-    console.error('License enforcement error:', error);
+    logger.error({ err: error }, 'License enforcement error');
     // Don't block on errors - just log and continue
     next();
   }
@@ -335,7 +338,7 @@ export async function apiRateLimitMiddleware(
 
     next();
   } catch (error) {
-    console.error('API rate limit error:', error);
+    logger.error({ err: error }, 'API rate limit error');
     // Don't block on errors
     next();
   }
@@ -391,7 +394,7 @@ async function incrementApiCounters(
     });
   } catch (error) {
     // Ignore counter errors - don't block requests
-    console.error('Failed to increment API counters:', error);
+    logger.error({ err: error }, 'Failed to increment API counters');
   }
 }
 

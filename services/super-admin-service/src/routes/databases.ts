@@ -4,7 +4,6 @@ import {
   prisma,
   provisionTenantDatabase,
   checkTenantDatabaseHealth,
-  getTenantDatabaseStatuses,
   testDatabaseConnection,
   generateTenantDbName,
   dropTenantDatabase,
@@ -17,7 +16,7 @@ const router = Router();
 router.use(superAdminAuthMiddleware);
 
 // Get all tenant database statuses
-router.get('/status', async (req, res, next) => {
+router.get('/status', async (_req, res, next) => {
   try {
     const tenants = await prisma.tenant.findMany({
       select: {
@@ -269,7 +268,7 @@ router.put('/:tenantId/config', async (req, res, next) => {
 });
 
 // Provision databases for all tenants without one
-router.post('/provision-all', async (req, res, next) => {
+router.post('/provision-all', async (_req, res, next) => {
   try {
     const tenants = await prisma.tenant.findMany({
       where: {

@@ -1,4 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import { createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('election-service');
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -8,11 +11,11 @@ export interface AppError extends Error {
 
 export function errorHandler(
   err: AppError,
-  req: Request,
+  _req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void {
-  console.error('Error:', err);
+  logger.error({ err }, 'Unhandled error');
 
   const statusCode = err.statusCode || 500;
   const code = err.code || 'E5001';

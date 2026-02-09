@@ -54,7 +54,6 @@ import {
   NewspaperIcon,
   ListTodoIcon,
   GlobeIcon,
-  UserCheckIcon,
   FileCheck2Icon,
   ContactIcon,
   WalletIcon,
@@ -172,6 +171,13 @@ export function DashboardLayout() {
   });
 
   const elections = electionsData?.data?.data || [];
+
+  // Auto-select first election if none selected
+  useEffect(() => {
+    if (elections.length > 0 && !selectedElectionId) {
+      setSelectedElection(elections[0].id);
+    }
+  }, [elections, selectedElectionId, setSelectedElection]);
 
   // Create dynamic navigation items based on enabled features
   const dynamicNavItems = [

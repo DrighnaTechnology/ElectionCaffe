@@ -11,52 +11,58 @@ import {
   generateOTP,
 } from '@electioncaffe/shared';
 import type { UserPayload, LoginResponse } from '@electioncaffe/shared';
+import { createLogger } from '@electioncaffe/shared';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key-change-in-production';
+const logger = createLogger('auth-service');
+
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  throw new Error('JWT_REFRESH_SECRET environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 
 export class AuthController {
   async login(req: Request, res: Response): Promise<void> {
     try {
-      console.log('🔐 [AUTH] Login attempt received:', { body: req.body });
+      logger.debug({ body: req.body }, '[AUTH] Login attempt received');
 
       const validation = loginSchema.safeParse(req.body);
       if (!validation.success) {
-        console.log('❌ [AUTH] Validation failed:', validation.error.errors);
+        logger.debug({ errors: validation.error.errors }, '[AUTH] Validation failed');
         res.status(400).json(errorResponse('E2001', 'Validation error', validation.error.errors));
         return;
       }
 
       const { mobile, email, password, tenantSlug } = validation.data;
-      console.log('✅ [AUTH] Validation passed:', { mobile, email, tenantSlug });
+      logger.debug({ mobile, email, tenantSlug }, '[AUTH] Validation passed');
 
       // Step 1: Find tenant in core database
-      console.log('🔧 [AUTH] Environment check:', {
-        CORE_DATABASE_URL: process.env.CORE_DATABASE_URL ? 'SET' : 'NOT SET',
-        DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
-      });
+      logger.debug({ CORE_DATABASE_URL: process.env.CORE_DATABASE_URL ? 'SET' : 'NOT SET', DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET' }, '[AUTH] Environment check');
 
       let tenant;
       if (tenantSlug) {
-        console.log(`🔍 [AUTH] Looking up tenant by slug: "${tenantSlug}"`);
+        logger.debug({ tenantSlug }, '[AUTH] Looking up tenant by slug');
         try {
           tenant = await coreDb.tenant.findUnique({ where: { slug: tenantSlug } });
         } catch (dbError) {
-          console.error('💥 [AUTH] Database error during tenant lookup:', dbError);
+          logger.error({ err: dbError }, '[AUTH] Database error during tenant lookup');
           throw dbError;
         }
       } else {
-        console.log('🔍 [AUTH] No tenant slug provided, getting first active tenant');
+        logger.debug('[AUTH] No tenant slug provided, getting first active tenant');
         // Get first active tenant as default
         tenant = await coreDb.tenant.findFirst({ where: { status: 'ACTIVE' } });
       }
 
-      console.log('📋 [AUTH] Tenant lookup result:', tenant ? { id: tenant.id, slug: tenant.slug, name: tenant.name, status: tenant.status } : 'null');
+      logger.debug({ tenant: tenant ? { id: tenant.id, slug: tenant.slug, name: tenant.name, status: tenant.status } : null }, '[AUTH] Tenant lookup result');
 
       if (!tenant) {
-        console.log('❌ [AUTH] Tenant not found - returning 404');
+        logger.debug('[AUTH] Tenant not found - returning 404');
         res.status(404).json(errorResponse('E3001', 'Tenant not found'));
         return;
       }
@@ -115,6 +121,8 @@ export class AuthController {
       const userPayload: UserPayload = {
         id: user.id,
         tenantId: user.tenantId,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
         email: user.email || undefined,
         mobile: user.mobile,
         role: user.role as UserPayload['role'],
@@ -148,7 +156,7 @@ export class AuthController {
 
       res.json(successResponse(response));
     } catch (error) {
-      console.error('Login error:', error);
+      logger.error({ err: error }, 'Login error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -232,7 +240,7 @@ export class AuthController {
         role: user.role,
       }));
     } catch (error) {
-      console.error('Register error:', error);
+      logger.error({ err: error }, 'Register error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -299,6 +307,8 @@ export class AuthController {
       const userPayload: UserPayload = {
         id: user.id,
         tenantId: user.tenantId,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
         email: user.email || undefined,
         mobile: user.mobile,
         role: user.role as UserPayload['role'],
@@ -316,7 +326,7 @@ export class AuthController {
         res.status(401).json(errorResponse('E1003', 'Refresh token expired'));
         return;
       }
-      console.error('Refresh token error:', error);
+      logger.error({ err: error }, 'Refresh token error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -366,7 +376,7 @@ export class AuthController {
 
       res.json(successResponse({ message: 'Logged out successfully' }));
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error({ err: error }, 'Logout error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -430,7 +440,7 @@ export class AuthController {
         },
       }));
     } catch (error) {
-      console.error('Get profile error:', error);
+      logger.error({ err: error }, 'Get profile error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -485,7 +495,7 @@ export class AuthController {
         profilePhotoUrl: user.profilePhotoUrl,
       }));
     } catch (error) {
-      console.error('Update profile error:', error);
+      logger.error({ err: error }, 'Update profile error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -551,7 +561,7 @@ export class AuthController {
 
       res.json(successResponse({ message: 'Password changed successfully' }));
     } catch (error) {
-      console.error('Change password error:', error);
+      logger.error({ err: error }, 'Change password error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -613,8 +623,7 @@ export class AuthController {
         },
       });
 
-      // In production, send OTP via SMS
-      console.log(`OTP for ${mobile}: ${otp}`);
+      // OTP sent via notification provider (see notification service)
 
       res.json(successResponse({
         message: 'OTP has been sent to your mobile number',
@@ -622,7 +631,7 @@ export class AuthController {
         ...(process.env.NODE_ENV === 'development' && { otp }),
       }));
     } catch (error) {
-      console.error('Forgot password error:', error);
+      logger.error({ err: error }, 'Forgot password error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -697,7 +706,7 @@ export class AuthController {
         resetToken,
       }));
     } catch (error) {
-      console.error('Verify OTP error:', error);
+      logger.error({ err: error }, 'Verify OTP error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -757,7 +766,7 @@ export class AuthController {
         res.status(400).json(errorResponse('E1006', 'Reset token expired'));
         return;
       }
-      console.error('Reset password error:', error);
+      logger.error({ err: error }, 'Reset password error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

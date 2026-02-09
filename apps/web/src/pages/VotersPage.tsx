@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { votersAPI, partsAPI } from '../services/api';
 import { useElectionStore } from '../store/election';
@@ -65,6 +66,7 @@ const votersTemplateColumns: TemplateColumn[] = [
 ];
 
 export function VotersPage() {
+  const navigate = useNavigate();
   const { selectedElectionId } = useElectionStore();
   const [search, setSearch] = useState('');
   const [partFilter, setPartFilter] = useState('all');
@@ -456,7 +458,7 @@ export function VotersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => navigate(`/voters/${voter.id}`)}>
                             <EditIcon className="h-4 w-4 mr-2" />
                             Edit
                           </DropdownMenuItem>

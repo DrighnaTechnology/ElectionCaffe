@@ -21,8 +21,6 @@ export function LoginPage() {
   const tenant = detectTenant();
   const tenantSlug = getTenantSlug();
 
-  console.log('🌐 [FRONTEND] Tenant detection:', { tenant, tenantSlug, url: window.location.href, port: window.location.port });
-
   const loginMutation = useMutation({
     mutationFn: () => authAPI.login(identifier, password, tenantSlug),
     onSuccess: (response) => {

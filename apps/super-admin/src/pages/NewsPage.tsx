@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { newsAPI, tenantsAPI } from '../services/api';
+import { newsAPI } from '../services/api';
 import { formatDateTime } from '../lib/utils';
 import { toast } from 'sonner';
 import {
@@ -9,7 +9,6 @@ import {
   XIcon,
   SearchIcon,
   FilterIcon,
-  EyeIcon,
   EditIcon,
   TrashIcon,
   SendIcon,
@@ -17,10 +16,7 @@ import {
   FlagIcon,
   SparklesIcon,
   MapPinIcon,
-  TagIcon,
-  CalendarIcon,
   TrendingUpIcon,
-  AlertTriangleIcon,
 } from 'lucide-react';
 
 type NewsStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED' | 'FLAGGED';
@@ -515,7 +511,7 @@ function NewsModal({
     mutationFn: () => {
       const data = {
         ...formData,
-        tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
+        tags: formData.tags ? formData.tags.split(',').map((t: any) => t.trim()) : [],
       };
       return news ? newsAPI.update(news.id, data) : newsAPI.create(data);
     },

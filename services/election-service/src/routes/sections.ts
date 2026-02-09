@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getTenantDb } from '../utils/tenantDb.js';
-import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, createSectionSchema } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, createSectionSchema, createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('election-service');
 
 const router = Router();
 
@@ -45,7 +47,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     res.json(successResponse(sections, createPaginationMeta(total, page, limit)));
   } catch (error) {
-    console.error('Get sections error:', error);
+    logger.error({ err: error }, 'Get sections error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -68,7 +70,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(section));
   } catch (error) {
-    console.error('Get section error:', error);
+    logger.error({ err: error }, 'Get section error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -94,7 +96,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse(section));
   } catch (error) {
-    console.error('Create section error:', error);
+    logger.error({ err: error }, 'Create section error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -138,7 +140,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse({ created, failed, errors }));
   } catch (error) {
-    console.error('Bulk create sections error:', error);
+    logger.error({ err: error }, 'Bulk create sections error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -161,7 +163,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(section));
   } catch (error) {
-    console.error('Update section error:', error);
+    logger.error({ err: error }, 'Update section error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -174,7 +176,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     await (tenantDb as any).section.delete({ where: { id } });
     res.json(successResponse({ message: 'Section deleted successfully' }));
   } catch (error) {
-    console.error('Delete section error:', error);
+    logger.error({ err: error }, 'Delete section error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

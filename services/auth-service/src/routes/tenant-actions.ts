@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // Helper to get tenant from user
@@ -50,7 +51,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
         where,
         skip,
         take: Number(limit),
-        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }] as any,
         include: {
           news: {
             select: {
@@ -59,7 +60,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
               category: true,
             },
           },
-        },
+        } as any,
       }),
       prisma.actionItem.count({ where }),
     ]);
@@ -74,7 +75,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       },
     }));
   } catch (error) {
-    console.error('Get tenant actions error:', error);
+    logger.error({ err: error }, 'Get tenant actions error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -108,7 +109,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(action));
   } catch (error) {
-    console.error('Get action detail error:', error);
+    logger.error({ err: error }, 'Get action detail error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -187,7 +188,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         targetAudience,
         successMetrics,
         createdBy: userId,
-      },
+      } as any,
       include: {
         news: {
           select: {
@@ -195,12 +196,12 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
             title: true,
           },
         },
-      },
+      } as any,
     });
 
-    res.status(201).json(successResponse(action, 'Action created successfully'));
+    res.status(201).json(successResponse({ ...action, message: 'Action created successfully' }));
   } catch (error) {
-    console.error('Create action error:', error);
+    logger.error({ err: error }, 'Create action error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -279,12 +280,12 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
         ...(requiredResources !== undefined && { requiredResources }),
         ...(targetAudience !== undefined && { targetAudience }),
         ...(successMetrics !== undefined && { successMetrics }),
-      },
+      } as any,
     });
 
-    res.json(successResponse(action, 'Action updated successfully'));
+    res.json(successResponse({ ...action, message: 'Action updated successfully' }));
   } catch (error) {
-    console.error('Update action error:', error);
+    logger.error({ err: error }, 'Update action error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -325,7 +326,7 @@ router.patch('/:id/status', async (req: Request, res: Response): Promise<void> =
       if (outcome) updateData.outcome = outcome;
     }
 
-    if (status === 'IN_PROGRESS' && existingAction.status === 'PENDING') {
+    if (status === 'IN_PROGRESS' && (existingAction.status as string) === 'PENDING') {
       updateData.startedAt = new Date();
     }
 
@@ -334,9 +335,9 @@ router.patch('/:id/status', async (req: Request, res: Response): Promise<void> =
       data: updateData,
     });
 
-    res.json(successResponse(action, `Action status updated to ${status}`));
+    res.json(successResponse({ ...action, message: `Action status updated to ${status}` }));
   } catch (error) {
-    console.error('Update action status error:', error);
+    logger.error({ err: error }, 'Update action status error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -379,9 +380,9 @@ router.patch('/:id/assign', async (req: Request, res: Response): Promise<void> =
       },
     });
 
-    res.json(successResponse(action, 'Action assigned successfully'));
+    res.json(successResponse({ ...action, message: 'Action assigned successfully' }));
   } catch (error) {
-    console.error('Assign action error:', error);
+    logger.error({ err: error }, 'Assign action error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -416,9 +417,9 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
 
     await prisma.actionItem.delete({ where: { id } });
 
-    res.json(successResponse(null, 'Action deleted successfully'));
+    res.json(successResponse({ message: 'Action deleted successfully' }));
   } catch (error) {
-    console.error('Delete action error:', error);
+    logger.error({ err: error }, 'Delete action error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -461,7 +462,7 @@ router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void
         tenantId: tenant.id,
         dueDate: { lt: new Date() },
         status: { notIn: ['COMPLETED', 'CANCELLED'] },
-      },
+      } as any,
     });
 
     // Get recent actions
@@ -476,7 +477,7 @@ router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void
         priority: true,
         dueDate: true,
         assignedToName: true,
-      },
+      } as any,
     });
 
     // Get upcoming due actions
@@ -485,9 +486,9 @@ router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void
         tenantId: tenant.id,
         dueDate: { gte: new Date() },
         status: { notIn: ['COMPLETED', 'CANCELLED'] },
-      },
+      } as any,
       take: 5,
-      orderBy: { dueDate: 'asc' },
+      orderBy: { dueDate: 'asc' } as any,
       select: {
         id: true,
         title: true,
@@ -495,7 +496,7 @@ router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void
         priority: true,
         dueDate: true,
         assignedToName: true,
-      },
+      } as any,
     });
 
     res.json(successResponse({
@@ -507,7 +508,7 @@ router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void
       upcomingActions,
     }));
   } catch (error) {
-    console.error('Get actions stats error:', error);
+    logger.error({ err: error }, 'Get actions stats error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -537,12 +538,12 @@ router.get('/my/assigned', async (req: Request, res: Response): Promise<void> =>
         where,
         skip,
         take: Number(limit),
-        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }],
+        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }] as any,
         include: {
           news: {
             select: { id: true, title: true },
           },
-        },
+        } as any,
       }),
       prisma.actionItem.count({ where }),
     ]);
@@ -557,7 +558,7 @@ router.get('/my/assigned', async (req: Request, res: Response): Promise<void> =>
       },
     }));
   } catch (error) {
-    console.error('Get my actions error:', error);
+    logger.error({ err: error }, 'Get my actions error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -606,7 +607,7 @@ router.post('/generate/:newsId', async (req: Request, res: Response): Promise<vo
       requestedAt: new Date().toISOString(),
     }));
   } catch (error) {
-    console.error('Generate actions error:', error);
+    logger.error({ err: error }, 'Generate actions error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

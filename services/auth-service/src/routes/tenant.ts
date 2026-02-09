@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { Client } from 'pg';
 import { coreDb } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // Get tenant branding/settings (accessible by all authenticated users)
@@ -35,7 +36,7 @@ router.get('/branding', async (req: Request, res: Response): Promise<void> => {
       customDomain: tenant.customDomain,
     }));
   } catch (error) {
-    console.error('Get tenant branding error:', error);
+    logger.error({ err: error }, 'Get tenant branding error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -109,7 +110,7 @@ router.put('/branding', async (req: Request, res: Response): Promise<void> => {
       customDomain: updatedTenant.customDomain,
     }));
   } catch (error) {
-    console.error('Update tenant branding error:', error);
+    logger.error({ err: error }, 'Update tenant branding error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -154,7 +155,7 @@ router.get('/database', async (req: Request, res: Response): Promise<void> => {
       hasPassword: !!tenant.databasePassword,
     }));
   } catch (error) {
-    console.error('Get database settings error:', error);
+    logger.error({ err: error }, 'Get database settings error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -219,7 +220,7 @@ router.put('/database', async (req: Request, res: Response): Promise<void> => {
       databaseManagedBy: updatedTenant.databaseManagedBy,
     }));
   } catch (error) {
-    console.error('Update database settings error:', error);
+    logger.error({ err: error }, 'Update database settings error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -312,7 +313,7 @@ router.post('/database/test', async (req: Request, res: Response): Promise<void>
       res.status(400).json(errorResponse('E5002', `Database connection failed: ${connectionError.message}`));
     }
   } catch (error) {
-    console.error('Test database connection error:', error);
+    logger.error({ err: error }, 'Test database connection error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

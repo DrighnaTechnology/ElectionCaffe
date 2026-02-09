@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, toCSV } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, toCSV, createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('reporting-service');
 
 const router = Router();
 
@@ -84,7 +86,7 @@ router.get('/generate/voter-demographics/:electionId', async (req: Request, res:
     const { electionId } = req.params;
     const { format } = req.query;
 
-    const data = await getVoterDemographicsData(electionId);
+    const data = await getVoterDemographicsData(electionId!);
 
     if (format === 'csv') {
       const csv = toCSV(data.voters);
@@ -106,7 +108,7 @@ router.get('/generate/booth-statistics/:electionId', async (req: Request, res: R
     const { electionId } = req.params;
     const { format } = req.query;
 
-    const data = await getBoothStatisticsData(electionId);
+    const data = await getBoothStatisticsData(electionId!);
 
     if (format === 'csv') {
       const csv = toCSV(data.booths);
@@ -128,7 +130,7 @@ router.get('/generate/cadre-performance/:electionId', async (req: Request, res: 
     const { electionId } = req.params;
     const { format } = req.query;
 
-    const data = await getCadrePerformanceData(electionId);
+    const data = await getCadrePerformanceData(electionId!);
 
     if (format === 'csv') {
       const csv = toCSV(data.cadres);
@@ -267,19 +269,17 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // Helper functions
-async function generateReport(reportId: string, electionId: string, reportType: string, filters: any) {
+async function generateReport(reportId: string, electionId: string, reportType: string, _filters: any) {
   try {
-    let fileUrl = '';
-
     switch (reportType) {
       case 'VOTER_DEMOGRAPHICS':
-        // Generate voter demographics report
+        await getVoterDemographicsData(electionId);
         break;
       case 'BOOTH_STATISTICS':
-        // Generate booth statistics report
+        await getBoothStatisticsData(electionId);
         break;
       case 'CADRE_PERFORMANCE':
-        // Generate cadre performance report
+        await getCadrePerformanceData(electionId);
         break;
       default:
         break;
@@ -288,12 +288,11 @@ async function generateReport(reportId: string, electionId: string, reportType: 
     await prisma.report.update({
       where: { id: reportId },
       data: {
-        fileUrl,
         generatedAt: new Date(),
       },
     });
   } catch (error) {
-    console.error('Generate report error:', error);
+    logger.error({ err: error, reportId }, 'Report generation failed');
   }
 }
 

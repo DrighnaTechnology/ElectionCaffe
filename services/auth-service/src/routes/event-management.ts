@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // ==================== EVENTS ====================
@@ -52,7 +53,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ events, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
   } catch (error) {
-    console.error('Get events error:', error);
+    logger.error({ err: error }, 'Get events error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -88,7 +89,7 @@ router.get('/upcoming', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(events));
   } catch (error) {
-    console.error('Get upcoming events error:', error);
+    logger.error({ err: error }, 'Get upcoming events error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -129,7 +130,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(event));
   } catch (error) {
-    console.error('Get event error:', error);
+    logger.error({ err: error }, 'Get event error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -204,7 +205,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(successResponse({ event, message: 'Event created successfully' }));
   } catch (error) {
-    console.error('Create event error:', error);
+    logger.error({ err: error }, 'Create event error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -287,7 +288,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ event: updatedEvent, message: 'Event updated successfully' }));
   } catch (error) {
-    console.error('Update event error:', error);
+    logger.error({ err: error }, 'Update event error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -336,7 +337,7 @@ router.patch('/:id/status', async (req: Request, res: Response): Promise<void> =
 
     res.json(successResponse({ event: updatedEvent, message: `Event ${status.toLowerCase()}` }));
   } catch (error) {
-    console.error('Update event status error:', error);
+    logger.error({ err: error }, 'Update event status error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -380,7 +381,7 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ message: 'Event deleted successfully' }));
   } catch (error) {
-    console.error('Delete event error:', error);
+    logger.error({ err: error }, 'Delete event error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -445,7 +446,7 @@ router.post('/:id/attendees', async (req: Request, res: Response): Promise<void>
 
     res.status(201).json(successResponse({ attendee, message: 'Registered successfully' }));
   } catch (error) {
-    console.error('Register attendee error:', error);
+    logger.error({ err: error }, 'Register attendee error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -492,7 +493,7 @@ router.patch('/:eventId/attendees/:attendeeId', async (req: Request, res: Respon
 
     res.json(successResponse({ attendee: updatedAttendee, message: 'Attendee updated' }));
   } catch (error) {
-    console.error('Update attendee error:', error);
+    logger.error({ err: error }, 'Update attendee error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -526,7 +527,7 @@ router.delete('/:eventId/attendees/:attendeeId', async (req: Request, res: Respo
 
     res.json(successResponse({ message: 'Attendee removed' }));
   } catch (error) {
-    console.error('Remove attendee error:', error);
+    logger.error({ err: error }, 'Remove attendee error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -580,7 +581,7 @@ router.post('/:id/tasks', async (req: Request, res: Response): Promise<void> => 
 
     res.status(201).json(successResponse({ task, message: 'Task created successfully' }));
   } catch (error) {
-    console.error('Create task error:', error);
+    logger.error({ err: error }, 'Create task error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -628,7 +629,7 @@ router.put('/:eventId/tasks/:taskId', async (req: Request, res: Response): Promi
 
     res.json(successResponse({ task: updatedTask, message: 'Task updated' }));
   } catch (error) {
-    console.error('Update task error:', error);
+    logger.error({ err: error }, 'Update task error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -662,7 +663,7 @@ router.delete('/:eventId/tasks/:taskId', async (req: Request, res: Response): Pr
 
     res.json(successResponse({ message: 'Task deleted' }));
   } catch (error) {
-    console.error('Delete task error:', error);
+    logger.error({ err: error }, 'Delete task error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -712,7 +713,7 @@ router.get('/calendar/month', async (req: Request, res: Response): Promise<void>
 
     res.json(successResponse(events));
   } catch (error) {
-    console.error('Get calendar events error:', error);
+    logger.error({ err: error }, 'Get calendar events error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

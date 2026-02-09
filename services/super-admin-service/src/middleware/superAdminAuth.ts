@@ -2,6 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { coreDb as prisma } from '@electioncaffe/database';
 
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
 export interface SuperAdminPayload {
   id: string;
   email: string;
@@ -35,9 +40,8 @@ export const superAdminAuthMiddleware = async (
     }
 
     const token = authHeader.substring(7);
-    const secret = process.env.JWT_SECRET || 'super-admin-secret';
 
-    const decoded = jwt.verify(token, secret) as SuperAdminPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as SuperAdminPayload;
 
     if (decoded.type !== 'super_admin') {
       return res.status(403).json({

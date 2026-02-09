@@ -118,7 +118,7 @@ export function OrganizationSetupPage() {
   const { data: roleFeaturesData, isLoading: isLoadingRoleFeatures } = useQuery({
     queryKey: ['role-features'],
     queryFn: () => organizationAPI.getRoleFeatures(),
-    enabled: hasAdminAccess,
+    enabled: !!hasAdminAccess,
   });
 
   // Fetch users
@@ -131,20 +131,7 @@ export function OrganizationSetupPage() {
         page: userPage,
         limit: 10,
       }),
-    enabled: hasAdminAccess,
-  });
-
-  // Update role feature mutation
-  const updateRoleFeatureMutation = useMutation({
-    mutationFn: (data: { role: string; featureKey: string; isEnabled: boolean }) =>
-      organizationAPI.updateRoleFeature(data.role, data.featureKey, data.isEnabled),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['role-features'] });
-      toast.success('Feature access updated successfully');
-    },
-    onError: () => {
-      toast.error('Failed to update feature access');
-    },
+    enabled: !!hasAdminAccess,
   });
 
   // Bulk update mutation
@@ -192,12 +179,12 @@ export function OrganizationSetupPage() {
     );
   }
 
-  const matrix = roleFeaturesData?.data?.data?.matrix || {};
-  const features: Feature[] = roleFeaturesData?.data?.data?.features || [];
-  const roles: string[] = roleFeaturesData?.data?.data?.roles || [];
+  const matrix = (roleFeaturesData as any)?.data?.data?.matrix || {};
+  const features: Feature[] = (roleFeaturesData as any)?.data?.data?.features || [];
+  const roles: string[] = (roleFeaturesData as any)?.data?.data?.roles || [];
 
-  const users: User[] = usersData?.data?.data?.data || [];
-  const pagination = usersData?.data?.data?.pagination || { page: 1, totalPages: 1, total: 0 };
+  const users: User[] = (usersData as any)?.data?.data?.data || [];
+  const pagination = (usersData as any)?.data?.data?.pagination || { page: 1, totalPages: 1, total: 0 };
 
   // Group features by category
   const featuresByCategory = features.reduce((acc, feature) => {

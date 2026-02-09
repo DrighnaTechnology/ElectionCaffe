@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getTenantDb } from '../utils/tenantDb.js';
-import { successResponse, errorResponse, calculatePercentage } from '@electioncaffe/shared';
+import { successResponse, errorResponse, calculatePercentage, createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('analytics-service');
 
 const router = Router();
 
@@ -32,7 +34,7 @@ router.get('/overview/:electionId', async (req: Request, res: Response) => {
       feedback: feedbackStats,
     }));
   } catch (error) {
-    console.error('Get analytics overview error:', error);
+    logger.error({ err: error }, 'Get analytics overview error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

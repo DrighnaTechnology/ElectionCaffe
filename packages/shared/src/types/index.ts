@@ -23,6 +23,8 @@ export interface PaginationMeta {
 export interface UserPayload {
   id: string;
   tenantId: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
   mobile: string;
   role: UserRole;

@@ -5,6 +5,11 @@ import jwt from 'jsonwebtoken';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
 
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
 const router = Router();
 
 const loginSchema = z.object({
@@ -67,14 +72,13 @@ router.post('/login', async (req, res, next) => {
       data: { lastLoginAt: new Date() },
     });
 
-    const secret = process.env.JWT_SECRET || 'super-admin-secret';
     const token = jwt.sign(
       {
         id: superAdmin.id,
         email: superAdmin.email,
         type: 'super_admin',
       },
-      secret,
+      JWT_SECRET,
       { expiresIn: '24h' }
     );
 
@@ -127,14 +131,13 @@ router.post('/register', async (req, res, next) => {
       },
     });
 
-    const secret = process.env.JWT_SECRET || 'super-admin-secret';
     const token = jwt.sign(
       {
         id: superAdmin.id,
         email: superAdmin.email,
         type: 'super_admin',
       },
-      secret,
+      JWT_SECRET,
       { expiresIn: '24h' }
     );
 

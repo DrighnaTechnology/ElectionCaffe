@@ -138,7 +138,6 @@ export function BulkUpload({ entityName, templateColumns, onUpload, disabled }: 
       setPreviewData(mappedData);
       setUploadResult(null);
     } catch (error) {
-      console.error('Error reading file:', error);
       toast.error('Failed to read file. Please ensure it is a valid Excel file.');
     }
 

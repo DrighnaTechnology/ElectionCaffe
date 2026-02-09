@@ -11,29 +11,28 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, '../../../.env') });
 
 // Verify environment variables are loaded
-console.log('🔧 [STARTUP] Environment variables loaded:', {
-  CORE_DATABASE_URL: process.env.CORE_DATABASE_URL ? 'SET' : 'NOT SET',
-  DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
-});
+import { createLogger as _createStartupLogger } from '@electioncaffe/shared';
+const startupLogger = _createStartupLogger('auth-service-startup');
+
+startupLogger.info({ CORE_DATABASE_URL: process.env.CORE_DATABASE_URL ? 'SET' : 'NOT SET', DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET' }, '[STARTUP] Environment variables loaded');
 
 // CRITICAL: Clear any cached database clients to force re-initialization with correct env vars
 // This is necessary because tsx watch mode caches the globalThis singleton
 if (globalThis.coreDbClient) {
-  console.log('🔄 [STARTUP] Clearing cached coreDb singleton...');
+  startupLogger.info('[STARTUP] Clearing cached coreDb singleton...');
   try {
     globalThis.coreDbClient.$disconnect().catch(() => {});
   } catch (e) {
-    console.log('⚠️  [STARTUP] Error disconnecting cached client:', e);
+    startupLogger.warn({ err: e }, '[STARTUP] Error disconnecting cached client');
   }
   globalThis.coreDbClient = undefined;
-  console.log('✅ [STARTUP] Cached singleton cleared');
+  startupLogger.info('[STARTUP] Cached singleton cleared');
 }
 
 // NOW import everything else
 import express from 'express';
 import cors from 'cors';
-import pino from 'pino';
-import pinoHttp from 'pino-http';
+import { createLogger } from '@electioncaffe/shared';
 
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
@@ -54,23 +53,16 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { requireFeature } from './middleware/requireFeature.js';
 import { SERVICE_PORTS } from '@electioncaffe/shared';
 
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true },
-  },
-});
+export const logger = createLogger('auth-service');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(pinoHttp({ logger }));
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'auth-service', timestamp: new Date().toISOString() });
 });
 
@@ -97,5 +89,5 @@ app.use(errorHandler);
 const PORT = process.env.PORT || SERVICE_PORTS.AUTH;
 
 app.listen(PORT, () => {
-  logger.info(`🔐 Auth Service running on http://localhost:${PORT}`);
+  logger.info({ port: PORT }, 'Auth Service running');
 });

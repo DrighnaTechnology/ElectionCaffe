@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { aiAPI } from '../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Spinner } from '../components/ui/spinner';
@@ -55,7 +54,6 @@ interface UsageRecord {
 }
 
 export function AIToolsPage() {
-  const queryClient = useQueryClient();
   const [selectedFeature, setSelectedFeature] = useState<AIFeature | null>(null);
   const [activeTab, setActiveTab] = useState('features');
 
@@ -161,7 +159,7 @@ export function AIToolsPage() {
               <div key={category}>
                 <h3 className="text-lg font-semibold mb-4">{category}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {categoryFeatures.map((feature: AIFeature) => (
+                  {(categoryFeatures as AIFeature[]).map((feature: AIFeature) => (
                     <Card
                       key={feature.id}
                       className={cn(
@@ -408,7 +406,7 @@ function OCRTool({ credits }: { credits: number }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [outputFormat, setOutputFormat] = useState('excel');
   const [result, setResult] = useState<any>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [_previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const ocrCredits = 5; // Default OCR credits per use
 

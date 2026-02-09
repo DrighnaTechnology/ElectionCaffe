@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma, UserRole } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // Available features that can be controlled via organization setup
@@ -47,14 +48,14 @@ const CONFIGURABLE_ROLES: UserRole[] = [
 ];
 
 // Get available features list
-router.get('/features', async (req: Request, res: Response): Promise<void> => {
+router.get('/features', async (_req: Request, res: Response): Promise<void> => {
   try {
     res.json(successResponse({
       features: AVAILABLE_FEATURES,
       roles: CONFIGURABLE_ROLES,
     }));
   } catch (error) {
-    console.error('Get features error:', error);
+    logger.error({ err: error }, 'Get features error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -101,7 +102,7 @@ router.get('/role-features', async (req: Request, res: Response): Promise<void> 
     // Apply saved configurations
     for (const access of roleFeatureAccess) {
       if (matrix[access.role]) {
-        matrix[access.role][access.featureKey] = access.isEnabled;
+        matrix[access.role]![access.featureKey] = access.isEnabled;
       }
     }
 
@@ -112,7 +113,7 @@ router.get('/role-features', async (req: Request, res: Response): Promise<void> 
       roles: CONFIGURABLE_ROLES,
     }));
   } catch (error) {
-    console.error('Get role features error:', error);
+    logger.error({ err: error }, 'Get role features error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -185,7 +186,7 @@ router.put('/role-features', async (req: Request, res: Response): Promise<void> 
       access,
     }));
   } catch (error) {
-    console.error('Update role features error:', error);
+    logger.error({ err: error }, 'Update role features error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -250,7 +251,7 @@ router.put('/role-features/bulk', async (req: Request, res: Response): Promise<v
       updatedCount: results.length,
     }));
   } catch (error) {
-    console.error('Bulk update role features error:', error);
+    logger.error({ err: error }, 'Bulk update role features error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -332,7 +333,7 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
       },
     }));
   } catch (error) {
-    console.error('Get users error:', error);
+    logger.error({ err: error }, 'Get users error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -404,7 +405,7 @@ router.put('/users/:userId/role', async (req: Request, res: Response): Promise<v
       user: updatedUser,
     }));
   } catch (error) {
-    console.error('Update user role error:', error);
+    logger.error({ err: error }, 'Update user role error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -472,7 +473,7 @@ router.get('/my-features', async (req: Request, res: Response): Promise<void> =>
       enabledFeatures, // Legacy format: map of feature keys to boolean
     }));
   } catch (error) {
-    console.error('Get my features error:', error);
+    logger.error({ err: error }, 'Get my features error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

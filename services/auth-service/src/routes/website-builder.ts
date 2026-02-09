@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma, WebsiteTemplateType } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // ==================== WEBSITE TEMPLATES (Public/Admin) ====================
@@ -22,7 +23,7 @@ router.get('/templates', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(templates));
   } catch (error) {
-    console.error('Get website templates error:', error);
+    logger.error({ err: error }, 'Get website templates error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -43,7 +44,7 @@ router.get('/templates/:id', async (req: Request, res: Response): Promise<void> 
 
     res.json(successResponse(template));
   } catch (error) {
-    console.error('Get website template error:', error);
+    logger.error({ err: error }, 'Get website template error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -77,7 +78,7 @@ router.get('/my-website', async (req: Request, res: Response): Promise<void> => 
 
     res.json(successResponse(website));
   } catch (error) {
-    console.error('Get tenant website error:', error);
+    logger.error({ err: error }, 'Get tenant website error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -187,7 +188,7 @@ router.post('/my-website', async (req: Request, res: Response): Promise<void> =>
 
     res.status(201).json(successResponse({ website, message: 'Website created successfully' }));
   } catch (error) {
-    console.error('Create tenant website error:', error);
+    logger.error({ err: error }, 'Create tenant website error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -287,7 +288,7 @@ router.put('/my-website', async (req: Request, res: Response): Promise<void> => 
 
     res.json(successResponse({ website: updatedWebsite, message: 'Website updated successfully' }));
   } catch (error) {
-    console.error('Update tenant website error:', error);
+    logger.error({ err: error }, 'Update tenant website error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -341,7 +342,7 @@ router.patch('/my-website/status', async (req: Request, res: Response): Promise<
 
     res.json(successResponse({ website: updatedWebsite, message: `Website ${status.toLowerCase()}` }));
   } catch (error) {
-    console.error('Update website status error:', error);
+    logger.error({ err: error }, 'Update website status error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -379,7 +380,7 @@ router.get('/my-website/pages', async (req: Request, res: Response): Promise<voi
 
     res.json(successResponse(pages));
   } catch (error) {
-    console.error('Get website pages error:', error);
+    logger.error({ err: error }, 'Get website pages error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -451,7 +452,7 @@ router.post('/my-website/pages', async (req: Request, res: Response): Promise<vo
 
     res.status(201).json(successResponse({ page, message: 'Page created successfully' }));
   } catch (error) {
-    console.error('Create website page error:', error);
+    logger.error({ err: error }, 'Create website page error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -528,7 +529,7 @@ router.put('/my-website/pages/:pageId', async (req: Request, res: Response): Pro
 
     res.json(successResponse({ page: updatedPage, message: 'Page updated successfully' }));
   } catch (error) {
-    console.error('Update website page error:', error);
+    logger.error({ err: error }, 'Update website page error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -586,7 +587,7 @@ router.delete('/my-website/pages/:pageId', async (req: Request, res: Response): 
 
     res.json(successResponse({ message: 'Page deleted successfully' }));
   } catch (error) {
-    console.error('Delete website page error:', error);
+    logger.error({ err: error }, 'Delete website page error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -624,7 +625,7 @@ router.get('/public/:subdomain', async (req: Request, res: Response): Promise<vo
 
     res.json(successResponse(website));
   } catch (error) {
-    console.error('Get public website error:', error);
+    logger.error({ err: error }, 'Get public website error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -658,7 +659,7 @@ router.get('/public/:subdomain/:slug', async (req: Request, res: Response): Prom
 
     res.json(successResponse(page));
   } catch (error) {
-    console.error('Get public website page error:', error);
+    logger.error({ err: error }, 'Get public website page error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

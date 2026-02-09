@@ -6,7 +6,10 @@ import {
   errorResponse,
   createPaginationMeta,
   calculateSkip,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('cadre-service');
 
 const router = Router();
 
@@ -77,7 +80,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     res.json(successResponse(cadres, createPaginationMeta(total, page, limit)));
   } catch (error) {
-    console.error('Get cadres error:', error);
+    logger.error({ err: error }, 'Get cadres error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -112,7 +115,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(cadre));
   } catch (error) {
-    console.error('Get cadre error:', error);
+    logger.error({ err: error }, 'Get cadre error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -142,7 +145,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse(cadre));
   } catch (error: any) {
-    console.error('Create cadre error:', error);
+    logger.error({ err: error }, 'Create cadre error');
     if (error.code === 'P2002') {
       res.status(409).json(errorResponse('E4001', 'Cadre with this mobile already exists for this election'));
       return;
@@ -200,7 +203,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse({ created, failed, errors }));
   } catch (error) {
-    console.error('Bulk create cadres error:', error);
+    logger.error({ err: error }, 'Bulk create cadres error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -226,7 +229,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(cadre));
   } catch (error: any) {
-    console.error('Update cadre error:', error);
+    logger.error({ err: error }, 'Update cadre error');
     if (error.code === 'P2002') {
       res.status(409).json(errorResponse('E4001', 'Cadre with this mobile already exists'));
       return;
@@ -243,7 +246,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     await (tenantDb as any).cadre.delete({ where: { id } });
     res.json(successResponse({ message: 'Cadre deleted successfully' }));
   } catch (error) {
-    console.error('Delete cadre error:', error);
+    logger.error({ err: error }, 'Delete cadre error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -264,7 +267,7 @@ router.post('/assign', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse(assignment));
   } catch (error: any) {
-    console.error('Assign cadre error:', error);
+    logger.error({ err: error }, 'Assign cadre error');
     if (error.code === 'P2002') {
       res.status(409).json(errorResponse('E4001', 'Cadre is already assigned to this part'));
       return;
@@ -287,7 +290,7 @@ router.delete('/:cadreId/assignments/:partId', async (req: Request, res: Respons
 
     res.json(successResponse({ message: 'Assignment removed successfully' }));
   } catch (error) {
-    console.error('Remove assignment error:', error);
+    logger.error({ err: error }, 'Remove assignment error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

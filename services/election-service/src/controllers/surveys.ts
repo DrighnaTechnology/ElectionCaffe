@@ -6,7 +6,10 @@ import {
   paginationSchema,
   createPaginationMeta,
   calculateSkip,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('election-service');
 
 export class SurveyController {
   async getSurveys(req: Request, res: Response): Promise<void> {
@@ -66,7 +69,7 @@ export class SurveyController {
 
       res.json(successResponse(transformedSurveys, createPaginationMeta(total, page, limit)));
     } catch (error) {
-      console.error('Get surveys error:', error);
+      logger.error({ err: error }, 'Get surveys error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -104,7 +107,7 @@ export class SurveyController {
 
       res.json(successResponse(transformedSurvey));
     } catch (error) {
-      console.error('Get survey by ID error:', error);
+      logger.error({ err: error }, 'Get survey by ID error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -153,7 +156,7 @@ export class SurveyController {
 
       res.status(201).json(successResponse(transformedSurvey));
     } catch (error) {
-      console.error('Create survey error:', error);
+      logger.error({ err: error }, 'Create survey error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -202,7 +205,7 @@ export class SurveyController {
 
       res.json(successResponse(transformedSurvey));
     } catch (error) {
-      console.error('Update survey error:', error);
+      logger.error({ err: error }, 'Update survey error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -232,7 +235,7 @@ export class SurveyController {
 
       res.json(successResponse({ message: 'Survey deleted successfully' }));
     } catch (error) {
-      console.error('Delete survey error:', error);
+      logger.error({ err: error }, 'Delete survey error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -263,7 +266,7 @@ export class SurveyController {
 
       res.json(successResponse(responses, createPaginationMeta(total, page, limit)));
     } catch (error) {
-      console.error('Get survey responses error:', error);
+      logger.error({ err: error }, 'Get survey responses error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -307,7 +310,7 @@ export class SurveyController {
 
       res.status(201).json(successResponse(response));
     } catch (error) {
-      console.error('Submit survey response error:', error);
+      logger.error({ err: error }, 'Submit survey response error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

@@ -259,7 +259,7 @@ router.delete('/plans/:id', async (req: Request, res: Response, next: NextFuncti
 });
 
 // Seed default license plans
-router.post('/plans/seed', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/plans/seed', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const defaultPlans = [
       {
@@ -415,7 +415,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
           _count: {
             select: { sessions: { where: { isActive: true } } },
           },
-        },
+        } as any,
       }),
       prisma.tenantLicense.count({ where }),
     ]);
@@ -1116,7 +1116,7 @@ router.post('/:id/billing', async (req: Request, res: Response, next: NextFuncti
         totalAmount,
         usageSummary: usageSummary || {},
         notes,
-      },
+      } as any,
     });
 
     res.status(201).json({
@@ -1158,7 +1158,7 @@ router.patch('/billing/:billingId', async (req: Request, res: Response, next: Ne
 // ==================== DASHBOARD STATS ====================
 
 // Get license dashboard stats
-router.get('/stats/dashboard', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/stats/dashboard', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const [
       totalLicenses,

@@ -1,7 +1,9 @@
-import { PrismaClient, LicenseStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
+import { createLogger } from '@electioncaffe/shared';
 
 const prisma = new PrismaClient();
+const logger = createLogger('auth-service');
 
 export interface SessionInfo {
   sessionToken: string;
@@ -221,8 +223,8 @@ export class SessionManager {
    * Create a basic session (no license tracking)
    */
   private async createBasicSession(
-    userId: string,
-    sessionInfo: Partial<SessionInfo>
+    _userId: string,
+    _sessionInfo: Partial<SessionInfo>
   ): Promise<SessionCheckResult> {
     const sessionToken = crypto.randomBytes(32).toString('hex');
     return {
@@ -458,7 +460,7 @@ export class SessionManager {
       }
     } catch (error) {
       // Ignore metrics errors - don't block session creation
-      console.error('Failed to update usage metrics:', error);
+      logger.error({ err: error }, 'Failed to update usage metrics');
     }
   }
 

@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { coreDb as prisma } from '@electioncaffe/database';
+import { createLogger } from '@electioncaffe/shared';
 import { superAdminAuth } from '../middleware/superAdminAuth.js';
+
+const logger = createLogger('super-admin-service');
 
 const router = Router();
 
@@ -54,7 +57,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     const [news, total] = await Promise.all([
-      prisma.newsInformation.findMany({
+      (prisma as any).newsInformation.findMany({
         where,
         skip,
         take: Number(limit),
@@ -65,7 +68,7 @@ router.get('/', async (req: Request, res: Response) => {
           },
         },
       }),
-      prisma.newsInformation.count({ where }),
+      (prisma as any).newsInformation.count({ where }),
     ]);
 
     res.json({
@@ -79,7 +82,7 @@ router.get('/', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching news:', error);
+    logger.error({ err: error }, 'Error fetching news');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch news',
@@ -93,7 +96,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const news = await prisma.newsInformation.findUnique({
+    const news = await (prisma as any).newsInformation.findUnique({
       where: { id },
       include: {
         actions: {
@@ -111,7 +114,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     // Increment view count
-    await prisma.newsInformation.update({
+    await (prisma as any).newsInformation.update({
       where: { id },
       data: { viewCount: { increment: 1 } },
     });
@@ -121,7 +124,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       data: news,
     });
   } catch (error: any) {
-    console.error('Error fetching news:', error);
+    logger.error({ err: error }, 'Error fetching news');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch news',
@@ -170,7 +173,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const news = await prisma.newsInformation.create({
+    const news = await (prisma as any).newsInformation.create({
       data: {
         tenantId: tenantId || null,
         title,
@@ -208,7 +211,7 @@ router.post('/', async (req: Request, res: Response) => {
       message: 'News created successfully',
     });
   } catch (error: any) {
-    console.error('Error creating news:', error);
+    logger.error({ err: error }, 'Error creating news');
     res.status(500).json({
       success: false,
       error: 'Failed to create news',
@@ -223,7 +226,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const superAdminId = (req as any).superAdmin?.id;
 
-    const existing = await prisma.newsInformation.findUnique({
+    const existing = await (prisma as any).newsInformation.findUnique({
       where: { id },
     });
 
@@ -262,7 +265,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       documentUrls,
     } = req.body;
 
-    const news = await prisma.newsInformation.update({
+    const news = await (prisma as any).newsInformation.update({
       where: { id },
       data: {
         title,
@@ -300,7 +303,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       message: 'News updated successfully',
     });
   } catch (error: any) {
-    console.error('Error updating news:', error);
+    logger.error({ err: error }, 'Error updating news');
     res.status(500).json({
       success: false,
       error: 'Failed to update news',
@@ -315,7 +318,7 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
     const { id } = req.params;
     const superAdminId = (req as any).superAdmin?.id;
 
-    const news = await prisma.newsInformation.update({
+    const news = await (prisma as any).newsInformation.update({
       where: { id },
       data: {
         status: 'PUBLISHED',
@@ -330,7 +333,7 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
       message: 'News published successfully',
     });
   } catch (error: any) {
-    console.error('Error publishing news:', error);
+    logger.error({ err: error }, 'Error publishing news');
     res.status(500).json({
       success: false,
       error: 'Failed to publish news',
@@ -345,7 +348,7 @@ router.post('/:id/archive', async (req: Request, res: Response) => {
     const { id } = req.params;
     const superAdminId = (req as any).superAdmin?.id;
 
-    const news = await prisma.newsInformation.update({
+    const news = await (prisma as any).newsInformation.update({
       where: { id },
       data: {
         status: 'ARCHIVED',
@@ -360,7 +363,7 @@ router.post('/:id/archive', async (req: Request, res: Response) => {
       message: 'News archived successfully',
     });
   } catch (error: any) {
-    console.error('Error archiving news:', error);
+    logger.error({ err: error }, 'Error archiving news');
     res.status(500).json({
       success: false,
       error: 'Failed to archive news',
@@ -375,7 +378,7 @@ router.post('/:id/flag', async (req: Request, res: Response) => {
     const { id } = req.params;
     const superAdminId = (req as any).superAdmin?.id;
 
-    const news = await prisma.newsInformation.update({
+    const news = await (prisma as any).newsInformation.update({
       where: { id },
       data: {
         status: 'FLAGGED',
@@ -389,7 +392,7 @@ router.post('/:id/flag', async (req: Request, res: Response) => {
       message: 'News flagged for review',
     });
   } catch (error: any) {
-    console.error('Error flagging news:', error);
+    logger.error({ err: error }, 'Error flagging news');
     res.status(500).json({
       success: false,
       error: 'Failed to flag news',
@@ -403,7 +406,7 @@ router.post('/:id/analyze', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const news = await prisma.newsInformation.findUnique({
+    const news = await (prisma as any).newsInformation.findUnique({
       where: { id },
     });
 
@@ -414,65 +417,25 @@ router.post('/:id/analyze', async (req: Request, res: Response) => {
       });
     }
 
-    // TODO: Implement actual AI analysis integration
-    // For now, simulate AI analysis
-    const aiAnalysis = {
-      summary: 'AI-generated summary of the news content',
-      keyPoints: [
-        'Key point 1 from the analysis',
-        'Key point 2 from the analysis',
-        'Key point 3 from the analysis',
-      ],
-      entities: {
-        persons: ['Person A', 'Person B'],
-        organizations: ['Org A', 'Org B'],
-        locations: [news.state, news.district].filter(Boolean),
-      },
-      sentiment: {
-        overall: 'neutral',
-        score: 0.15,
-        confidence: 0.85,
-      },
-      topics: ['politics', 'local governance', 'development'],
-      suggestedActions: [
-        {
-          type: 'FIELD_VISIT',
-          title: 'Site visit to assess situation',
-          priority: 'MEDIUM',
-        },
-        {
-          type: 'COMMUNICATION',
-          title: 'Issue press statement',
-          priority: 'LOW',
-        },
-      ],
-    };
-
-    // Calculate scores
-    const impactScore = Math.floor(Math.random() * 40) + 40; // 40-80
-    const sentimentScore = (Math.random() * 2 - 1).toFixed(2); // -1 to 1
-    const relevanceScore = Math.floor(Math.random() * 30) + 60; // 60-90
-    const reachEstimate = Math.floor(Math.random() * 100000) + 10000;
-
-    const updatedNews = await prisma.newsInformation.update({
-      where: { id },
-      data: {
-        aiAnalysis,
-        aiProcessedAt: new Date(),
-        impactScore,
-        sentimentScore: parseFloat(sentimentScore),
-        relevanceScore,
-        reachEstimate,
-      },
+    // Check if AI provider is configured
+    const aiProvider = await prisma.aIProvider.findFirst({
+      where: { status: 'ACTIVE', apiKey: { not: null } } as any,
     });
 
-    res.json({
-      success: true,
-      data: updatedNews,
-      message: 'AI analysis completed',
+    if (!aiProvider) {
+      return res.status(503).json({
+        success: false,
+        error: 'No AI provider configured. Please configure an AI provider with a valid API key to analyze news.',
+      });
+    }
+
+    // TODO: Implement actual AI analysis integration using the configured provider
+    return res.status(503).json({
+      success: false,
+      error: 'AI news analysis integration is not yet implemented. An AI provider is configured but the analysis pipeline is pending.',
     });
   } catch (error: any) {
-    console.error('Error analyzing news:', error);
+    logger.error({ err: error }, 'Error analyzing news');
     res.status(500).json({
       success: false,
       error: 'Failed to analyze news',
@@ -486,7 +449,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const news = await prisma.newsInformation.findUnique({
+    const news = await (prisma as any).newsInformation.findUnique({
       where: { id },
       include: { _count: { select: { actions: true } } },
     });
@@ -505,7 +468,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.newsInformation.delete({
+    await (prisma as any).newsInformation.delete({
       where: { id },
     });
 
@@ -514,7 +477,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       message: 'News deleted successfully',
     });
   } catch (error: any) {
-    console.error('Error deleting news:', error);
+    logger.error({ err: error }, 'Error deleting news');
     res.status(500).json({
       success: false,
       error: 'Failed to delete news',
@@ -544,30 +507,30 @@ router.get('/stats/overview', async (req: Request, res: Response) => {
       byGeographicLevel,
       recentNews,
     ] = await Promise.all([
-      prisma.newsInformation.count({ where }),
-      prisma.newsInformation.groupBy({
+      (prisma as any).newsInformation.count({ where }),
+      (prisma as any).newsInformation.groupBy({
         by: ['status'],
         where,
         _count: true,
       }),
-      prisma.newsInformation.groupBy({
+      (prisma as any).newsInformation.groupBy({
         by: ['category'],
         where,
         _count: true,
         orderBy: { _count: { category: 'desc' } },
         take: 10,
       }),
-      prisma.newsInformation.groupBy({
+      (prisma as any).newsInformation.groupBy({
         by: ['priority'],
         where,
         _count: true,
       }),
-      prisma.newsInformation.groupBy({
+      (prisma as any).newsInformation.groupBy({
         by: ['geographicLevel'],
         where,
         _count: true,
       }),
-      prisma.newsInformation.findMany({
+      (prisma as any).newsInformation.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         take: 5,
@@ -586,19 +549,19 @@ router.get('/stats/overview', async (req: Request, res: Response) => {
       success: true,
       data: {
         totalNews,
-        byStatus: byStatus.reduce((acc: any, item) => {
+        byStatus: byStatus.reduce((acc: any, item: any) => {
           acc[item.status] = item._count;
           return acc;
         }, {}),
-        byCategory: byCategory.map((item) => ({
+        byCategory: byCategory.map((item: any) => ({
           category: item.category,
           count: item._count,
         })),
-        byPriority: byPriority.reduce((acc: any, item) => {
+        byPriority: byPriority.reduce((acc: any, item: any) => {
           acc[item.priority] = item._count;
           return acc;
         }, {}),
-        byGeographicLevel: byGeographicLevel.reduce((acc: any, item) => {
+        byGeographicLevel: byGeographicLevel.reduce((acc: any, item: any) => {
           acc[item.geographicLevel] = item._count;
           return acc;
         }, {}),
@@ -606,7 +569,7 @@ router.get('/stats/overview', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching news stats:', error);
+    logger.error({ err: error }, 'Error fetching news stats');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch news statistics',
@@ -622,20 +585,20 @@ router.get('/options/geographic', async (req: Request, res: Response) => {
 
     // Get distinct values based on existing data
     const [states, districts, constituencies] = await Promise.all([
-      prisma.newsInformation.findMany({
+      (prisma as any).newsInformation.findMany({
         where: { state: { not: null } },
         select: { state: true },
         distinct: ['state'],
       }),
       state
-        ? prisma.newsInformation.findMany({
+        ? (prisma as any).newsInformation.findMany({
             where: { state: state as string, district: { not: null } },
             select: { district: true },
             distinct: ['district'],
           })
         : Promise.resolve([]),
       district
-        ? prisma.newsInformation.findMany({
+        ? (prisma as any).newsInformation.findMany({
             where: {
               state: state as string,
               district: district as string,
@@ -650,13 +613,13 @@ router.get('/options/geographic', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        states: states.map((s) => s.state).filter(Boolean),
-        districts: districts.map((d) => d.district).filter(Boolean),
-        constituencies: constituencies.map((c) => c.constituency).filter(Boolean),
+        states: states.map((s: any) => s.state).filter(Boolean),
+        districts: districts.map((d: any) => d.district).filter(Boolean),
+        constituencies: constituencies.map((c: any) => c.constituency).filter(Boolean),
       },
     });
   } catch (error: any) {
-    console.error('Error fetching geographic options:', error);
+    logger.error({ err: error }, 'Error fetching geographic options');
     res.status(500).json({
       success: false,
       error: 'Failed to fetch geographic options',

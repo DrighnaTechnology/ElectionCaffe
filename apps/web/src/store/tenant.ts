@@ -55,7 +55,7 @@ export const useTenantStore = create<TenantState>()(
       updateBranding: async (data) => {
         set({ isLoading: true, error: null });
         try {
-          const response = await tenantAPI.updateBranding(data);
+          const response = await tenantAPI.updateBranding(data as any);
           if (response.data.success) {
             // Update local state with new branding data
             const current = get().branding;

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { coreDb as prisma } from '@electioncaffe/database';
+import { getNotificationProvider } from '@electioncaffe/shared';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
 
 const router = Router();
@@ -54,7 +55,7 @@ router.post('/', async (req, res, next) => {
     }
 
     // Check if user already exists in this tenant
-    const existingUser = await prisma.user.findFirst({
+    const existingUser = await (prisma as any).user.findFirst({
       where: { tenantId: data.tenantId, mobile: data.mobile },
     });
 
@@ -116,8 +117,15 @@ router.post('/', async (req, res, next) => {
       },
     });
 
-    // TODO: Send SMS/Email notification
-    console.log(`Invitation created for Tenant Admin ${data.mobile} with token: ${token}`);
+    // Send invitation notification
+    const notifier = getNotificationProvider();
+    const inviteLink = `${process.env.APP_URL || 'http://localhost:5173'}/accept-invitation?token=${token}`;
+    if (invitation.mobile) {
+      await notifier.sendSMS(invitation.mobile, `You've been invited as admin for ${invitation.tenant?.name || 'a tenant'} on ElectionCaffe. Accept here: ${inviteLink}`);
+    }
+    if (invitation.email) {
+      await notifier.sendEmail(invitation.email, 'Admin Invitation - ElectionCaffe', `Hi ${invitation.firstName || ''},\n\nYou've been invited as an admin for ${invitation.tenant?.name || 'a tenant'} on ElectionCaffe.\n\nAccept your invitation: ${inviteLink}`);
+    }
 
     res.status(201).json({
       success: true,
@@ -251,8 +259,15 @@ router.post('/:id/resend', async (req, res, next) => {
       },
     });
 
-    // TODO: Send SMS/Email notification
-    console.log(`Invitation resent to ${invitation.mobile} with new token: ${token}`);
+    // Send resend notification
+    const notifier = getNotificationProvider();
+    const inviteLink = `${process.env.APP_URL || 'http://localhost:5173'}/accept-invitation?token=${token}`;
+    if (invitation.mobile) {
+      await notifier.sendSMS(invitation.mobile, `Reminder: You've been invited to ElectionCaffe. Accept here: ${inviteLink}`);
+    }
+    if (invitation.email) {
+      await notifier.sendEmail(invitation.email, 'Invitation Reminder - ElectionCaffe', `Hi ${invitation.firstName || ''},\n\nThis is a reminder that you've been invited to ElectionCaffe.\n\nAccept your invitation: ${inviteLink}`);
+    }
 
     res.json({
       success: true,
@@ -260,7 +275,7 @@ router.post('/:id/resend', async (req, res, next) => {
         message: 'Invitation resent successfully',
         expiresAt: updated.expiresAt,
         resentCount: updated.resentCount,
-        inviteLink: `${process.env.APP_URL || 'http://localhost:5173'}/accept-invitation?token=${token}`,
+        inviteLink,
       },
     });
   } catch (error) {

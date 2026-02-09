@@ -12,7 +12,6 @@ import {
   CheckIcon,
   BuildingIcon,
   ArrowUpIcon,
-  ArrowDownIcon,
   BellIcon,
 } from 'lucide-react';
 
@@ -44,8 +43,6 @@ export function AICreditsPage() {
   const [createPackageOpen, setCreatePackageOpen] = useState(false);
   const [editPackage, setEditPackage] = useState<CreditPackage | null>(null);
   const [addCreditsOpen, setAddCreditsOpen] = useState(false);
-  const queryClient = useQueryClient();
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">

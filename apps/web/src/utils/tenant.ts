@@ -18,6 +18,7 @@ const TENANT_CONFIGS: Record<string, TenantConfig> = {
 
 // Port to tenant mapping for local development
 const PORT_TO_TENANT: Record<number, string> = {
+  5000: 'bjp-tn', // Default dev server
   5180: 'demo',
   5181: 'bjp-tn',
   5182: 'bjp-up',

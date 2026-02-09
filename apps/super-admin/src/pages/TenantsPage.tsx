@@ -20,7 +20,6 @@ export function TenantsPage() {
   const [tenantType, setTenantType] = useState<string>('');
   const [page, setPage] = useState(1);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data: tenantsData, isLoading } = useQuery({
     queryKey: ['tenants', search, tenantType, page],

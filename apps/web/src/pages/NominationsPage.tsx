@@ -25,38 +25,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../components/ui/table';
 import { Skeleton } from '../components/ui/skeleton';
 import { Spinner } from '../components/ui/spinner';
 import { Textarea } from '../components/ui/textarea';
 import {
-  PlusIcon,
   SearchIcon,
   UserIcon,
   ShieldIcon,
   SwordsIcon,
   CheckCircleIcon,
-  XCircleIcon,
-  AlertCircleIcon,
   TrendingUpIcon,
   TrendingDownIcon,
   UsersIcon,
-  Share2Icon,
   ChevronDownIcon,
   ChevronUpIcon,
-  EditIcon,
-  TrashIcon,
   EyeIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatDate } from '../lib/utils';
 
 const nominationStatuses = [
   { value: 'FILED', label: 'Filed', color: 'bg-blue-500' },

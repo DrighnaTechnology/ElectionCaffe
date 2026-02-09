@@ -9,7 +9,10 @@ import {
   createPaginationMeta,
   calculateSkip,
   toCSV,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('election-service');
 
 export class PartController {
   async getParts(req: Request, res: Response): Promise<void> {
@@ -63,7 +66,7 @@ export class PartController {
 
       res.json(successResponse(parts, createPaginationMeta(total, page, limit)));
     } catch (error) {
-      console.error('Get parts error:', error);
+      logger.error({ err: error }, 'Get parts error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -100,7 +103,7 @@ export class PartController {
 
       res.json(successResponse(parts));
     } catch (error) {
-      console.error('Get parts for map error:', error);
+      logger.error({ err: error }, 'Get parts for map error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -140,7 +143,7 @@ export class PartController {
 
       res.json(successResponse(part));
     } catch (error) {
-      console.error('Get part by ID error:', error);
+      logger.error({ err: error }, 'Get part by ID error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -187,7 +190,7 @@ export class PartController {
 
       res.status(201).json(successResponse(part));
     } catch (error) {
-      console.error('Create part error:', error);
+      logger.error({ err: error }, 'Create part error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -262,7 +265,7 @@ export class PartController {
 
       res.json(successResponse(results));
     } catch (error) {
-      console.error('Bulk create parts error:', error);
+      logger.error({ err: error }, 'Bulk create parts error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -301,7 +304,7 @@ export class PartController {
 
       res.json(successResponse(part));
     } catch (error) {
-      console.error('Update part error:', error);
+      logger.error({ err: error }, 'Update part error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -341,7 +344,7 @@ export class PartController {
 
       res.json(successResponse({ message: 'Part deleted successfully' }));
     } catch (error) {
-      console.error('Delete part error:', error);
+      logger.error({ err: error }, 'Delete part error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -370,7 +373,7 @@ export class PartController {
 
       res.json(successResponse(part));
     } catch (error) {
-      console.error('Get vulnerability error:', error);
+      logger.error({ err: error }, 'Get vulnerability error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -407,12 +410,12 @@ export class PartController {
 
       res.json(successResponse(part));
     } catch (error) {
-      console.error('Update vulnerability error:', error);
+      logger.error({ err: error }, 'Update vulnerability error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
 
-  async downloadTemplate(req: Request, res: Response): Promise<void> {
+  async downloadTemplate(_req: Request, res: Response): Promise<void> {
     try {
       const template = [
         {
@@ -436,7 +439,7 @@ export class PartController {
       res.setHeader('Content-Disposition', 'attachment; filename=parts_template.csv');
       res.send(csv);
     } catch (error) {
-      console.error('Download template error:', error);
+      logger.error({ err: error }, 'Download template error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

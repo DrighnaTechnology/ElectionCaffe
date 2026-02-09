@@ -8,7 +8,10 @@ import {
   errorResponse,
   createPaginationMeta,
   calculateSkip,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('voter-service');
 
 const router = Router();
 
@@ -83,7 +86,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     res.json(successResponse(voters, createPaginationMeta(total, page, limit)));
   } catch (error) {
-    console.error('Get voters error:', error);
+    logger.error({ err: error }, 'Get voters error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -118,7 +121,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(voter));
   } catch (error) {
-    console.error('Get voter error:', error);
+    logger.error({ err: error }, 'Get voter error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -147,7 +150,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse(voter));
   } catch (error) {
-    console.error('Create voter error:', error);
+    logger.error({ err: error }, 'Create voter error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -207,7 +210,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
 
     res.json(successResponse(results));
   } catch (error) {
-    console.error('Bulk create voters error:', error);
+    logger.error({ err: error }, 'Bulk create voters error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -238,7 +241,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(voter));
   } catch (error) {
-    console.error('Update voter error:', error);
+    logger.error({ err: error }, 'Update voter error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -265,7 +268,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse({ message: 'Voter deleted successfully' }));
   } catch (error) {
-    console.error('Delete voter error:', error);
+    logger.error({ err: error }, 'Delete voter error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -283,7 +286,7 @@ router.get('/:id/schemes', async (req: Request, res: Response) => {
 
     res.json(successResponse(schemes));
   } catch (error) {
-    console.error('Get voter schemes error:', error);
+    logger.error({ err: error }, 'Get voter schemes error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -313,7 +316,7 @@ router.post('/:id/schemes', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse(voterScheme));
   } catch (error) {
-    console.error('Add voter scheme error:', error);
+    logger.error({ err: error }, 'Add voter scheme error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -338,7 +341,7 @@ router.delete('/:id/schemes/:schemeId', async (req: Request, res: Response) => {
 
     res.json(successResponse({ message: 'Scheme removed from voter' }));
   } catch (error) {
-    console.error('Remove voter scheme error:', error);
+    logger.error({ err: error }, 'Remove voter scheme error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -375,7 +378,7 @@ router.get('/map/locations', async (req: Request, res: Response) => {
 
     res.json(successResponse(voters));
   } catch (error) {
-    console.error('Get voters for map error:', error);
+    logger.error({ err: error }, 'Get voters for map error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

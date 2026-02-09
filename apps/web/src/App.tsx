@@ -48,6 +48,7 @@ import {
   NominationsPage,
   // Fund & Inventory Management Pages
   FundsPage,
+  InventoryPage,
 } from './pages';
 
 // Loading spinner component
@@ -119,6 +120,7 @@ function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/elections" element={<ElectionsPage />} />
         <Route path="/elections/:id" element={<ElectionDetailPage />} />
+        <Route path="/elections/:id/edit" element={<ElectionDetailPage />} />
         <Route path="/voters" element={<VotersPage />} />
         <Route path="/voters/:id" element={<VoterDetailPage />} />
         <Route path="/parts" element={<PartsPage />} />
@@ -160,9 +162,9 @@ function App() {
         <Route path="/funds" element={<FundsPage />} />
         <Route path="/funds/*" element={<FundsPage />} />
 
-        {/* Inventory Management pages (placeholder - will use FundsPage for now) */}
-        <Route path="/inventory" element={<FundsPage />} />
-        <Route path="/inventory/*" element={<FundsPage />} />
+        {/* Inventory Management pages */}
+        <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/inventory/*" element={<InventoryPage />} />
       </Route>
 
       {/* 404 - also check auth state */}

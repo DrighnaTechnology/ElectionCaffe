@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse, calculatePercentage } from '@electioncaffe/shared';
+import { successResponse, errorResponse, calculatePercentage, createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('ai-analytics-service');
 
 const router = Router();
 
@@ -16,7 +18,7 @@ router.get('/:electionId', async (req: Request, res: Response) => {
 
     res.json(successResponse(analyses));
   } catch (error) {
-    console.error('Get AI analytics error:', error);
+    logger.error({ err: error }, 'Get AI analytics error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -56,15 +58,15 @@ router.post('/:electionId', async (req: Request, res: Response) => {
         description,
         parameters: parameters || {},
         status: 'PENDING',
-      },
+      } as any,
     });
 
     // Process the analysis asynchronously
-    processAnalysis(analysis.id, electionId, analysisType, parameters);
+    processAnalysis(analysis.id, electionId!, analysisType, parameters);
 
     res.status(201).json(successResponse(analysis));
   } catch (error) {
-    console.error('Create AI analysis error:', error);
+    logger.error({ err: error }, 'Create AI analysis error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -73,7 +75,7 @@ router.post('/:electionId', async (req: Request, res: Response) => {
 router.get('/:electionId/predict/turnout', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const prediction = await generateTurnoutPrediction(electionId);
+    const prediction = await generateTurnoutPrediction(electionId!);
     res.json(successResponse(prediction));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -84,7 +86,7 @@ router.get('/:electionId/predict/turnout', async (req: Request, res: Response) =
 router.get('/:electionId/analyze/swing-voters', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const analysis = await analyzeSwingVoters(electionId);
+    const analysis = await analyzeSwingVoters(electionId!);
     res.json(successResponse(analysis));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -95,7 +97,7 @@ router.get('/:electionId/analyze/swing-voters', async (req: Request, res: Respon
 router.get('/:electionId/assess/booth-risk', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const assessment = await assessBoothRisk(electionId);
+    const assessment = await assessBoothRisk(electionId!);
     res.json(successResponse(assessment));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -106,7 +108,7 @@ router.get('/:electionId/assess/booth-risk', async (req: Request, res: Response)
 router.get('/:electionId/insights/demographic', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const insights = await getDemographicInsights(electionId);
+    const insights = await getDemographicInsights(electionId!);
     res.json(successResponse(insights));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -124,8 +126,40 @@ router.delete('/:electionId/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Calculate confidence based on data completeness
+async function calculateConfidence(electionId: string): Promise<number> {
+  const [total, withMobile, withAge, withReligion, withCaste, historicalCount] = await Promise.all([
+    prisma.voter.count({ where: { electionId, deletedAt: null } }),
+    prisma.voter.count({ where: { electionId, deletedAt: null, mobile: { not: null } } }),
+    prisma.voter.count({ where: { electionId, deletedAt: null, age: { not: null } } }),
+    prisma.voter.count({ where: { electionId, deletedAt: null, religionId: { not: null } } }),
+    prisma.voter.count({ where: { electionId, deletedAt: null, casteId: { not: null } } }),
+    prisma.votingHistory.count({ where: { electionId } }),
+  ]);
+
+  if (total === 0) return 0.1;
+
+  const mobileRate = withMobile / total;
+  const ageRate = withAge / total;
+  const religionRate = withReligion / total;
+  const casteRate = withCaste / total;
+  const hasHistory = historicalCount > 0 ? 0.15 : 0;
+
+  // Weighted average of data completeness factors (max ~0.95)
+  const confidence = Math.min(0.95,
+    0.10 + // base
+    mobileRate * 0.15 +
+    ageRate * 0.25 +
+    religionRate * 0.15 +
+    casteRate * 0.15 +
+    hasHistory
+  );
+
+  return Math.round(confidence * 100) / 100;
+}
+
 // AI Processing Functions
-async function processAnalysis(analysisId: string, electionId: string, analysisType: string, parameters: any) {
+async function processAnalysis(analysisId: string, electionId: string, analysisType: string, _parameters: any) {
   try {
     await prisma.aIAnalyticsResult.update({
       where: { id: analysisId },
@@ -134,7 +168,7 @@ async function processAnalysis(analysisId: string, electionId: string, analysisT
 
     let results: any = {};
     let insights: any[] = [];
-    let confidence = 0.85;
+    let confidence = await calculateConfidence(electionId);
 
     switch (analysisType) {
       case 'TURNOUT_PREDICTION':
@@ -177,7 +211,7 @@ async function processAnalysis(analysisId: string, electionId: string, analysisT
       },
     });
   } catch (error) {
-    console.error('Process analysis error:', error);
+    logger.error({ err: error }, 'Process analysis error');
     await prisma.aIAnalyticsResult.update({
       where: { id: analysisId },
       data: {
@@ -210,19 +244,24 @@ async function generateTurnoutPrediction(electionId: string) {
     senior: votersByAge.filter(v => v.age! >= 55).length,
   };
 
-  // AI-based prediction (simplified model)
-  const baseTurnout = 65; // Base turnout percentage
-  const ageAdjustment = (ageDistribution.senior / totalVoters) * 10; // Seniors vote more
-  const genderBalance = votersByGender.length > 1 ? 2 : 0; // Balanced gender = higher turnout
+  // Calculate base turnout from historical data if available
+  const baseTurnout = historicalData.length > 0
+    ? Math.min(85, Math.max(50, (historicalData.filter((h: any) => h.hasVoted).length / Math.max(historicalData.length, 1)) * 100))
+    : 60;
+
+  const ageAdjustment = totalVoters > 0 ? (ageDistribution.senior / totalVoters) * 10 : 0;
+  const genderBalance = votersByGender.length > 1 ? 2 : 0;
 
   const predictedTurnout = Math.min(85, baseTurnout + ageAdjustment + genderBalance);
   const predictedVotes = Math.round((predictedTurnout / 100) * totalVoters);
+
+  const confidence = await calculateConfidence(electionId);
 
   return {
     totalVoters,
     predictedTurnout: Math.round(predictedTurnout * 10) / 10,
     predictedVotes,
-    confidence: 0.78,
+    confidence,
     factors: [
       { name: 'Age Distribution', impact: 'positive', weight: ageAdjustment },
       { name: 'Gender Balance', impact: genderBalance > 0 ? 'positive' : 'neutral', weight: genderBalance },

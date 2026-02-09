@@ -34,7 +34,7 @@ async function checkFeatureAccess(
     include: { provider: true },
   });
 
-  if (!feature || feature.status !== 'PUBLISHED' || !feature.isActive) {
+  if (!feature || feature.status !== 'PUBLISHED' || !(feature as any).isActive) {
     return { allowed: false, error: 'Feature not available' };
   }
 
@@ -58,7 +58,7 @@ async function checkFeatureAccess(
   const userAccess = await prisma.tenantUserAIAccess.findUnique({
     where: {
       userId_featureId: { userId, featureId },
-    },
+    } as any,
   });
 
   if (userAccess && !userAccess.isEnabled) {
@@ -101,7 +101,7 @@ async function checkFeatureAccess(
     where: { tenantId },
   });
 
-  const creditsRequired = subscription.customCreditsPerUse ?? feature.creditsPerUse ?? 1;
+  const creditsRequired = (subscription as any).customCreditsPerUse ?? (feature as any).creditsPerUse ?? 1;
 
   if (!credits || credits.balance < creditsRequired) {
     // Create alert for depleted credits
@@ -117,7 +117,7 @@ async function checkFeatureAccess(
           creditsRequired,
           creditsAvailable: credits?.balance ?? 0,
         },
-      },
+      } as any,
     });
 
     return { allowed: false, error: 'Insufficient credits. Please contact your administrator.' };
@@ -156,7 +156,7 @@ async function logUsage(
         creditsUsed,
         success,
         errorMessage,
-      },
+      } as any,
     });
 
     if (success && creditsUsed > 0) {
@@ -167,7 +167,7 @@ async function logUsage(
           balance: { decrement: creditsUsed },
           totalUsed: { increment: creditsUsed },
           lastUsedAt: new Date(),
-        },
+        } as any,
       });
 
       // Create credit transaction
@@ -178,7 +178,7 @@ async function logUsage(
           creditsAmount: -creditsUsed,
           featureId,
           notes: `Used ${creditsUsed} credits for AI feature`,
-        },
+        } as any,
       });
 
       // Check for low balance and create alert if needed
@@ -186,7 +186,7 @@ async function logUsage(
         where: { tenantId },
       });
 
-      if (updatedCredits && updatedCredits.balance <= (updatedCredits.lowBalanceAlert || 100)) {
+      if (updatedCredits && updatedCredits.balance <= ((updatedCredits as any).lowBalanceAlert || 100)) {
         // Check if alert already exists
         const existingAlert = await tx.aIAdminAlert.findFirst({
           where: {
@@ -205,9 +205,9 @@ async function logUsage(
               message: `Tenant credits are low: ${updatedCredits.balance} remaining`,
               details: {
                 currentBalance: updatedCredits.balance,
-                threshold: updatedCredits.lowBalanceAlert,
+                threshold: (updatedCredits as any).lowBalanceAlert,
               },
-            },
+            } as any,
           });
         }
       }
@@ -245,7 +245,7 @@ router.get('/available', async (req: Request, res: Response, next: NextFunction)
     });
 
     const availableFeatures = subscriptions
-      .filter(s => s.feature.status === 'PUBLISHED' && s.feature.isActive)
+      .filter(s => s.feature.status === 'PUBLISHED' && (s.feature as any).isActive)
       .map(s => ({
         id: s.feature.id,
         featureName: s.feature.featureName,
@@ -253,10 +253,10 @@ router.get('/available', async (req: Request, res: Response, next: NextFunction)
         description: s.feature.description,
         category: s.feature.category,
         provider: s.feature.provider.displayName,
-        creditsPerUse: s.customCreditsPerUse ?? s.feature.creditsPerUse,
-        requiresFileUpload: s.feature.requiresFileUpload,
-        allowedFileTypes: s.feature.allowedFileTypes,
-        maxFileSizeMB: s.feature.maxFileSizeMB,
+        creditsPerUse: (s as any).customCreditsPerUse ?? (s.feature as any).creditsPerUse,
+        requiresFileUpload: (s.feature as any).requiresFileUpload,
+        allowedFileTypes: (s.feature as any).allowedFileTypes,
+        maxFileSizeMB: (s.feature as any).maxFileSizeMB,
       }));
 
     // Get tenant credits
@@ -266,7 +266,7 @@ router.get('/available', async (req: Request, res: Response, next: NextFunction)
         balance: true,
         totalPurchased: true,
         totalUsed: true,
-      },
+      } as any,
     });
 
     res.json({
@@ -288,7 +288,7 @@ router.get('/:featureId', async (req: Request, res: Response, next: NextFunction
     const userId = req.headers['x-user-id'] as string;
     const { featureId } = req.params;
 
-    const accessCheck = await checkFeatureAccess(tenantId, userId, featureId);
+    const accessCheck = await checkFeatureAccess(tenantId, userId, featureId!);
 
     if (!accessCheck.allowed) {
       res.status(403).json({
@@ -336,7 +336,7 @@ router.post('/:featureId/execute', async (req: Request, res: Response, next: Nex
 
     const data = schema.parse(req.body);
 
-    const accessCheck = await checkFeatureAccess(tenantId, userId, featureId);
+    const accessCheck = await checkFeatureAccess(tenantId, userId, featureId!);
 
     if (!accessCheck.allowed) {
       res.status(403).json({
@@ -379,7 +379,7 @@ router.post('/:featureId/execute', async (req: Request, res: Response, next: Nex
       await logUsage(
         tenantId,
         userId,
-        featureId,
+        featureId!,
         feature.providerId,
         data.input,
         result.output,
@@ -406,7 +406,7 @@ router.post('/:featureId/execute', async (req: Request, res: Response, next: Nex
       await logUsage(
         tenantId,
         userId,
-        featureId,
+        featureId!,
         feature.providerId,
         data.input,
         '',
@@ -458,7 +458,7 @@ router.get('/usage/history', async (req: Request, res: Response, next: NextFunct
         category: log.feature.category,
         creditsUsed: log.creditsUsed,
         processingTimeMs: log.processingTimeMs,
-        success: log.success,
+        success: (log as any).success,
         createdAt: log.createdAt,
       })),
       meta: {
@@ -519,11 +519,11 @@ async function executeOpenAI(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
     throw new Error(error.error?.message || 'OpenAI API error');
   }
 
-  const result = await response.json();
+  const result: any = await response.json();
   return {
     output: result.choices[0]?.message?.content || '',
     tokens: {
@@ -577,11 +577,11 @@ async function executeAnthropic(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
     throw new Error(error.error?.message || 'Anthropic API error');
   }
 
-  const result = await response.json();
+  const result: any = await response.json();
   return {
     output: result.content?.[0]?.text || '',
     tokens: {
@@ -634,11 +634,11 @@ async function executeGoogle(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
     throw new Error(error.error?.message || 'Google API error');
   }
 
-  const result = await response.json();
+  const result: any = await response.json();
   return {
     output: result.candidates?.[0]?.content?.parts?.[0]?.text || '',
     tokens: {
@@ -651,7 +651,7 @@ async function executeGoogle(
 async function executeXAI(
   feature: any,
   input: string,
-  fileBase64?: string
+  _fileBase64?: string
 ): Promise<{ output: string; tokens: { input: number; output: number } }> {
   const provider = feature.provider;
 
@@ -684,11 +684,11 @@ async function executeXAI(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
     throw new Error(error.error?.message || 'xAI API error');
   }
 
-  const result = await response.json();
+  const result: any = await response.json();
   return {
     output: result.choices[0]?.message?.content || '',
     tokens: {
@@ -726,7 +726,7 @@ async function executeCustom(
     throw new Error(`Custom API error: ${response.status}`);
   }
 
-  const result = await response.json();
+  const result: any = await response.json();
   return {
     output: result.output || result.text || result.result || JSON.stringify(result),
     tokens: {

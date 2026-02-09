@@ -8,12 +8,9 @@ import {
   EditIcon,
   PlayIcon,
   PauseIcon,
-  CheckCircleIcon,
-  XCircleIcon,
   SparklesIcon,
   BuildingIcon,
   CoinsIcon,
-  FileTextIcon,
   SendIcon,
 } from 'lucide-react';
 

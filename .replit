@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace && (npm run gateway:dev &) && (npm run auth:dev &) && (npm run election:dev &) && (npm run voter:dev &) && (npm run cadre:dev &) && (npm run analytics:dev &) && (npm run super-admin:dev &) && npm run web:dev"
+args = "cd /home/runner/workspace && (npm run gateway:dev &) && (npm run auth:dev &) && (npm run election:dev &) && (npm run voter:dev &) && (npm run cadre:dev &) && (npm run analytics:dev &) && (npm run reporting:dev &) && (npm run ai:dev &) && (npm run super-admin:dev &) && npm run web:dev"
 waitForPort = 5000
 
 [[ports]]
@@ -55,12 +55,40 @@ localPort = 3005
 externalPort = 3003
 
 [[ports]]
+localPort = 3006
+externalPort = 8081
+
+[[ports]]
+localPort = 3007
+externalPort = 8099
+
+[[ports]]
 localPort = 3008
 externalPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 8000
+
+[[ports]]
+localPort = 5002
+externalPort = 8080
+
+[[ports]]
+localPort = 5174
+externalPort = 6000
+
+[[ports]]
+localPort = 5175
+externalPort = 6800
+
+[[ports]]
+localPort = 5176
+externalPort = 8008
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -85,5 +113,5 @@ LOG_LEVEL = "info"
 STORAGE_TYPE = "local"
 STORAGE_PATH = "./uploads"
 NODE_ENV = "development"
-CORE_DATABASE_URL = "postgresql://postgres:password@helium/heliumdb?sslmode=disable"
+CORE_DATABASE_URL = "postgresql://postgres:password@helium/electioncaffe_core?sslmode=disable"
 TENANT_DATABASE_URL = "postgresql://postgres:password@helium/heliumdb?sslmode=disable"

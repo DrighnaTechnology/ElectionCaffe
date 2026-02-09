@@ -8,7 +8,10 @@ import {
   errorResponse,
   createPaginationMeta,
   calculateSkip,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('election-service');
 
 export class ElectionController {
   async getElections(req: Request, res: Response): Promise<void> {
@@ -70,7 +73,7 @@ export class ElectionController {
 
       res.json(successResponse(elections, createPaginationMeta(total, page, limit)));
     } catch (error) {
-      console.error('Get elections error:', error);
+      logger.error({ err: error }, 'Get elections error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -109,7 +112,7 @@ export class ElectionController {
 
       res.json(successResponse(election));
     } catch (error) {
-      console.error('Get election by ID error:', error);
+      logger.error({ err: error }, 'Get election by ID error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -154,7 +157,7 @@ export class ElectionController {
 
       res.status(201).json(successResponse(election));
     } catch (error) {
-      console.error('Create election error:', error);
+      logger.error({ err: error }, 'Create election error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -192,7 +195,7 @@ export class ElectionController {
 
       res.json(successResponse(election));
     } catch (error) {
-      console.error('Update election error:', error);
+      logger.error({ err: error }, 'Update election error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -220,7 +223,7 @@ export class ElectionController {
 
       res.json(successResponse({ message: 'Election deleted successfully' }));
     } catch (error) {
-      console.error('Delete election error:', error);
+      logger.error({ err: error }, 'Delete election error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -246,7 +249,7 @@ export class ElectionController {
 
       res.json(successResponse(election));
     } catch (error) {
-      console.error('Lock election error:', error);
+      logger.error({ err: error }, 'Lock election error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -272,7 +275,7 @@ export class ElectionController {
 
       res.json(successResponse(election));
     } catch (error) {
-      console.error('Unlock election error:', error);
+      logger.error({ err: error }, 'Unlock election error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -320,7 +323,7 @@ export class ElectionController {
 
       res.status(201).json(successResponse(newElection));
     } catch (error) {
-      console.error('Duplicate election error:', error);
+      logger.error({ err: error }, 'Duplicate election error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -380,7 +383,7 @@ export class ElectionController {
 
       res.json(successResponse(stats));
     } catch (error) {
-      console.error('Get election stats error:', error);
+      logger.error({ err: error }, 'Get election stats error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

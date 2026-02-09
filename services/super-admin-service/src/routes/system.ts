@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { coreDb as prisma } from '@electioncaffe/database';
-// Fixed Tenant model to use status instead of isActive
+import { coreDb as prisma, prisma as legacyDb } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
 
 const router = Router();
@@ -10,7 +9,7 @@ const router = Router();
 router.use(superAdminAuthMiddleware);
 
 // Get system configuration
-router.get('/config', async (req, res, next) => {
+router.get('/config', async (_req, res, next) => {
   try {
     const configs = await prisma.systemConfig.findMany({
       orderBy: { configKey: 'asc' },
@@ -84,7 +83,7 @@ router.put('/config/:key', async (req, res, next) => {
 });
 
 // Get system dashboard stats
-router.get('/dashboard', async (req, res, next) => {
+router.get('/dashboard', async (_req, res, next) => {
   try {
     const [
       totalTenants,
@@ -96,8 +95,8 @@ router.get('/dashboard', async (req, res, next) => {
     ] = await Promise.all([
       prisma.tenant.count(),
       prisma.tenant.count({ where: { status: 'ACTIVE' } }),
-      prisma.user.count(),
-      prisma.election.count(),
+      legacyDb.user.count().catch(() => 0),
+      legacyDb.election.count().catch(() => 0),
       prisma.tenant.groupBy({
         by: ['tenantType'],
         _count: { id: true },
@@ -112,15 +111,12 @@ router.get('/dashboard', async (req, res, next) => {
           tenantType: true,
           status: true,
           createdAt: true,
-          _count: {
-            select: { users: true, elections: true },
-          },
         },
       }),
     ]);
 
     // Get total voters across all elections
-    const voterCount = await prisma.voter.count();
+    const voterCount = await legacyDb.voter.count().catch(() => 0);
 
     res.json({
       success: true,
@@ -133,7 +129,7 @@ router.get('/dashboard', async (req, res, next) => {
           totalElections,
           totalVoters: voterCount,
         },
-        tenantsByType: tenantsByType.reduce((acc, item) => {
+        tenantsByType: tenantsByType.reduce((acc: any, item: any) => {
           acc[item.tenantType] = item._count.id;
           return acc;
         }, {} as Record<string, number>),
@@ -146,7 +142,7 @@ router.get('/dashboard', async (req, res, next) => {
 });
 
 // Get all super admins
-router.get('/admins', async (req, res, next) => {
+router.get('/admins', async (_req, res, next) => {
   try {
     const admins = await prisma.superAdmin.findMany({
       select: {
@@ -294,7 +290,7 @@ router.put('/admins/:id/activate', async (req, res, next) => {
 });
 
 // Get system health/status
-router.get('/health', async (req, res, next) => {
+router.get('/health', async (_req, res, _next) => {
   try {
     // Check database connection
     await prisma.$queryRaw`SELECT 1`;

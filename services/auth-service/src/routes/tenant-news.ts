@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // Helper to get tenant from user
@@ -102,7 +103,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       },
     }));
   } catch (error) {
-    console.error('Get tenant news error:', error);
+    logger.error({ err: error }, 'Get tenant news error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -138,7 +139,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
             actionType: true,
           },
         },
-      },
+      } as any,
     });
 
     if (!news) {
@@ -154,7 +155,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(news));
   } catch (error) {
-    console.error('Get news detail error:', error);
+    logger.error({ err: error }, 'Get news detail error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -205,7 +206,7 @@ router.get('/stats/categories', async (req: Request, res: Response): Promise<voi
       })),
     }));
   } catch (error) {
-    console.error('Get news stats error:', error);
+    logger.error({ err: error }, 'Get news stats error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -239,7 +240,7 @@ router.get('/:id/analysis', async (req: Request, res: Response): Promise<void> =
         relevanceScore: true,
         suggestedActions: true,
         analyzedAt: true,
-      },
+      } as any,
     });
 
     if (!news) {
@@ -263,11 +264,11 @@ router.get('/:id/analysis', async (req: Request, res: Response): Promise<void> =
       sentimentScore: news.sentimentScore,
       impactScore: news.impactScore,
       relevanceScore: news.relevanceScore,
-      suggestedActions: news.suggestedActions,
-      analyzedAt: news.analyzedAt,
+      suggestedActions: (news as any).suggestedActions,
+      analyzedAt: (news as any).analyzedAt,
     }));
   } catch (error) {
-    console.error('Get news analysis error:', error);
+    logger.error({ err: error }, 'Get news analysis error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -315,7 +316,7 @@ router.post('/:id/analyze', async (req: Request, res: Response): Promise<void> =
       requestedAt: new Date().toISOString(),
     }));
   } catch (error) {
-    console.error('Request news analysis error:', error);
+    logger.error({ err: error }, 'Request news analysis error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

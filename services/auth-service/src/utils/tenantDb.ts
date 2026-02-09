@@ -64,7 +64,7 @@ export async function getTenantDb(req: Request): Promise<TenantPrismaClient> {
 /**
  * Gets the tenant info from core database
  */
-export async function getTenantFromCore(tenantId: string) {
+export async function getTenantFromCore(tenantId: string): Promise<any> {
   return coreDb.tenant.findUnique({
     where: { id: tenantId },
   });

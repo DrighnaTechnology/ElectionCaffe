@@ -27,7 +27,7 @@ router.get('/packages', async (req, res, next) => {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: [{ isPopular: 'desc' }, { credits: 'asc' }],
+        orderBy: [{ isPopular: 'desc' }, { credits: 'asc' }] as any,
       }),
       prisma.aICreditPackage.count({ where }),
     ]);
@@ -68,7 +68,7 @@ router.post('/packages', async (req, res, next) => {
 
     // Check if package name already exists
     const existingPackage = await prisma.aICreditPackage.findUnique({
-      where: { packageName: data.packageName },
+      where: { packageName: data.packageName } as any,
     });
 
     if (existingPackage) {
@@ -172,11 +172,11 @@ router.get('/tenants', async (req, res, next) => {
 
     if (lowBalance) {
       // Find tenants where balance is below alert threshold
-      where.balance = { lte: prisma.tenantAICredits.fields.lowBalanceAlert };
+      where.balance = { lte: (prisma as any).tenantAICredits.fields.lowBalanceAlert };
     }
 
     const [credits, total] = await Promise.all([
-      prisma.tenantAICredits.findMany({
+      (prisma as any).tenantAICredits.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
@@ -192,13 +192,13 @@ router.get('/tenants', async (req, res, next) => {
           },
         },
       }),
-      prisma.tenantAICredits.count({ where }),
+      (prisma as any).tenantAICredits.count({ where }),
     ]);
 
     // Filter by search if needed (tenant name)
     let filteredCredits = credits;
     if (search) {
-      filteredCredits = credits.filter(c =>
+      filteredCredits = credits.filter((c: any) =>
         c.tenant.name.toLowerCase().includes(search.toLowerCase()) ||
         c.tenant.slug.toLowerCase().includes(search.toLowerCase())
       );
@@ -222,7 +222,7 @@ router.get('/tenants', async (req, res, next) => {
 // Get tenant credits by tenant ID
 router.get('/tenants/:tenantId', async (req, res, next) => {
   try {
-    const credits = await prisma.tenantAICredits.findUnique({
+    const credits = await (prisma as any).tenantAICredits.findUnique({
       where: { tenantId: req.params.tenantId },
       include: {
         tenant: {
@@ -332,7 +332,7 @@ router.post('/tenants/:tenantId/add', async (req, res, next) => {
     // Create or update tenant credits
     const result = await prisma.$transaction(async (tx) => {
       // Upsert tenant credits record
-      const tenantCredits = await tx.tenantAICredits.upsert({
+      const tenantCredits = await (tx as any).tenantAICredits.upsert({
         where: { tenantId: req.params.tenantId },
         create: {
           tenantId: req.params.tenantId,
@@ -351,7 +351,7 @@ router.post('/tenants/:tenantId/add', async (req, res, next) => {
       });
 
       // Create transaction record
-      const transaction = await tx.aICreditTransaction.create({
+      const transaction = await (tx as any).aICreditTransaction.create({
         data: {
           tenantId: req.params.tenantId,
           transactionType: data.transactionType,
@@ -373,13 +373,13 @@ router.post('/tenants/:tenantId/add', async (req, res, next) => {
           tenantId: req.params.tenantId,
           alertType: 'LOW_BALANCE',
           isResolved: false,
-        },
+        } as any,
         data: {
           isResolved: true,
           resolvedAt: new Date(),
           resolvedBy: 'super_admin',
           resolutionNotes: `Credits added: ${totalCredits}`,
-        },
+        } as any,
       });
 
       return { tenantCredits, transaction };
@@ -408,7 +408,7 @@ router.post('/tenants/:tenantId/deduct', async (req, res, next) => {
 
     const data = schema.parse(req.body);
 
-    const tenantCredits = await prisma.tenantAICredits.findUnique({
+    const tenantCredits = await (prisma as any).tenantAICredits.findUnique({
       where: { tenantId: req.params.tenantId },
     });
 
@@ -433,7 +433,7 @@ router.post('/tenants/:tenantId/deduct', async (req, res, next) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const updatedCredits = await tx.tenantAICredits.update({
+      const updatedCredits = await (tx as any).tenantAICredits.update({
         where: { tenantId: req.params.tenantId },
         data: {
           balance: { decrement: data.credits },
@@ -441,7 +441,7 @@ router.post('/tenants/:tenantId/deduct', async (req, res, next) => {
         },
       });
 
-      const transaction = await tx.aICreditTransaction.create({
+      const transaction = await (tx as any).aICreditTransaction.create({
         data: {
           tenantId: req.params.tenantId,
           transactionType: 'ADJUSTMENT',
@@ -478,7 +478,7 @@ router.get('/tenants/:tenantId/transactions', async (req, res, next) => {
     }
 
     const [transactions, total] = await Promise.all([
-      prisma.aICreditTransaction.findMany({
+      (prisma as any).aICreditTransaction.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
@@ -493,7 +493,7 @@ router.get('/tenants/:tenantId/transactions', async (req, res, next) => {
           },
         },
       }),
-      prisma.aICreditTransaction.count({ where }),
+      (prisma as any).aICreditTransaction.count({ where }),
     ]);
 
     res.json({
@@ -525,7 +525,7 @@ router.put('/tenants/:tenantId/settings', async (req, res, next) => {
 
     const data = schema.parse(req.body);
 
-    const tenantCredits = await prisma.tenantAICredits.upsert({
+    const tenantCredits = await (prisma as any).tenantAICredits.upsert({
       where: { tenantId: req.params.tenantId },
       create: {
         tenantId: req.params.tenantId,
@@ -582,7 +582,7 @@ router.get('/alerts', async (req, res, next) => {
             },
           },
         },
-      }),
+      } as any),
       prisma.aIAdminAlert.count({ where }),
     ]);
 
@@ -594,7 +594,7 @@ router.get('/alerts', async (req, res, next) => {
         limit,
         total,
         totalPages: Math.ceil(total / limit),
-        unresolvedCount: await prisma.aIAdminAlert.count({ where: { isResolved: false } }),
+        unresolvedCount: await prisma.aIAdminAlert.count({ where: { isResolved: false } as any }),
       },
     });
   } catch (error) {
@@ -618,7 +618,7 @@ router.post('/alerts/:id/resolve', async (req, res, next) => {
         resolvedAt: new Date(),
         resolvedBy: 'super_admin',
         resolutionNotes: data.notes,
-      },
+      } as any,
     });
 
     res.json({
@@ -631,7 +631,7 @@ router.post('/alerts/:id/resolve', async (req, res, next) => {
 });
 
 // Get credits summary/dashboard
-router.get('/summary', async (req, res, next) => {
+router.get('/summary', async (_req, res, next) => {
   try {
     const [
       totalTenantsWithCredits,
@@ -641,25 +641,25 @@ router.get('/summary', async (req, res, next) => {
       recentTransactions,
       topUsageTenants,
     ] = await Promise.all([
-      prisma.tenantAICredits.count({ where: { balance: { gt: 0 } } }),
-      prisma.tenantAICredits.aggregate({
+      (prisma as any).tenantAICredits.count({ where: { balance: { gt: 0 } } }),
+      (prisma as any).tenantAICredits.aggregate({
         _sum: { balance: true, totalPurchased: true, totalUsed: true },
       }),
-      prisma.tenantAICredits.count({
+      (prisma as any).tenantAICredits.count({
         where: {
           balance: { lte: 100 }, // Low balance threshold
           isActive: true,
         },
       }),
-      prisma.aIAdminAlert.count({ where: { isResolved: false } }),
-      prisma.aICreditTransaction.findMany({
+      prisma.aIAdminAlert.count({ where: { isResolved: false } as any }),
+      (prisma as any).aICreditTransaction.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: {
           tenant: { select: { name: true } },
         },
       }),
-      prisma.tenantAICredits.findMany({
+      (prisma as any).tenantAICredits.findMany({
         take: 5,
         orderBy: { totalUsed: 'desc' },
         include: {
@@ -672,7 +672,7 @@ router.get('/summary', async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const revenueData = await prisma.aICreditTransaction.aggregate({
+    const revenueData = await (prisma as any).aICreditTransaction.aggregate({
       where: {
         transactionType: 'PURCHASE',
         createdAt: { gte: thirtyDaysAgo },
@@ -700,14 +700,14 @@ router.get('/summary', async (req, res, next) => {
             transactions: revenueData._count,
           },
         },
-        recentTransactions: recentTransactions.map(t => ({
+        recentTransactions: recentTransactions.map((t: any) => ({
           id: t.id,
           tenantName: t.tenant.name,
           type: t.transactionType,
           amount: t.creditsAmount,
           createdAt: t.createdAt,
         })),
-        topUsageTenants: topUsageTenants.map(t => ({
+        topUsageTenants: topUsageTenants.map((t: any) => ({
           tenantId: t.tenant.id,
           tenantName: t.tenant.name,
           totalUsed: t.totalUsed,

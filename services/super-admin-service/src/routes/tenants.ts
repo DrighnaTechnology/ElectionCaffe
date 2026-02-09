@@ -3,8 +3,11 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { Client } from 'pg';
 import { coreDb as prisma } from '@electioncaffe/database';
+import { createLogger } from '@electioncaffe/shared';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
 import { createFeatureTables, featureTablesExist } from '../utils/createFeatureTables.js';
+
+const logger = createLogger('super-admin-service');
 
 const router = Router();
 
@@ -376,7 +379,7 @@ router.post('/', async (req, res, next) => {
         if (!defaultPlan) {
           defaultPlan = await tx.licensePlan.findFirst({
             where: { isActive: true },
-            orderBy: { basePrice: 'asc' },
+            orderBy: { basePrice: 'asc' } as any,
           });
         }
 
@@ -404,10 +407,10 @@ router.post('/', async (req, res, next) => {
             enforceDataLimit: false,
             softLimitMode: true, // Start in soft limit mode for trials
             adminNotes: `Auto-created trial license for ${trialDays} days`,
-          },
+          } as any,
           include: {
             licensePlan: true,
-          },
+          } as any,
         });
       }
 
@@ -446,13 +449,13 @@ router.post('/', async (req, res, next) => {
         license: result.tenantLicense ? {
           id: result.tenantLicense.id,
           status: result.tenantLicense.status,
-          plan: result.tenantLicense.licensePlan.planName,
-          planType: result.tenantLicense.licensePlan.planType,
-          trialEndsAt: result.tenantLicense.trialEndsAt,
+          plan: (result.tenantLicense as any).licensePlan.planName,
+          planType: (result.tenantLicense as any).licensePlan.planType,
+          trialEndsAt: (result.tenantLicense as any).trialEndsAt,
           limits: {
-            maxUsers: result.tenantLicense.licensePlan.maxUsers,
-            maxSessions: result.tenantLicense.licensePlan.maxConcurrentSessions,
-            maxSessionsPerUser: result.tenantLicense.licensePlan.maxSessionsPerUser,
+            maxUsers: (result.tenantLicense as any).licensePlan.maxUsers,
+            maxSessions: (result.tenantLicense as any).licensePlan.maxConcurrentSessions,
+            maxSessionsPerUser: (result.tenantLicense as any).licensePlan.maxSessionsPerUser,
           },
         } : null,
       },
@@ -490,7 +493,7 @@ router.put('/:id', async (req, res, next) => {
       data: {
         ...data,
         subscriptionEndsAt: data.subscriptionEndsAt ? new Date(data.subscriptionEndsAt) : undefined,
-      },
+      } as any,
     });
 
     res.json({
@@ -505,9 +508,9 @@ router.put('/:id', async (req, res, next) => {
 // Delete tenant (soft delete - just deactivate)
 router.delete('/:id', async (req, res, next) => {
   try {
-    const tenant = await prisma.tenant.update({
+    await prisma.tenant.update({
       where: { id: req.params.id },
-      data: { isActive: false },
+      data: { isActive: false } as any,
     });
 
     res.json({
@@ -944,7 +947,7 @@ router.put('/:id/features/:featureId', async (req, res, next) => {
 
     // If enabling a feature that requires tables, create them
     if (isEnabled && requiresDbTables) {
-      console.log(`Feature "${feature.featureKey}" requires database tables. Creating for tenant "${tenant.name}"...`);
+      logger.info({ featureKey: feature.featureKey, tenantName: tenant.name }, 'Feature requires database tables, creating');
 
       try {
         // Check if tables already exist
@@ -952,12 +955,12 @@ router.put('/:id/features/:featureId', async (req, res, next) => {
 
         if (!tablesExist) {
           await createFeatureTables(tenant, feature.featureKey);
-          console.log(`✓ Tables created successfully for feature "${feature.featureKey}"`);
+          logger.info({ featureKey: feature.featureKey }, 'Tables created successfully for feature');
         } else {
-          console.log(`ℹ Tables already exist for feature "${feature.featureKey}", skipping creation`);
+          logger.debug({ featureKey: feature.featureKey }, 'Tables already exist for feature, skipping creation');
         }
       } catch (error: any) {
-        console.error(`Failed to create tables for feature "${feature.featureKey}":`, error);
+        logger.error({ err: error, featureKey: feature.featureKey }, 'Failed to create tables for feature');
         return res.status(500).json({
           error: 'Failed to create database tables for this feature',
           details: error.message,

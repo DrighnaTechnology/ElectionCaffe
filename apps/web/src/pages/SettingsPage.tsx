@@ -53,7 +53,7 @@ import { getInitials, cn } from '../lib/utils';
 
 export function SettingsPage() {
   const { user, setAuth } = useAuthStore();
-  const { branding, fetchBranding, updateBranding } = useTenantStore();
+  const { branding, fetchBranding } = useTenantStore();
   const [profileData, setProfileData] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
@@ -1049,7 +1049,6 @@ export function SettingsPage() {
 
 // AI Features Tab Component for Tenant Admins
 function AIFeaturesTab() {
-  const queryClient = useQueryClient();
   const [selectedFeature, setSelectedFeature] = useState<any>(null);
 
   // Fetch AI features available to this tenant

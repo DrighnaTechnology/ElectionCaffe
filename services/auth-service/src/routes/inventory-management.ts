@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // ==================== CATEGORIES ====================
@@ -32,7 +33,7 @@ router.get('/categories', async (req: Request, res: Response): Promise<void> => 
 
     res.json(successResponse(categories));
   } catch (error) {
-    console.error('Get inventory categories error:', error);
+    logger.error({ err: error }, 'Get inventory categories error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -80,7 +81,7 @@ router.post('/categories', async (req: Request, res: Response): Promise<void> =>
 
     res.status(201).json(successResponse({ category, message: 'Category created successfully' }));
   } catch (error) {
-    console.error('Create inventory category error:', error);
+    logger.error({ err: error }, 'Create inventory category error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -131,7 +132,7 @@ router.get('/items', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ items, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
   } catch (error) {
-    console.error('Get inventory items error:', error);
+    logger.error({ err: error }, 'Get inventory items error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -176,7 +177,7 @@ router.get('/items/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(item));
   } catch (error) {
-    console.error('Get inventory item error:', error);
+    logger.error({ err: error }, 'Get inventory item error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -254,7 +255,7 @@ router.post('/items', async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(successResponse({ item, message: 'Item created successfully' }));
   } catch (error) {
-    console.error('Create inventory item error:', error);
+    logger.error({ err: error }, 'Create inventory item error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -313,7 +314,7 @@ router.put('/items/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ item: updatedItem, message: 'Item updated successfully' }));
   } catch (error) {
-    console.error('Update inventory item error:', error);
+    logger.error({ err: error }, 'Update inventory item error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -379,7 +380,7 @@ router.post('/items/:id/stock-in', async (req: Request, res: Response): Promise<
 
     res.status(201).json(successResponse({ movement, message: 'Stock added successfully' }));
   } catch (error) {
-    console.error('Stock in error:', error);
+    logger.error({ err: error }, 'Stock in error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -448,7 +449,7 @@ router.post('/items/:id/stock-out', async (req: Request, res: Response): Promise
 
     res.status(201).json(successResponse({ movement, message: 'Stock removed successfully' }));
   } catch (error) {
-    console.error('Stock out error:', error);
+    logger.error({ err: error }, 'Stock out error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -517,7 +518,7 @@ router.post('/items/:id/adjust', async (req: Request, res: Response): Promise<vo
 
     res.status(201).json(successResponse({ movement, message: 'Stock adjusted successfully' }));
   } catch (error) {
-    console.error('Stock adjustment error:', error);
+    logger.error({ err: error }, 'Stock adjustment error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -608,7 +609,7 @@ router.post('/allocations', async (req: Request, res: Response): Promise<void> =
 
     res.status(201).json(successResponse({ allocation, message: 'Items allocated successfully' }));
   } catch (error) {
-    console.error('Create allocation error:', error);
+    logger.error({ err: error }, 'Create allocation error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -685,7 +686,7 @@ router.post('/allocations/:id/return', async (req: Request, res: Response): Prom
 
     res.json(successResponse({ message: 'Items returned successfully' }));
   } catch (error) {
-    console.error('Return allocation error:', error);
+    logger.error({ err: error }, 'Return allocation error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -729,7 +730,7 @@ router.get('/allocations', async (req: Request, res: Response): Promise<void> =>
 
     res.json(successResponse({ allocations, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
   } catch (error) {
-    console.error('Get allocations error:', error);
+    logger.error({ err: error }, 'Get allocations error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -821,7 +822,7 @@ router.get('/summary', async (req: Request, res: Response): Promise<void> => {
       recentMovements,
     }));
   } catch (error) {
-    console.error('Get inventory summary error:', error);
+    logger.error({ err: error }, 'Get inventory summary error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../store/auth';
 
 const api = axios.create({
-  baseURL: '/api/super-admin',
+  baseURL: import.meta.env.VITE_SUPER_ADMIN_API_URL || '/api/super-admin',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -17,14 +17,39 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
+// Response interceptor with token refresh
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      useAuthStore.getState().logout();
-      window.location.href = '/login';
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      const { refreshToken, logout } = useAuthStore.getState();
+
+      if (refreshToken) {
+        try {
+          const response = await axios.post(
+            `${import.meta.env.VITE_SUPER_ADMIN_API_URL || '/api/super-admin'}/auth/refresh`,
+            { refreshToken }
+          );
+
+          const { token } = response.data.data;
+          useAuthStore.setState({ token });
+
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        } catch {
+          logout();
+          window.location.href = '/login';
+        }
+      } else {
+        logout();
+        window.location.href = '/login';
+      }
     }
+
     return Promise.reject(error);
   }
 );

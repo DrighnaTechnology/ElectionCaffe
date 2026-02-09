@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // ==================== NOTIFICATIONS (Admin) ====================
@@ -44,7 +45,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ notifications, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
   } catch (error) {
-    console.error('Get notifications error:', error);
+    logger.error({ err: error }, 'Get notifications error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -85,7 +86,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse(notification));
   } catch (error) {
-    console.error('Get notification error:', error);
+    logger.error({ err: error }, 'Get notification error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -152,7 +153,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(successResponse({ notification, message: 'Notification created' }));
   } catch (error) {
-    console.error('Create notification error:', error);
+    logger.error({ err: error }, 'Create notification error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -220,7 +221,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ notification: updatedNotification, message: 'Notification updated' }));
   } catch (error) {
-    console.error('Update notification error:', error);
+    logger.error({ err: error }, 'Update notification error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -305,7 +306,7 @@ router.post('/:id/publish', async (req: Request, res: Response): Promise<void> =
 
     res.json(successResponse({ recipientCount: targetUserIds.length }));
   } catch (error) {
-    console.error('Publish notification error:', error);
+    logger.error({ err: error }, 'Publish notification error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -341,7 +342,7 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
 
     res.json(successResponse({ message: 'Notification deleted' }));
   } catch (error) {
-    console.error('Delete notification error:', error);
+    logger.error({ err: error }, 'Delete notification error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -403,7 +404,7 @@ router.get('/inbox/my', async (req: Request, res: Response): Promise<void> => {
       limit: parseInt(limit as string),
     }));
   } catch (error) {
-    console.error('Get inbox error:', error);
+    logger.error({ err: error }, 'Get inbox error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -436,7 +437,7 @@ router.patch('/inbox/:recipientId/read', async (req: Request, res: Response): Pr
 
     res.json(successResponse({ message: 'Marked as read' }));
   } catch (error) {
-    console.error('Mark read error:', error);
+    logger.error({ err: error }, 'Mark read error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -470,7 +471,7 @@ router.patch('/inbox/read-all', async (req: Request, res: Response): Promise<voi
 
     res.json(successResponse({ message: 'All notifications marked as read' }));
   } catch (error) {
-    console.error('Mark all read error:', error);
+    logger.error({ err: error }, 'Mark all read error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -494,7 +495,7 @@ router.delete('/inbox/:recipientId', async (req: Request, res: Response): Promis
 
     res.json(successResponse({ message: 'Notification removed from inbox' }));
   } catch (error) {
-    console.error('Delete from inbox error:', error);
+    logger.error({ err: error }, 'Delete from inbox error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

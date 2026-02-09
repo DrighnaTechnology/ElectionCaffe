@@ -37,7 +37,6 @@ import {
   TrendingUpIcon,
   ExternalLinkIcon,
   TrashIcon,
-  EditIcon,
   GraduationCapIcon,
   BriefcaseIcon,
   PhoneIcon,
@@ -45,13 +44,6 @@ import {
   MapPinIcon,
   CalendarIcon,
   UsersIcon,
-  MessageCircleIcon,
-  HeartIcon,
-  RefreshCwIcon,
-  GlobeIcon,
-  EyeIcon,
-  ThumbsUpIcon,
-  Share2 as ShareIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/utils';
@@ -137,7 +129,7 @@ export function CandidateBioPage() {
   const { selectedElectionId } = useElectionStore();
 
   // Fetch elections for dropdown
-  const { data: electionsData } = useQuery({
+  const { data: _electionsData } = useQuery({
     queryKey: ['elections'],
     queryFn: () => electionsAPI.getAll(),
   });
@@ -150,7 +142,7 @@ export function CandidateBioPage() {
   });
 
   // Fetch candidate details
-  const { data: candidateDetails, isLoading: detailsLoading } = useQuery({
+  const { data: candidateDetails } = useQuery({
     queryKey: ['candidate', selectedCandidate?.id],
     queryFn: () => candidatesAPI.getById(selectedCandidate!.id),
     enabled: !!selectedCandidate?.id,
@@ -241,7 +233,7 @@ export function CandidateBioPage() {
       comments: socialMediaForm.comments ? parseInt(socialMediaForm.comments) : 0,
       shares: socialMediaForm.shares ? parseInt(socialMediaForm.shares) : 0,
       engagementRate: socialMediaForm.engagementRate ? parseFloat(socialMediaForm.engagementRate) : undefined,
-    }),
+    } as any),
     onSuccess: () => {
       toast.success('Social media profile added');
       setAddSocialMediaOpen(false);

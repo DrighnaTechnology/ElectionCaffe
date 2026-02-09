@@ -68,7 +68,6 @@ export const authAPI = {
       password,
       tenantSlug,
     };
-    console.log('📤 [API] Sending login request:', { payload: { ...payload, password: '***' } });
     return api.post('/auth/login', payload);
   },
 

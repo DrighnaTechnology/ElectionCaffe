@@ -14,7 +14,6 @@ import {
   XIcon,
   LinkIcon,
   ClockIcon,
-  AlertTriangleIcon,
   WifiIcon,
   WifiOffIcon,
 } from 'lucide-react';

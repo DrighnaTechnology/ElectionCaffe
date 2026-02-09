@@ -10,6 +10,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "pino": "^8.17.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
@@ -30,6 +31,11 @@
       "import": "./dist/validation/index.js",
       "require": "./dist/validation/index.js",
       "types": "./dist/validation/index.d.ts"
+    },
+    "./logger": {
+      "import": "./dist/logger.js",
+      "require": "./dist/logger.js",
+      "types": "./dist/logger.d.ts"
     }
   }
 }

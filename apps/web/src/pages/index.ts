@@ -44,3 +44,4 @@ export { NominationsPage } from './NominationsPage';
 
 // Fund & Inventory Management Pages
 export { default as FundsPage } from './FundsPage';
+export { InventoryPage } from './InventoryPage';

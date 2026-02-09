@@ -6,7 +6,10 @@ import {
   errorResponse,
   createPaginationMeta,
   calculateSkip,
+  createLogger,
 } from '@electioncaffe/shared';
+
+const logger = createLogger('voter-service');
 
 const router = Router();
 
@@ -59,7 +62,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     res.json(successResponse(families, createPaginationMeta(total, page, limit)));
   } catch (error) {
-    console.error('Get families error:', error);
+    logger.error({ err: error }, 'Get families error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -90,7 +93,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(family));
   } catch (error) {
-    console.error('Get family error:', error);
+    logger.error({ err: error }, 'Get family error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -133,7 +136,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse(family));
   } catch (error) {
-    console.error('Create family error:', error);
+    logger.error({ err: error }, 'Create family error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -180,7 +183,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse({ created, failed, errors }));
   } catch (error) {
-    console.error('Bulk create families error:', error);
+    logger.error({ err: error }, 'Bulk create families error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -221,7 +224,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(family));
   } catch (error) {
-    console.error('Update family error:', error);
+    logger.error({ err: error }, 'Update family error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -251,7 +254,7 @@ router.post('/:id/members', async (req: Request, res: Response) => {
 
     res.json(successResponse({ message: 'Member added to family' }));
   } catch (error) {
-    console.error('Add family member error:', error);
+    logger.error({ err: error }, 'Add family member error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -279,7 +282,7 @@ router.delete('/:id/members/:voterId', async (req: Request, res: Response) => {
 
     res.json(successResponse({ message: 'Member removed from family' }));
   } catch (error) {
-    console.error('Remove family member error:', error);
+    logger.error({ err: error }, 'Remove family member error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -301,7 +304,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse({ message: 'Family deleted successfully' }));
   } catch (error) {
-    console.error('Delete family error:', error);
+    logger.error({ err: error }, 'Delete family error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -336,7 +339,7 @@ router.get('/captains/list', async (req: Request, res: Response) => {
 
     res.json(successResponse(captains, createPaginationMeta(total, page, limit)));
   } catch (error) {
-    console.error('Get family captains error:', error);
+    logger.error({ err: error }, 'Get family captains error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

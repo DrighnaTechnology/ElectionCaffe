@@ -1,12 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
+import { createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('voter-service');
 
 export function errorHandler(
   err: Error,
-  req: Request,
+  _req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void {
-  console.error('Error:', err);
+  logger.error({ err }, 'Internal server error');
   res.status(500).json({
     success: false,
     error: { code: 'E5001', message: 'Internal server error' },

@@ -17,8 +17,8 @@ export function LoginPage() {
 
     try {
       const response = await authAPI.login(email, password);
-      const { token, refreshToken, admin } = response.data.data;
-      setAuth(token, refreshToken, admin);
+      const { token, superAdmin } = response.data.data;
+      setAuth(token, '', superAdmin);
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (error: any) {

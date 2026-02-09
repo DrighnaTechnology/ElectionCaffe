@@ -2,7 +2,9 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse, generateOTP } from '@electioncaffe/shared';
+import { successResponse, errorResponse, getNotificationProvider, createLogger } from '@electioncaffe/shared';
+
+const logger = createLogger('auth-service');
 
 const INVITATION_EXPIRY_DAYS = 7;
 
@@ -87,8 +89,15 @@ export class InvitationController {
         }
       });
 
-      // TODO: Send SMS/Email notification
-      console.log(`Invitation created for ${mobile} with token: ${token}`);
+      // Send invitation notification
+      const notifier = getNotificationProvider();
+      const inviteLink = `${process.env.APP_URL || 'http://localhost:5173'}/accept-invitation?token=${token}`;
+      if (invitation.mobile) {
+        await notifier.sendSMS(invitation.mobile, `You've been invited to join ElectionCaffe. Accept here: ${inviteLink}`);
+      }
+      if (invitation.email) {
+        await notifier.sendEmail(invitation.email, 'You have been invited to ElectionCaffe', `Hi ${invitation.firstName || ''},\n\nYou've been invited to join ElectionCaffe.\n\nAccept your invitation: ${inviteLink}`);
+      }
 
       res.status(201).json(successResponse({
         id: invitation.id,
@@ -102,7 +111,7 @@ export class InvitationController {
         inviteLink: `${process.env.APP_URL || 'http://localhost:5173'}/accept-invitation?token=${token}`,
       }));
     } catch (error) {
-      console.error('Create invitation error:', error);
+      logger.error({ err: error }, 'Create invitation error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -152,7 +161,7 @@ export class InvitationController {
         }
       }));
     } catch (error) {
-      console.error('Get invitations error:', error);
+      logger.error({ err: error }, 'Get invitations error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -174,7 +183,7 @@ export class InvitationController {
 
       res.json(successResponse(invitation));
     } catch (error) {
-      console.error('Get invitation error:', error);
+      logger.error({ err: error }, 'Get invitation error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -219,8 +228,15 @@ export class InvitationController {
         data: { status: 'PENDING' }
       });
 
-      // TODO: Send SMS/Email notification
-      console.log(`Invitation resent to ${invitation.mobile} with new token: ${token}`);
+      // Send resend notification
+      const notifier = getNotificationProvider();
+      const inviteLink = `${process.env.APP_URL || 'http://localhost:5173'}/accept-invitation?token=${token}`;
+      if (invitation.mobile) {
+        await notifier.sendSMS(invitation.mobile, `Reminder: You've been invited to join ElectionCaffe. Accept here: ${inviteLink}`);
+      }
+      if (invitation.email) {
+        await notifier.sendEmail(invitation.email, 'Invitation Reminder - ElectionCaffe', `Hi ${invitation.firstName || ''},\n\nThis is a reminder that you've been invited to join ElectionCaffe.\n\nAccept your invitation: ${inviteLink}`);
+      }
 
       res.json(successResponse({
         message: 'Invitation resent successfully',
@@ -228,7 +244,7 @@ export class InvitationController {
         resentCount: updated.resentCount,
       }));
     } catch (error) {
-      console.error('Resend invitation error:', error);
+      logger.error({ err: error }, 'Resend invitation error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -263,7 +279,7 @@ export class InvitationController {
 
       res.json(successResponse({ message: 'Invitation cancelled successfully' }));
     } catch (error) {
-      console.error('Cancel invitation error:', error);
+      logger.error({ err: error }, 'Cancel invitation error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -365,7 +381,7 @@ export class InvitationController {
         }
       }));
     } catch (error) {
-      console.error('Accept invitation error:', error);
+      logger.error({ err: error }, 'Accept invitation error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }
@@ -418,7 +434,7 @@ export class InvitationController {
         tenant,
       }));
     } catch (error) {
-      console.error('Validate token error:', error);
+      logger.error({ err: error }, 'Validate token error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

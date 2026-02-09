@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // ==================== CONVERSATIONS ====================
@@ -68,7 +69,7 @@ router.get('/conversations', async (req: Request, res: Response): Promise<void> 
       limit: parseInt(limit as string),
     }));
   } catch (error) {
-    console.error('Get conversations error:', error);
+    logger.error({ err: error }, 'Get conversations error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -138,7 +139,7 @@ router.get('/conversations/:id', async (req: Request, res: Response): Promise<vo
       messages: messages.reverse(), // Return in chronological order
     }));
   } catch (error) {
-    console.error('Get conversation error:', error);
+    logger.error({ err: error }, 'Get conversation error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -204,7 +205,7 @@ router.post('/conversations/direct', async (req: Request, res: Response): Promis
 
     res.status(201).json(successResponse(conversation));
   } catch (error) {
-    console.error('Create direct conversation error:', error);
+    logger.error({ err: error }, 'Create direct conversation error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -255,7 +256,7 @@ router.post('/conversations/group', async (req: Request, res: Response): Promise
 
     res.status(201).json(successResponse(conversation));
   } catch (error) {
-    console.error('Create group error:', error);
+    logger.error({ err: error }, 'Create group error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -290,7 +291,7 @@ router.put('/conversations/:id', async (req: Request, res: Response): Promise<vo
 
     res.json(successResponse(conversation));
   } catch (error) {
-    console.error('Update group error:', error);
+    logger.error({ err: error }, 'Update group error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -324,7 +325,7 @@ router.post('/conversations/:id/participants', async (req: Request, res: Respons
 
     res.json(successResponse(null));
   } catch (error) {
-    console.error('Add participants error:', error);
+    logger.error({ err: error }, 'Add participants error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -351,7 +352,7 @@ router.post('/conversations/:id/leave', async (req: Request, res: Response): Pro
 
     res.json(successResponse({ message: 'Left conversation' }));
   } catch (error) {
-    console.error('Leave conversation error:', error);
+    logger.error({ err: error }, 'Leave conversation error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -423,7 +424,7 @@ router.post('/conversations/:id/messages', async (req: Request, res: Response): 
 
     res.status(201).json(successResponse(message));
   } catch (error) {
-    console.error('Send message error:', error);
+    logger.error({ err: error }, 'Send message error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -456,7 +457,7 @@ router.put('/messages/:messageId', async (req: Request, res: Response): Promise<
 
     res.json(successResponse(updatedMessage));
   } catch (error) {
-    console.error('Edit message error:', error);
+    logger.error({ err: error }, 'Edit message error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -483,7 +484,7 @@ router.delete('/messages/:messageId', async (req: Request, res: Response): Promi
 
     res.json(successResponse({ message: 'Message deleted' }));
   } catch (error) {
-    console.error('Delete message error:', error);
+    logger.error({ err: error }, 'Delete message error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -522,7 +523,7 @@ router.post('/messages/:messageId/reactions', async (req: Request, res: Response
 
     res.status(201).json(successResponse(reaction));
   } catch (error) {
-    console.error('Add reaction error:', error);
+    logger.error({ err: error }, 'Add reaction error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -565,7 +566,7 @@ router.post('/conversations/:id/read', async (req: Request, res: Response): Prom
 
     res.json(successResponse({ message: 'Marked as read' }));
   } catch (error) {
-    console.error('Mark read error:', error);
+    logger.error({ err: error }, 'Mark read error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -629,7 +630,7 @@ router.post('/support/ticket', async (req: Request, res: Response): Promise<void
 
     res.status(201).json(successResponse(conversation));
   } catch (error) {
-    console.error('Create support ticket error:', error);
+    logger.error({ err: error }, 'Create support ticket error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -691,7 +692,7 @@ router.get('/support/tickets', async (req: Request, res: Response): Promise<void
       limit: parseInt(limit as string),
     }));
   } catch (error) {
-    console.error('Get support tickets error:', error);
+    logger.error({ err: error }, 'Get support tickets error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -710,7 +711,7 @@ router.get('/unread-count', async (req: Request, res: Response): Promise<void> =
 
     res.json(successResponse({ unreadCount: totalUnread._sum.unreadCount || 0 }));
   } catch (error) {
-    console.error('Get unread count error:', error);
+    logger.error({ err: error }, 'Get unread count error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

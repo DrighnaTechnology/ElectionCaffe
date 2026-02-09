@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getTenantDb } from '../utils/tenantDb.js';
-import { successResponse, errorResponse } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
+const logger = createLogger('auth-service');
 const router = Router();
 
 // Get EC integration status for tenant
@@ -34,7 +35,7 @@ router.get('/status', async (req: Request, res: Response): Promise<void> => {
       ...integration,
     }));
   } catch (error) {
-    console.error('Get EC status error:', error);
+    logger.error({ err: error }, 'Get EC status error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -75,7 +76,7 @@ router.get('/sync-history', async (req: Request, res: Response): Promise<void> =
       },
     }));
   } catch (error) {
-    console.error('Get sync history error:', error);
+    logger.error({ err: error }, 'Get sync history error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -119,7 +120,7 @@ router.get('/summary', async (req: Request, res: Response): Promise<void> => {
       syncStatus: integration?.syncStatus,
     }));
   } catch (error) {
-    console.error('Get EC summary error:', error);
+    logger.error({ err: error }, 'Get EC summary error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -156,7 +157,7 @@ router.post('/request-sync', async (req: Request, res: Response): Promise<void> 
       requestedAt: new Date().toISOString(),
     }));
   } catch (error) {
-    console.error('Request sync error:', error);
+    logger.error({ err: error }, 'Request sync error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

@@ -6,8 +6,6 @@ import {
   PlusIcon,
   TrashIcon,
   EditIcon,
-  CheckCircleIcon,
-  XCircleIcon,
   PlayIcon,
   ServerIcon,
   EyeIcon,
