@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 
 import { cadreRoutes } from './routes/cadres.js';
+import { pollDayRoutes } from './routes/pollDay.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
 
@@ -20,6 +21,7 @@ app.get('/health', (_req, res) => {
 
 // Routes
 app.use('/api/cadres', cadreRoutes);
+app.use('/api/poll-day', pollDayRoutes);
 
 // Error handler
 app.use(errorHandler);

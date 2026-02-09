@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, calculatePercentage, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('ai-analytics-service');
@@ -9,9 +9,10 @@ const router = Router();
 // Get all AI analytics for an election
 router.get('/:electionId', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { electionId } = req.params;
 
-    const analyses = await prisma.aIAnalyticsResult.findMany({
+    const analyses = await (tenantDb as any).aIAnalyticsResult.findMany({
       where: { electionId },
       orderBy: { createdAt: 'desc' },
     });
@@ -26,9 +27,10 @@ router.get('/:electionId', async (req: Request, res: Response) => {
 // Get specific analysis
 router.get('/:electionId/:id', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { id } = req.params;
 
-    const analysis = await prisma.aIAnalyticsResult.findUnique({
+    const analysis = await (tenantDb as any).aIAnalyticsResult.findUnique({
       where: { id },
     });
 
@@ -46,11 +48,12 @@ router.get('/:electionId/:id', async (req: Request, res: Response) => {
 // Create new AI analysis
 router.post('/:electionId', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { electionId } = req.params;
     const { analysisType, analysisName, description, parameters } = req.body;
 
     // Create pending analysis
-    const analysis = await prisma.aIAnalyticsResult.create({
+    const analysis = await (tenantDb as any).aIAnalyticsResult.create({
       data: {
         electionId,
         analysisType,
@@ -62,7 +65,7 @@ router.post('/:electionId', async (req: Request, res: Response) => {
     });
 
     // Process the analysis asynchronously
-    processAnalysis(analysis.id, electionId!, analysisType, parameters);
+    processAnalysis(req, analysis.id, electionId!, analysisType, parameters);
 
     res.status(201).json(successResponse(analysis));
   } catch (error) {
@@ -75,7 +78,7 @@ router.post('/:electionId', async (req: Request, res: Response) => {
 router.get('/:electionId/predict/turnout', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const prediction = await generateTurnoutPrediction(electionId!);
+    const prediction = await generateTurnoutPrediction(req, electionId!);
     res.json(successResponse(prediction));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -86,7 +89,7 @@ router.get('/:electionId/predict/turnout', async (req: Request, res: Response) =
 router.get('/:electionId/analyze/swing-voters', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const analysis = await analyzeSwingVoters(electionId!);
+    const analysis = await analyzeSwingVoters(req, electionId!);
     res.json(successResponse(analysis));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -97,7 +100,7 @@ router.get('/:electionId/analyze/swing-voters', async (req: Request, res: Respon
 router.get('/:electionId/assess/booth-risk', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const assessment = await assessBoothRisk(electionId!);
+    const assessment = await assessBoothRisk(req, electionId!);
     res.json(successResponse(assessment));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -108,7 +111,7 @@ router.get('/:electionId/assess/booth-risk', async (req: Request, res: Response)
 router.get('/:electionId/insights/demographic', async (req: Request, res: Response) => {
   try {
     const { electionId } = req.params;
-    const insights = await getDemographicInsights(electionId!);
+    const insights = await getDemographicInsights(req, electionId!);
     res.json(successResponse(insights));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -118,8 +121,9 @@ router.get('/:electionId/insights/demographic', async (req: Request, res: Respon
 // Delete analysis
 router.delete('/:electionId/:id', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { id } = req.params;
-    await prisma.aIAnalyticsResult.delete({ where: { id } });
+    await (tenantDb as any).aIAnalyticsResult.delete({ where: { id } });
     res.json(successResponse({ message: 'Analysis deleted' }));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -127,14 +131,16 @@ router.delete('/:electionId/:id', async (req: Request, res: Response) => {
 });
 
 // Calculate confidence based on data completeness
-async function calculateConfidence(electionId: string): Promise<number> {
+async function calculateConfidence(req: Request, electionId: string): Promise<number> {
+  const tenantDb = await getTenantDb(req);
+
   const [total, withMobile, withAge, withReligion, withCaste, historicalCount] = await Promise.all([
-    prisma.voter.count({ where: { electionId, deletedAt: null } }),
-    prisma.voter.count({ where: { electionId, deletedAt: null, mobile: { not: null } } }),
-    prisma.voter.count({ where: { electionId, deletedAt: null, age: { not: null } } }),
-    prisma.voter.count({ where: { electionId, deletedAt: null, religionId: { not: null } } }),
-    prisma.voter.count({ where: { electionId, deletedAt: null, casteId: { not: null } } }),
-    prisma.votingHistory.count({ where: { electionId } }),
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null } }),
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, mobile: { not: null } } }),
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, age: { not: null } } }),
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, religionId: { not: null } } }),
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, casteId: { not: null } } }),
+    (tenantDb as any).votingHistory.count({ where: { electionId } }),
   ]);
 
   if (total === 0) return 0.1;
@@ -159,39 +165,41 @@ async function calculateConfidence(electionId: string): Promise<number> {
 }
 
 // AI Processing Functions
-async function processAnalysis(analysisId: string, electionId: string, analysisType: string, _parameters: any) {
+async function processAnalysis(req: Request, analysisId: string, electionId: string, analysisType: string, _parameters: any) {
   try {
-    await prisma.aIAnalyticsResult.update({
+    const tenantDb = await getTenantDb(req);
+
+    await (tenantDb as any).aIAnalyticsResult.update({
       where: { id: analysisId },
       data: { status: 'PROCESSING' },
     });
 
     let results: any = {};
     let insights: any[] = [];
-    let confidence = await calculateConfidence(electionId);
+    let confidence = await calculateConfidence(req, electionId);
 
     switch (analysisType) {
       case 'TURNOUT_PREDICTION':
-        const turnout = await generateTurnoutPrediction(electionId);
+        const turnout = await generateTurnoutPrediction(req, electionId);
         results = turnout;
         insights = turnout.insights;
         confidence = turnout.confidence;
         break;
 
       case 'SWING_VOTER_ANALYSIS':
-        const swing = await analyzeSwingVoters(electionId);
+        const swing = await analyzeSwingVoters(req, electionId);
         results = swing;
         insights = swing.insights;
         break;
 
       case 'BOOTH_RISK_ASSESSMENT':
-        const risk = await assessBoothRisk(electionId);
+        const risk = await assessBoothRisk(req, electionId);
         results = risk;
         insights = risk.insights;
         break;
 
       case 'DEMOGRAPHIC_INSIGHTS':
-        const demo = await getDemographicInsights(electionId);
+        const demo = await getDemographicInsights(req, electionId);
         results = demo;
         insights = demo.insights;
         break;
@@ -200,7 +208,7 @@ async function processAnalysis(analysisId: string, electionId: string, analysisT
         results = { message: 'Analysis type not supported' };
     }
 
-    await prisma.aIAnalyticsResult.update({
+    await (tenantDb as any).aIAnalyticsResult.update({
       where: { id: analysisId },
       data: {
         status: 'COMPLETED',
@@ -212,36 +220,43 @@ async function processAnalysis(analysisId: string, electionId: string, analysisT
     });
   } catch (error) {
     logger.error({ err: error }, 'Process analysis error');
-    await prisma.aIAnalyticsResult.update({
-      where: { id: analysisId },
-      data: {
-        status: 'FAILED',
-        errorMessage: (error as Error).message,
-      },
-    });
+    try {
+      const tenantDb = await getTenantDb(req);
+      await (tenantDb as any).aIAnalyticsResult.update({
+        where: { id: analysisId },
+        data: {
+          status: 'FAILED',
+          errorMessage: (error as Error).message,
+        },
+      });
+    } catch (updateError) {
+      logger.error({ err: updateError }, 'Failed to update analysis status');
+    }
   }
 }
 
-async function generateTurnoutPrediction(electionId: string) {
+async function generateTurnoutPrediction(req: Request, electionId: string) {
+  const tenantDb = await getTenantDb(req);
+
   const [totalVoters, votersByGender, votersByAge, historicalData] = await Promise.all([
-    prisma.voter.count({ where: { electionId, deletedAt: null } }),
-    prisma.voter.groupBy({
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null } }),
+    (tenantDb as any).voter.groupBy({
       by: ['gender'],
       where: { electionId, deletedAt: null },
       _count: true,
     }),
-    prisma.voter.findMany({
+    (tenantDb as any).voter.findMany({
       where: { electionId, deletedAt: null, age: { not: null } },
       select: { age: true },
     }),
-    prisma.votingHistory.findMany({ where: { electionId } }),
+    (tenantDb as any).votingHistory.findMany({ where: { electionId } }),
   ]);
 
   // Calculate age-based turnout factors
   const ageDistribution = {
-    young: votersByAge.filter(v => v.age! < 35).length,
-    middle: votersByAge.filter(v => v.age! >= 35 && v.age! < 55).length,
-    senior: votersByAge.filter(v => v.age! >= 55).length,
+    young: votersByAge.filter((v: any) => v.age! < 35).length,
+    middle: votersByAge.filter((v: any) => v.age! >= 35 && v.age! < 55).length,
+    senior: votersByAge.filter((v: any) => v.age! >= 55).length,
   };
 
   // Calculate base turnout from historical data if available
@@ -255,7 +270,7 @@ async function generateTurnoutPrediction(electionId: string) {
   const predictedTurnout = Math.min(85, baseTurnout + ageAdjustment + genderBalance);
   const predictedVotes = Math.round((predictedTurnout / 100) * totalVoters);
 
-  const confidence = await calculateConfidence(electionId);
+  const confidence = await calculateConfidence(req, electionId);
 
   return {
     totalVoters,
@@ -293,11 +308,13 @@ async function generateTurnoutPrediction(electionId: string) {
   };
 }
 
-async function analyzeSwingVoters(electionId: string) {
+async function analyzeSwingVoters(req: Request, electionId: string) {
+  const tenantDb = await getTenantDb(req);
+
   const [swingVoters, totalVoters, swingByPart] = await Promise.all([
-    prisma.voter.count({ where: { electionId, deletedAt: null, politicalLeaning: 'SWING' } }),
-    prisma.voter.count({ where: { electionId, deletedAt: null } }),
-    prisma.voter.groupBy({
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, politicalLeaning: 'SWING' } }),
+    (tenantDb as any).voter.count({ where: { electionId, deletedAt: null } }),
+    (tenantDb as any).voter.groupBy({
       by: ['partId'],
       where: { electionId, deletedAt: null, politicalLeaning: 'SWING' },
       _count: true,
@@ -306,13 +323,13 @@ async function analyzeSwingVoters(electionId: string) {
     }),
   ]);
 
-  const partDetails = await prisma.part.findMany({
-    where: { id: { in: swingByPart.map(p => p.partId) } },
+  const partDetails = await (tenantDb as any).part.findMany({
+    where: { id: { in: swingByPart.map((p: any) => p.partId) } },
     select: { id: true, partNumber: true, boothName: true, totalVoters: true },
   });
 
-  const hotspots = swingByPart.map(p => {
-    const part = partDetails.find(pd => pd.id === p.partId);
+  const hotspots = swingByPart.map((p: any) => {
+    const part = partDetails.find((pd: any) => pd.id === p.partId);
     return {
       partId: p.partId,
       partNumber: part?.partNumber,
@@ -343,9 +360,11 @@ async function analyzeSwingVoters(electionId: string) {
   };
 }
 
-async function assessBoothRisk(electionId: string) {
+async function assessBoothRisk(req: Request, electionId: string) {
+  const tenantDb = await getTenantDb(req);
+
   const [vulnerableBooths, allBooths, boothStats] = await Promise.all([
-    prisma.part.findMany({
+    (tenantDb as any).part.findMany({
       where: { electionId, isVulnerable: true },
       select: {
         id: true,
@@ -356,8 +375,8 @@ async function assessBoothRisk(electionId: string) {
         totalVoters: true,
       },
     }),
-    prisma.part.count({ where: { electionId } }),
-    prisma.part.groupBy({
+    (tenantDb as any).part.count({ where: { electionId } }),
+    (tenantDb as any).part.groupBy({
       by: ['vulnerability'],
       where: { electionId },
       _count: true,
@@ -370,11 +389,11 @@ async function assessBoothRisk(electionId: string) {
     totalBooths: allBooths,
     vulnerableBooths: vulnerableBooths.length,
     riskScore: Math.round(riskScore * 10) / 10,
-    byCategory: boothStats.map(s => ({
+    byCategory: boothStats.map((s: any) => ({
       category: s.vulnerability,
       count: s._count,
     })),
-    criticalBooths: vulnerableBooths.filter(b => b.vulnerability === 'CRITICAL'),
+    criticalBooths: vulnerableBooths.filter((b: any) => b.vulnerability === 'CRITICAL'),
     recommendations: [
       'Deploy additional security at critical booths',
       'Ensure mobile connectivity for real-time reporting',
@@ -392,25 +411,27 @@ async function assessBoothRisk(electionId: string) {
   };
 }
 
-async function getDemographicInsights(electionId: string) {
+async function getDemographicInsights(req: Request, electionId: string) {
+  const tenantDb = await getTenantDb(req);
+
   const [religionStats, casteStats, ageStats, genderRatio] = await Promise.all([
-    prisma.voter.groupBy({
+    (tenantDb as any).voter.groupBy({
       by: ['religionId'],
       where: { electionId, deletedAt: null },
       _count: true,
       orderBy: { _count: { id: 'desc' } },
       take: 5,
     }),
-    prisma.voter.groupBy({
+    (tenantDb as any).voter.groupBy({
       by: ['casteCategoryId'],
       where: { electionId, deletedAt: null },
       _count: true,
     }),
-    prisma.voter.findMany({
+    (tenantDb as any).voter.findMany({
       where: { electionId, deletedAt: null, age: { not: null } },
       select: { age: true },
     }),
-    prisma.voter.groupBy({
+    (tenantDb as any).voter.groupBy({
       by: ['gender'],
       where: { electionId, deletedAt: null },
       _count: true,
@@ -418,32 +439,32 @@ async function getDemographicInsights(electionId: string) {
   ]);
 
   const avgAge = ageStats.length > 0
-    ? ageStats.reduce((sum, v) => sum + v.age!, 0) / ageStats.length
+    ? ageStats.reduce((sum: number, v: any) => sum + v.age!, 0) / ageStats.length
     : 0;
 
-  const religions = await prisma.religion.findMany({
-    where: { id: { in: religionStats.map(r => r.religionId).filter(Boolean) as string[] } },
+  const religions = await (tenantDb as any).religion.findMany({
+    where: { id: { in: religionStats.map((r: any) => r.religionId).filter(Boolean) as string[] } },
   });
 
-  const casteCategories = await prisma.casteCategory.findMany({
-    where: { id: { in: casteStats.map(c => c.casteCategoryId).filter(Boolean) as string[] } },
+  const casteCategories = await (tenantDb as any).casteCategory.findMany({
+    where: { id: { in: casteStats.map((c: any) => c.casteCategoryId).filter(Boolean) as string[] } },
   });
 
-  const total = genderRatio.reduce((sum, g) => sum + g._count, 0);
+  const total = genderRatio.reduce((sum: number, g: any) => sum + g._count, 0);
 
   return {
     averageAge: Math.round(avgAge),
-    religionBreakdown: religionStats.map(r => ({
-      religion: religions.find(rel => rel.id === r.religionId)?.religionName || 'Unknown',
+    religionBreakdown: religionStats.map((r: any) => ({
+      religion: religions.find((rel: any) => rel.id === r.religionId)?.religionName || 'Unknown',
       count: r._count,
       percentage: calculatePercentage(r._count, total),
     })),
-    casteBreakdown: casteStats.map(c => ({
-      category: casteCategories.find(cat => cat.id === c.casteCategoryId)?.categoryName || 'Unknown',
+    casteBreakdown: casteStats.map((c: any) => ({
+      category: casteCategories.find((cat: any) => cat.id === c.casteCategoryId)?.categoryName || 'Unknown',
       count: c._count,
       percentage: calculatePercentage(c._count, total),
     })),
-    genderRatio: genderRatio.map(g => ({
+    genderRatio: genderRatio.map((g: any) => ({
       gender: g.gender,
       count: g._count,
       percentage: calculatePercentage(g._count, total),

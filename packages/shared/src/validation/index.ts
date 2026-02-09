@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const uuidSchema = z.string().uuid();
 export const mobileSchema = z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian mobile number');
 export const emailSchema = z.string().email().optional();
-export const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
+export const passwordSchema = z.string().min(8, 'Password must be at least 8 characters').regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password must contain uppercase, lowercase, and number');
 
 // Pagination Schema
 export const paginationSchema = z.object({

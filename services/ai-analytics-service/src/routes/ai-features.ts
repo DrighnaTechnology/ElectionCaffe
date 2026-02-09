@@ -38,7 +38,7 @@ async function checkFeatureAccess(
     return { allowed: false, error: 'Feature not available' };
   }
 
-  // Check if tenant has subscription to this feature
+  // Check if tenant has subscription to this feature (legacy schema)
   const subscription = await prisma.tenantAISubscription.findUnique({
     where: {
       tenantId_featureId: { tenantId, featureId },
@@ -54,7 +54,7 @@ async function checkFeatureAccess(
     return { allowed: false, error: 'Feature subscription has expired' };
   }
 
-  // Check if user has access (if user-level access control is configured)
+  // Check if user has access (if user-level access control is configured, legacy schema)
   const userAccess = await prisma.tenantUserAIAccess.findUnique({
     where: {
       userId_featureId: { userId, featureId },
@@ -96,7 +96,7 @@ async function checkFeatureAccess(
     }
   }
 
-  // Check tenant credits
+  // Check tenant credits (legacy schema)
   const credits = await prisma.tenantAICredits.findUnique({
     where: { tenantId },
   });
@@ -259,7 +259,7 @@ router.get('/available', async (req: Request, res: Response, next: NextFunction)
         maxFileSizeMB: (s.feature as any).maxFileSizeMB,
       }));
 
-    // Get tenant credits
+    // Get tenant credits (legacy schema)
     const credits = await prisma.tenantAICredits.findUnique({
       where: { tenantId },
       select: {

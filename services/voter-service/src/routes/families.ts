@@ -33,7 +33,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (search) {
       where.OR = [
         { familyName: { contains: search, mode: 'insensitive' } },
-        { houseNumber: { contains: search, mode: 'insensitive' } },
+        { houseNo: { contains: search, mode: 'insensitive' } },
         { address: { contains: search, mode: 'insensitive' } },
       ];
     }
@@ -78,9 +78,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       include: {
         voters: {
           include: {
-            part: { select: { partNumber: true, partName: true } },
-            religion: { select: { name: true } },
-            caste: { select: { name: true } },
+            part: { select: { partNumber: true, boothName: true } },
+            religion: { select: { religionName: true } },
+            caste: { select: { casteName: true } },
           },
         },
       },
@@ -103,13 +103,13 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const tenantDb = await getTenantDb(req);
     const { electionId } = req.query;
-    const { familyName, houseNumber, address, captainId, memberIds, latitude, longitude } = req.body;
+    const { familyName, houseNo, address, captainId, memberIds, latitude, longitude } = req.body;
 
     const family = await (tenantDb as any).family.create({
       data: {
         electionId: electionId as string,
         familyName,
-        houseNumber,
+        houseNo,
         address,
         captainId,
         latitude,
@@ -159,7 +159,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
 
     for (const familyData of families) {
       try {
-        const { familyName, captainId, address, contactNumber, houseNumber, latitude, longitude } = familyData;
+        const { familyName, captainId, address, contactNumber, houseNo, latitude, longitude } = familyData;
 
         await (tenantDb as any).family.create({
           data: {
@@ -168,7 +168,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
             captainId: captainId || null,
             address: address || null,
             contactNumber: contactNumber || null,
-            houseNumber: houseNumber || null,
+            houseNo: houseNo || null,
             latitude: latitude || null,
             longitude: longitude || null,
             totalMembers: 0,
@@ -193,13 +193,13 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const tenantDb = await getTenantDb(req);
     const { id } = req.params;
-    const { familyName, houseNumber, address, captainId, latitude, longitude } = req.body;
+    const { familyName, houseNo, address, captainId, latitude, longitude } = req.body;
 
     const family = await (tenantDb as any).family.update({
       where: { id },
       data: {
         ...(familyName !== undefined && { familyName }),
-        ...(houseNumber !== undefined && { houseNumber }),
+        ...(houseNo !== undefined && { houseNo }),
         ...(address !== undefined && { address }),
         ...(captainId !== undefined && { captainId }),
         ...(latitude !== undefined && { latitude }),
@@ -321,7 +321,7 @@ router.get('/captains/list', async (req: Request, res: Response) => {
     const where = {
       electionId: electionId as string,
       isFamilyCaptain: true,
-      isDeleted: false,
+      deletedAt: null,
     };
 
     const [captains, total] = await Promise.all([
@@ -331,7 +331,7 @@ router.get('/captains/list', async (req: Request, res: Response) => {
         take: limit,
         include: {
           family: true,
-          part: { select: { partNumber: true, partName: true } },
+          part: { select: { partNumber: true, boothName: true } },
         },
       }),
       (tenantDb as any).voter.count({ where }),

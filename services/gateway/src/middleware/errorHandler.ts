@@ -15,11 +15,16 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  // Sanitize body to exclude sensitive fields before logging
+  const sanitizedBody = req.body ? Object.fromEntries(
+    Object.entries(req.body).filter(([key]) => !['password', 'token', 'secret', 'refreshToken'].includes(key))
+  ) : undefined;
+
   logger.error({
     err,
     path: req.path,
     method: req.method,
-    body: req.body,
+    body: sanitizedBody,
   });
 
   const statusCode = err.statusCode || 500;

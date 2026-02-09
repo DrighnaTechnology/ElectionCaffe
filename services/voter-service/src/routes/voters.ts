@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { getTenantDb } from '../utils/tenantDb.js';
 import {
   createVoterSchema,
@@ -8,8 +9,11 @@ import {
   errorResponse,
   createPaginationMeta,
   calculateSkip,
+  toCSV,
   createLogger,
 } from '@electioncaffe/shared';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const logger = createLogger('voter-service');
 
@@ -87,6 +91,153 @@ router.get('/', async (req: Request, res: Response) => {
     res.json(successResponse(voters, createPaginationMeta(total, page, limit)));
   } catch (error) {
     logger.error({ err: error }, 'Get voters error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
+// Export voters as CSV
+router.get('/export', async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const { electionId, partId, gender } = req.query;
+
+    const where: any = { deletedAt: null };
+    if (electionId) where.electionId = electionId;
+    if (partId) where.partId = partId;
+    if (gender) where.gender = mapGenderToEnum(gender as string);
+
+    const voters = await (tenantDb as any).voter.findMany({
+      where,
+      select: {
+        slNumber: true,
+        name: true,
+        nameLocal: true,
+        epicNumber: true,
+        gender: true,
+        age: true,
+        mobile: true,
+        address: true,
+        politicalLeaning: true,
+        part: { select: { partNumber: true, boothName: true } },
+        religion: { select: { religionName: true } },
+        caste: { select: { casteName: true } },
+        casteCategory: { select: { categoryName: true } },
+      },
+      orderBy: { slNumber: 'asc' },
+      take: 50000,
+    });
+
+    const data = voters.map((v: any) => ({
+      slNumber: v.slNumber,
+      name: v.name,
+      nameLocal: v.nameLocal,
+      epicNumber: v.epicNumber,
+      gender: v.gender,
+      age: v.age,
+      mobile: v.mobile,
+      address: v.address,
+      partNumber: v.part?.partNumber,
+      boothName: v.part?.boothName,
+      religion: v.religion?.religionName,
+      caste: v.caste?.casteName,
+      category: v.casteCategory?.categoryName,
+      politicalLeaning: v.politicalLeaning,
+    }));
+
+    const csv = toCSV(data);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=voters_export.csv');
+    res.send(csv);
+  } catch (error) {
+    logger.error({ err: error }, 'Export voters error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
+// Download CSV import template
+router.get('/template', async (_req: Request, res: Response) => {
+  const headers = [
+    'name', 'nameLocal', 'epicNumber', 'gender', 'age', 'mobile',
+    'address', 'slNumber', 'relationType', 'relativeName',
+    'houseNo', 'latitude', 'longitude',
+  ];
+  const csv = headers.join(',') + '\n' + 'John Doe,,ABC1234567,MALE,35,9876543210,123 Main St,1,FATHER,Father Name,101,,\n';
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=voter_import_template.csv');
+  res.send(csv);
+});
+
+// Import voters from CSV
+router.post('/import', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const { electionId } = req.query;
+
+    if (!electionId) {
+      res.status(400).json(errorResponse('E2001', 'electionId query parameter is required'));
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json(errorResponse('E2001', 'CSV file is required'));
+      return;
+    }
+
+    const csvContent = req.file.buffer.toString('utf-8');
+    const lines = csvContent.split('\n').filter(l => l.trim());
+
+    if (lines.length < 2) {
+      res.status(400).json(errorResponse('E2001', 'CSV file must have a header row and at least one data row'));
+      return;
+    }
+
+    const headers = lines[0]!.split(',').map(h => h.trim());
+    const results = { total: lines.length - 1, created: 0, failed: 0, errors: [] as any[] };
+
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const values = lines[i]!.split(',').map(v => v.trim());
+        const row: any = {};
+        headers.forEach((h, idx) => {
+          if (values[idx] && values[idx] !== '') {
+            row[h] = values[idx];
+          }
+        });
+
+        // Map gender
+        if (row.gender) {
+          row.gender = mapGenderToEnum(row.gender);
+        }
+
+        // Convert numeric fields
+        if (row.age) row.age = parseInt(row.age, 10);
+        if (row.slNumber) row.slNumber = parseInt(row.slNumber, 10);
+        if (row.latitude) row.latitude = parseFloat(row.latitude);
+        if (row.longitude) row.longitude = parseFloat(row.longitude);
+
+        await (tenantDb as any).voter.create({
+          data: {
+            electionId: electionId as string,
+            ...row,
+          },
+        });
+
+        results.created++;
+      } catch (error: any) {
+        results.failed++;
+        results.errors.push({
+          row: i + 1,
+          error: error.message,
+        });
+      }
+    }
+
+    // Update election voter count
+    await updateElectionVoterCount(tenantDb, electionId as string);
+
+    res.json(successResponse(results));
+  } catch (error) {
+    logger.error({ err: error }, 'Import voters error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

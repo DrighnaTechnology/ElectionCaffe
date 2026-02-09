@@ -15,10 +15,19 @@ export const logger = createLogger('gateway');
 const app = express();
 const httpServer = createServer(app);
 
+// CORS origin whitelist
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5000,http://localhost:5174').split(',').map(s => s.trim());
+
 // Socket.IO setup
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS not allowed'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -27,14 +36,21 @@ const io = new SocketIOServer(httpServer, {
 setupSocketIO(io);
 
 // Middleware
-app.use(helmet({
-  contentSecurityPolicy: false,
-}));
+app.use(helmet());
 
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed'));
+    }
+  },
   credentials: true,
 }));
+
+// Body size limit
+app.use(express.json({ limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -48,10 +64,17 @@ app.use((req, res, next) => {
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs
+  max: 300, // limit each IP to 300 requests per windowMs
   message: { success: false, error: { code: 'E5003', message: 'Too many requests' } },
 });
 app.use(limiter);
+
+// Strict rate limiter for auth routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, error: { code: 'E4029', message: 'Too many attempts. Please try again later.' } },
+});
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -80,10 +103,10 @@ const createServiceProxy = (target: string, pathRewrite?: Record<string, string>
 
 // Auth proxy - public routes go directly, others need auth middleware
 // Public auth routes (login, register, etc.) - NO auth middleware, NO body parsing
-app.use('/api/auth/login', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
-app.use('/api/auth/register', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
+app.use('/api/auth/login', authLimiter, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
+app.use('/api/auth/register', authLimiter, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
 app.use('/api/auth/refresh', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
-app.use('/api/auth/forgot-password', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
+app.use('/api/auth/forgot-password', authLimiter, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
 app.use('/api/auth/reset-password', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
 app.use('/api/auth/verify-otp', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
 
@@ -113,17 +136,34 @@ app.use('/api/dashboard', authMiddleware, createServiceProxy(`http://localhost:$
 app.use('/api/reports', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.REPORTING}`, { '^/api/reports': '/api/reports' }));
 app.use('/api/datacaffe', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.REPORTING}`, { '^/api/datacaffe': '/api/datacaffe' }));
 app.use('/api/ai-analytics', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`, { '^/api/ai-analytics': '/api/ai-analytics' }));
+app.use('/api/ai/features', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`, { '^/api/ai/features': '/api/ai/features' }));
+app.use('/api/candidates', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.ELECTION}`, { '^/api/candidates': '/api/candidates' }));
+app.use('/api/surveys', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.ELECTION}`, { '^/api/surveys': '/api/surveys' }));
 
 // EC Data, News, and Actions routes for tenant users (handled by auth-service)
 app.use('/api/ec-data', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/news', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/actions', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 
-// Super Admin routes - public auth routes
-app.use('/api/super-admin/auth/login', createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));
-app.use('/api/super-admin/auth/register', createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));
+// Additional auth-service module routes
+app.use('/api/nb-broadcast', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/website-builder', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/funds', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/inventory', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/events', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/notifications', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/chat', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/organization', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+
+// Super Admin routes - public auth routes (apply auth rate limiter)
+app.use('/api/super-admin/auth/login', authLimiter, createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));
+app.use('/api/super-admin/auth/register', authLimiter, createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));
 // Super Admin routes - protected (no regular auth middleware, handled by service)
-app.use('/api/super-admin', createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));
+// Strip x-super-admin-id header to prevent client injection - only super-admin-service should set it
+app.use('/api/super-admin', (req, _res, next) => {
+  delete req.headers['x-super-admin-id'];
+  next();
+}, createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));
 
 // Master data routes (handled by election service)
 const masterDataRoutes = ['/api/religions', '/api/caste-categories', '/api/castes', '/api/sub-castes', '/api/languages', '/api/parties', '/api/schemes', '/api/voter-categories', '/api/voting-histories', '/api/voter-slips', '/api/banners', '/api/feedback'];

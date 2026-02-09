@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, toCSV, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('reporting-service');
@@ -9,6 +9,7 @@ const router = Router();
 // Get all reports
 router.get('/', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { electionId } = req.query;
     const validation = paginationSchema.safeParse(req.query);
     const { page, limit } = validation.success ? validation.data : { page: 1, limit: 10 };
@@ -18,13 +19,13 @@ router.get('/', async (req: Request, res: Response) => {
     if (electionId) where.electionId = electionId;
 
     const [reports, total] = await Promise.all([
-      prisma.report.findMany({
+      (tenantDb as any).report.findMany({
         where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.report.count({ where }),
+      (tenantDb as any).report.count({ where }),
     ]);
 
     res.json(successResponse(reports, createPaginationMeta(total, page, limit)));
@@ -36,7 +37,8 @@ router.get('/', async (req: Request, res: Response) => {
 // Get report by ID
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const report = await prisma.report.findUnique({
+    const tenantDb = await getTenantDb(req);
+    const report = await (tenantDb as any).report.findUnique({
       where: { id: req.params.id },
     });
 
@@ -54,11 +56,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Create report
 router.post('/', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { electionId } = req.query;
     const { reportName, reportType, format, filters, isScheduled, scheduleExpr } = req.body;
     const generatedBy = req.headers['x-user-id'] as string;
 
-    const report = await prisma.report.create({
+    const report = await (tenantDb as any).report.create({
       data: {
         electionId: electionId as string,
         reportName,
@@ -72,7 +75,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
 
     // Generate report asynchronously
-    generateReport(report.id, electionId as string, reportType, filters);
+    generateReport(req, report.id, electionId as string, reportType, filters);
 
     res.status(201).json(successResponse(report));
   } catch (error) {
@@ -86,7 +89,7 @@ router.get('/generate/voter-demographics/:electionId', async (req: Request, res:
     const { electionId } = req.params;
     const { format } = req.query;
 
-    const data = await getVoterDemographicsData(electionId!);
+    const data = await getVoterDemographicsData(req, electionId!);
 
     if (format === 'csv') {
       const csv = toCSV(data.voters);
@@ -108,7 +111,7 @@ router.get('/generate/booth-statistics/:electionId', async (req: Request, res: R
     const { electionId } = req.params;
     const { format } = req.query;
 
-    const data = await getBoothStatisticsData(electionId!);
+    const data = await getBoothStatisticsData(req, electionId!);
 
     if (format === 'csv') {
       const csv = toCSV(data.booths);
@@ -130,7 +133,7 @@ router.get('/generate/cadre-performance/:electionId', async (req: Request, res: 
     const { electionId } = req.params;
     const { format } = req.query;
 
-    const data = await getCadrePerformanceData(electionId!);
+    const data = await getCadrePerformanceData(req, electionId!);
 
     if (format === 'csv') {
       const csv = toCSV(data.cadres);
@@ -149,13 +152,14 @@ router.get('/generate/cadre-performance/:electionId', async (req: Request, res: 
 // Generate scheme beneficiaries report
 router.get('/generate/scheme-beneficiaries/:electionId', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { electionId } = req.params;
     const { schemeId, format } = req.query;
 
     const where: any = { voter: { electionId, deletedAt: null } };
     if (schemeId) where.schemeId = schemeId;
 
-    const beneficiaries = await prisma.voterScheme.findMany({
+    const beneficiaries = await (tenantDb as any).voterScheme.findMany({
       where,
       include: {
         voter: {
@@ -172,7 +176,7 @@ router.get('/generate/scheme-beneficiaries/:electionId', async (req: Request, re
       },
     });
 
-    const data = beneficiaries.map(b => ({
+    const data = beneficiaries.map((b: any) => ({
       voterName: b.voter.name,
       epicNumber: b.voter.epicNumber,
       mobile: b.voter.mobile,
@@ -201,26 +205,27 @@ router.get('/generate/scheme-beneficiaries/:electionId', async (req: Request, re
 // Generate feedback summary report
 router.get('/generate/feedback-summary/:electionId', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { electionId } = req.params;
     const { format } = req.query;
 
     const [feedbacks, byStatus, byPriority, byCategory] = await Promise.all([
-      prisma.feedbackIssue.findMany({
+      (tenantDb as any).feedbackIssue.findMany({
         where: { electionId },
         include: { part: { select: { partNumber: true, boothName: true } } },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.feedbackIssue.groupBy({
+      (tenantDb as any).feedbackIssue.groupBy({
         by: ['status'],
         where: { electionId },
         _count: true,
       }),
-      prisma.feedbackIssue.groupBy({
+      (tenantDb as any).feedbackIssue.groupBy({
         by: ['priority'],
         where: { electionId },
         _count: true,
       }),
-      prisma.feedbackIssue.groupBy({
+      (tenantDb as any).feedbackIssue.groupBy({
         by: ['category'],
         where: { electionId },
         _count: true,
@@ -229,10 +234,10 @@ router.get('/generate/feedback-summary/:electionId', async (req: Request, res: R
 
     const data = {
       total: feedbacks.length,
-      byStatus: byStatus.map(s => ({ status: s.status, count: s._count })),
-      byPriority: byPriority.map(p => ({ priority: p.priority, count: p._count })),
-      byCategory: byCategory.map(c => ({ category: c.category, count: c._count })),
-      issues: feedbacks.map(f => ({
+      byStatus: byStatus.map((s: any) => ({ status: s.status, count: s._count })),
+      byPriority: byPriority.map((p: any) => ({ priority: p.priority, count: p._count })),
+      byCategory: byCategory.map((c: any) => ({ category: c.category, count: c._count })),
+      issues: feedbacks.map((f: any) => ({
         issueName: f.issueName,
         category: f.category,
         status: f.status,
@@ -261,7 +266,8 @@ router.get('/generate/feedback-summary/:electionId', async (req: Request, res: R
 // Delete report
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.report.delete({ where: { id: req.params.id } });
+    const tenantDb = await getTenantDb(req);
+    await (tenantDb as any).report.delete({ where: { id: req.params.id } });
     res.json(successResponse({ message: 'Report deleted' }));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -269,23 +275,25 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // Helper functions
-async function generateReport(reportId: string, electionId: string, reportType: string, _filters: any) {
+async function generateReport(req: Request, reportId: string, electionId: string, reportType: string, _filters: any) {
   try {
+    const tenantDb = await getTenantDb(req);
+
     switch (reportType) {
       case 'VOTER_DEMOGRAPHICS':
-        await getVoterDemographicsData(electionId);
+        await getVoterDemographicsData(req, electionId);
         break;
       case 'BOOTH_STATISTICS':
-        await getBoothStatisticsData(electionId);
+        await getBoothStatisticsData(req, electionId);
         break;
       case 'CADRE_PERFORMANCE':
-        await getCadrePerformanceData(electionId);
+        await getCadrePerformanceData(req, electionId);
         break;
       default:
         break;
     }
 
-    await prisma.report.update({
+    await (tenantDb as any).report.update({
       where: { id: reportId },
       data: {
         generatedAt: new Date(),
@@ -296,8 +304,10 @@ async function generateReport(reportId: string, electionId: string, reportType: 
   }
 }
 
-async function getVoterDemographicsData(electionId: string) {
-  const voters = await prisma.voter.findMany({
+async function getVoterDemographicsData(req: Request, electionId: string) {
+  const tenantDb = await getTenantDb(req);
+
+  const voters = await (tenantDb as any).voter.findMany({
     where: { electionId, deletedAt: null },
     select: {
       id: true,
@@ -319,7 +329,7 @@ async function getVoterDemographicsData(electionId: string) {
 
   return {
     total: voters.length,
-    voters: voters.map(v => ({
+    voters: voters.map((v: any) => ({
       name: v.name,
       epicNumber: v.epicNumber,
       gender: v.gender,
@@ -337,8 +347,10 @@ async function getVoterDemographicsData(electionId: string) {
   };
 }
 
-async function getBoothStatisticsData(electionId: string) {
-  const booths = await prisma.part.findMany({
+async function getBoothStatisticsData(req: Request, electionId: string) {
+  const tenantDb = await getTenantDb(req);
+
+  const booths = await (tenantDb as any).part.findMany({
     where: { electionId },
     select: {
       id: true,
@@ -360,7 +372,7 @@ async function getBoothStatisticsData(electionId: string) {
 
   return {
     total: booths.length,
-    booths: booths.map(b => ({
+    booths: booths.map((b: any) => ({
       partNumber: b.partNumber,
       boothName: b.boothName,
       boothNameLocal: b.boothNameLocal,
@@ -377,8 +389,10 @@ async function getBoothStatisticsData(electionId: string) {
   };
 }
 
-async function getCadrePerformanceData(electionId: string) {
-  const cadres = await prisma.cadre.findMany({
+async function getCadrePerformanceData(req: Request, electionId: string) {
+  const tenantDb = await getTenantDb(req);
+
+  const cadres = await (tenantDb as any).cadre.findMany({
     where: { electionId },
     select: {
       id: true,
@@ -399,7 +413,7 @@ async function getCadrePerformanceData(electionId: string) {
 
   return {
     total: cadres.length,
-    cadres: cadres.map((c, index) => ({
+    cadres: cadres.map((c: any, index: number) => ({
       rank: index + 1,
       name: c.name,
       mobile: c.mobile,
@@ -409,7 +423,7 @@ async function getCadrePerformanceData(electionId: string) {
       surveysCompleted: c.surveysCompleted,
       votesMarked: c.votesMarked,
       lastActiveAt: c.lastActiveAt,
-      assignedBooths: c.assignments.map(a => a.part.partNumber).join(', '),
+      assignedBooths: c.assignments.map((a: any) => a.part.partNumber).join(', '),
     })),
   };
 }

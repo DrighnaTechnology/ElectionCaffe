@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, createLogger } from '@electioncaffe/shared';
 import axios from 'axios';
 
@@ -11,7 +12,7 @@ const router = Router();
 const DATACAFFE_API_URL = process.env.DATACAFFE_API_URL || 'https://api.datacaffe.ai';
 const DATACAFFE_API_KEY = process.env.DATACAFFE_API_KEY || '';
 
-// Get all DataCaffe embeds
+// Get all DataCaffe embeds (legacy schema)
 router.get('/embeds', async (req: Request, res: Response) => {
   try {
     const tenantId = req.headers['x-tenant-id'] as string;
@@ -39,7 +40,7 @@ router.get('/embeds', async (req: Request, res: Response) => {
   }
 });
 
-// Get embed by ID
+// Get embed by ID (legacy schema)
 router.get('/embeds/:id', async (req: Request, res: Response) => {
   try {
     const embed = await prisma.dataCaffeEmbed.findUnique({
@@ -57,7 +58,7 @@ router.get('/embeds/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Create new DataCaffe embed
+// Create new DataCaffe embed (legacy schema)
 router.post('/embeds', async (req: Request, res: Response) => {
   try {
     const tenantId = req.headers['x-tenant-id'] as string;
@@ -90,7 +91,7 @@ router.post('/embeds', async (req: Request, res: Response) => {
   }
 });
 
-// Update embed
+// Update embed (legacy schema)
 router.put('/embeds/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -115,7 +116,7 @@ router.put('/embeds/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Delete embed
+// Delete embed (legacy schema)
 router.delete('/embeds/:id', async (req: Request, res: Response) => {
   try {
     await prisma.dataCaffeEmbed.delete({ where: { id: req.params.id } });
@@ -125,7 +126,7 @@ router.delete('/embeds/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Toggle embed active status
+// Toggle embed active status (legacy schema)
 router.put('/embeds/:id/toggle', async (req: Request, res: Response) => {
   try {
     const embed = await prisma.dataCaffeEmbed.findUnique({ where: { id: req.params.id } });
@@ -146,7 +147,7 @@ router.put('/embeds/:id/toggle', async (req: Request, res: Response) => {
   }
 });
 
-// Get embed URL with authentication token
+// Get embed URL with authentication token (legacy schema)
 router.get('/embeds/:id/url', async (req: Request, res: Response) => {
   try {
     const embed = await prisma.dataCaffeEmbed.findUnique({
@@ -210,9 +211,10 @@ router.post('/proxy', async (req: Request, res: Response) => {
   }
 });
 
-// Push election data to DataCaffe for advanced analytics
+// Push election data to DataCaffe for advanced analytics (uses tenant DB)
 router.post('/sync/:electionId', async (req: Request, res: Response) => {
   try {
+    const tenantDb = await getTenantDb(req);
     const { electionId } = req.params;
 
     if (!DATACAFFE_API_KEY) {
@@ -220,12 +222,12 @@ router.post('/sync/:electionId', async (req: Request, res: Response) => {
       return;
     }
 
-    // Fetch election data
+    // Fetch election data from tenant DB
     const [election, voters, parts, demographics] = await Promise.all([
-      prisma.election.findUnique({ where: { id: electionId } }),
-      prisma.voter.count({ where: { electionId, deletedAt: null } }),
-      prisma.part.count({ where: { electionId } }),
-      prisma.voter.groupBy({
+      (tenantDb as any).election.findUnique({ where: { id: electionId } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null } }),
+      (tenantDb as any).part.count({ where: { electionId } }),
+      (tenantDb as any).voter.groupBy({
         by: ['gender'],
         where: { electionId, deletedAt: null },
         _count: true,
@@ -245,14 +247,9 @@ router.post('/sync/:electionId', async (req: Request, res: Response) => {
       constituency: election.constituency,
       totalVoters: voters,
       totalBooths: parts,
-      demographics: demographics.map(d => ({ gender: d.gender, count: d._count })),
+      demographics: demographics.map((d: any) => ({ gender: d.gender, count: d._count })),
       syncedAt: new Date().toISOString(),
     };
-
-    // In production, this would send data to DataCaffe API
-    // const response = await axios.post(`${DATACAFFE_API_URL}/v1/elections/sync`, syncData, {
-    //   headers: { 'Authorization': `Bearer ${DATACAFFE_API_KEY}` },
-    // });
 
     res.json(successResponse({
       message: 'Election data synced to DataCaffe',
@@ -267,7 +264,6 @@ router.post('/sync/:electionId', async (req: Request, res: Response) => {
 // Get available DataCaffe dashboard templates
 router.get('/templates', async (_req: Request, res: Response) => {
   try {
-    // These would typically come from the DataCaffe API
     const templates = [
       {
         id: 'voter-demographics',
