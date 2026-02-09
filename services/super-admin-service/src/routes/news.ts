@@ -1,9 +1,39 @@
 import { Router, Request, Response } from 'express';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { createLogger } from '@electioncaffe/shared';
+import { z } from 'zod';
 import { superAdminAuth } from '../middleware/superAdminAuth.js';
 
 const logger = createLogger('super-admin-service');
+
+const createNewsSchema = z.object({
+  tenantId: z.string().uuid().optional().nullable(),
+  title: z.string().min(1, 'Title is required').max(500),
+  titleLocal: z.string().max(500).optional().nullable(),
+  summary: z.string().max(2000).optional().nullable(),
+  content: z.string().optional().nullable(),
+  contentLocal: z.string().optional().nullable(),
+  category: z.string().default('OTHER'),
+  subCategory: z.string().optional().nullable(),
+  tags: z.array(z.string()).default([]),
+  keywords: z.array(z.string()).default([]),
+  source: z.string().default('MANUAL_ENTRY'),
+  sourceUrl: z.string().url().optional().nullable(),
+  sourceName: z.string().optional().nullable(),
+  publishedAt: z.string().datetime().optional().nullable(),
+  geographicLevel: z.string().default('NATIONAL'),
+  state: z.string().optional().nullable(),
+  region: z.string().optional().nullable(),
+  district: z.string().optional().nullable(),
+  constituency: z.string().optional().nullable(),
+  section: z.string().optional().nullable(),
+  booth: z.string().optional().nullable(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED', 'FLAGGED']).default('DRAFT'),
+  imageUrls: z.array(z.string()).default([]),
+  videoUrls: z.array(z.string()).default([]),
+  documentUrls: z.array(z.string()).default([]),
+});
 
 const router = Router();
 
@@ -137,70 +167,49 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const superAdminId = (req as any).superAdmin?.id;
-    const {
-      tenantId,
-      title,
-      titleLocal,
-      summary,
-      content,
-      contentLocal,
-      category,
-      subCategory,
-      tags,
-      keywords,
-      source,
-      sourceUrl,
-      sourceName,
-      publishedAt,
-      geographicLevel,
-      state,
-      region,
-      district,
-      constituency,
-      section,
-      booth,
-      priority,
-      status,
-      imageUrls,
-      videoUrls,
-      documentUrls,
-    } = req.body;
+    const parsed = createNewsSchema.safeParse(req.body);
 
-    if (!title) {
+    if (!parsed.success) {
       return res.status(400).json({
         success: false,
-        error: 'Title is required',
+        error: 'Validation failed',
+        details: parsed.error.errors.map(e => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
       });
     }
 
+    const data = parsed.data;
+
     const news = await (prisma as any).newsInformation.create({
       data: {
-        tenantId: tenantId || null,
-        title,
-        titleLocal,
-        summary,
-        content,
-        contentLocal,
-        category: category || 'OTHER',
-        subCategory,
-        tags: tags || [],
-        keywords: keywords || [],
-        source: source || 'MANUAL_ENTRY',
-        sourceUrl,
-        sourceName,
-        publishedAt: publishedAt ? new Date(publishedAt) : null,
-        geographicLevel: geographicLevel || 'NATIONAL',
-        state,
-        region,
-        district,
-        constituency,
-        section,
-        booth,
-        priority: priority || 'MEDIUM',
-        status: status || 'DRAFT',
-        imageUrls: imageUrls || [],
-        videoUrls: videoUrls || [],
-        documentUrls: documentUrls || [],
+        tenantId: data.tenantId || null,
+        title: data.title,
+        titleLocal: data.titleLocal,
+        summary: data.summary,
+        content: data.content,
+        contentLocal: data.contentLocal,
+        category: data.category,
+        subCategory: data.subCategory,
+        tags: data.tags,
+        keywords: data.keywords,
+        source: data.source,
+        sourceUrl: data.sourceUrl,
+        sourceName: data.sourceName,
+        publishedAt: data.publishedAt ? new Date(data.publishedAt) : null,
+        geographicLevel: data.geographicLevel,
+        state: data.state,
+        region: data.region,
+        district: data.district,
+        constituency: data.constituency,
+        section: data.section,
+        booth: data.booth,
+        priority: data.priority,
+        status: data.status,
+        imageUrls: data.imageUrls,
+        videoUrls: data.videoUrls,
+        documentUrls: data.documentUrls,
         createdBy: superAdminId,
       },
     });

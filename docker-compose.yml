@@ -1,0 +1,297 @@
+# =============================================================================
+# ElectionCaffe Production Docker Compose
+# Usage: cp .env.production.example .env.production
+#        docker compose --env-file .env.production up -d --build
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Database Migrations (runs once, then exits)
+  # ---------------------------------------------------------------------------
+  db-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: auth-service
+    command: >
+      sh -c "
+        npx prisma db push --schema=packages/database/prisma/core/schema.prisma --skip-generate &&
+        npx prisma db push --schema=packages/database/prisma/tenant/schema.prisma --skip-generate
+      "
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Backend Services
+  # ---------------------------------------------------------------------------
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      AUTH_SERVICE_URL: http://auth-service:3001
+      ELECTION_SERVICE_URL: http://election-service:3002
+      VOTER_SERVICE_URL: http://voter-service:3003
+      CADRE_SERVICE_URL: http://cadre-service:3004
+      ANALYTICS_SERVICE_URL: http://analytics-service:3005
+      REPORTING_SERVICE_URL: http://reporting-service:3006
+      AI_ANALYTICS_SERVICE_URL: http://ai-analytics-service:3007
+      SUPER_ADMIN_SERVICE_URL: http://super-admin-service:3008
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: auth-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  election-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: election-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  voter-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: voter-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  cadre-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: cadre-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: analytics-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  reporting-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: reporting-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: production
+      PORT: 3006
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  ai-analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: ai-analytics-service
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    environment:
+      NODE_ENV: production
+      PORT: 3007
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  super-admin-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.service
+      args:
+        BUILD_SERVICE: super-admin-service
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    environment:
+      NODE_ENV: production
+      PORT: 3008
+      DATABASE_URL: ${DATABASE_URL}
+      CORE_DATABASE_URL: ${CORE_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+
+  # ---------------------------------------------------------------------------
+  # Frontend Apps (served via nginx)
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        BUILD_APP: web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  super-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        BUILD_APP: super-admin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local

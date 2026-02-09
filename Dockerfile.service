@@ -1,0 +1,93 @@
+# =============================================================================
+# Multi-stage Dockerfile for ElectionCaffe backend services
+# Usage: docker build --build-arg BUILD_SERVICE=gateway -f Dockerfile.service .
+# =============================================================================
+
+# --- Base stage: shared Alpine + OpenSSL for Prisma ---
+FROM node:20-alpine AS base
+RUN apk add --no-cache openssl
+
+# --- Dependencies stage: install only production + workspace deps ---
+FROM base AS deps
+WORKDIR /app
+
+# Copy root workspace manifests
+COPY package.json package-lock.json ./
+
+# Copy package.json for shared packages
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/database/package.json ./packages/database/
+
+# Copy target service package.json
+ARG BUILD_SERVICE
+COPY services/${BUILD_SERVICE}/package.json ./services/${BUILD_SERVICE}/
+
+# Install dependencies for the specific workspace and its dependencies
+RUN npm ci --workspace=packages/shared --workspace=packages/database --workspace=services/${BUILD_SERVICE} --include-workspace-root
+
+# --- Builder stage: compile TypeScript and generate Prisma clients ---
+FROM base AS builder
+WORKDIR /app
+
+ARG BUILD_SERVICE
+
+# Copy installed node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+
+# Copy root config files needed for build
+COPY package.json turbo.json tsconfig.base.json ./
+
+# Copy shared packages source
+COPY packages/shared ./packages/shared
+COPY packages/database ./packages/database
+
+# Copy target service source
+COPY services/${BUILD_SERVICE} ./services/${BUILD_SERVICE}
+
+# Generate Prisma clients (core + tenant schemas)
+RUN npx prisma generate --schema=packages/database/prisma/core/schema.prisma
+RUN npx prisma generate --schema=packages/database/prisma/tenant/schema.prisma
+
+# Build shared packages first, then the service (turbo handles dependency order)
+RUN npx turbo run build --filter=@electioncaffe/shared --filter=@electioncaffe/database --filter=services/${BUILD_SERVICE}
+
+# --- Runner stage: minimal production image ---
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 appuser
+
+ARG BUILD_SERVICE
+ENV SERVICE_NAME=${BUILD_SERVICE}
+
+# Copy node_modules (includes Prisma engine binaries in .prisma/client)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy built shared package
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+
+# Copy built database package + Prisma schemas (needed for migrations at runtime)
+COPY --from=builder /app/packages/database/dist ./packages/database/dist
+COPY --from=builder /app/packages/database/package.json ./packages/database/
+COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
+COPY --from=builder /app/packages/database/node_modules ./packages/database/node_modules
+
+# Copy built service
+COPY --from=builder /app/services/${BUILD_SERVICE}/dist ./services/${BUILD_SERVICE}/dist
+COPY --from=builder /app/services/${BUILD_SERVICE}/package.json ./services/${BUILD_SERVICE}/
+
+# Copy root package.json (needed for workspace resolution)
+COPY --from=builder /app/package.json ./
+
+USER appuser
+
+EXPOSE 3000
+
+CMD node services/${SERVICE_NAME}/dist/index.js

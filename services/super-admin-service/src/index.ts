@@ -27,7 +27,18 @@ app.use(express.json());
 
 // Health check
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'super-admin-service', timestamp: new Date().toISOString() });
+  const memUsage = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    service: 'super-admin-service',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: {
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+    },
+  });
 });
 
 // Routes
@@ -50,6 +61,22 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || SERVICE_PORTS.SUPER_ADMIN;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info({ port: PORT }, 'Super Admin Service started');
 });
+
+function gracefulShutdown(signal: string) {
+  logger.info({ signal }, 'Received shutdown signal, closing server...');
+  server.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

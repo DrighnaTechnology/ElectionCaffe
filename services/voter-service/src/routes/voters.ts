@@ -449,20 +449,28 @@ router.post('/:id/schemes', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { schemeId, enrollmentDate, notes } = req.body;
 
-    const voterScheme = await (tenantDb as any).voterScheme.create({
-      data: {
-        voterId: id,
-        schemeId,
-        enrollmentDate: enrollmentDate ? new Date(enrollmentDate) : undefined,
-        notes,
-      },
-      include: { scheme: true },
-    });
+    if (!schemeId) {
+      res.status(400).json(errorResponse('E2001', 'schemeId is required'));
+      return;
+    }
 
-    // Update scheme beneficiary count
-    await (tenantDb as any).scheme.update({
-      where: { id: schemeId },
-      data: { beneficiaryCount: { increment: 1 } },
+    const voterScheme = await (tenantDb as any).$transaction(async (tx: any) => {
+      const created = await tx.voterScheme.create({
+        data: {
+          voterId: id,
+          schemeId,
+          enrollmentDate: enrollmentDate ? new Date(enrollmentDate) : undefined,
+          notes,
+        },
+        include: { scheme: true },
+      });
+
+      await tx.scheme.update({
+        where: { id: schemeId },
+        data: { beneficiaryCount: { increment: 1 } },
+      });
+
+      return created;
     });
 
     res.status(201).json(successResponse(voterScheme));
@@ -478,16 +486,17 @@ router.delete('/:id/schemes/:schemeId', async (req: Request, res: Response) => {
     const tenantDb = await getTenantDb(req);
     const { id, schemeId } = req.params;
 
-    await (tenantDb as any).voterScheme.delete({
-      where: {
-        voterId_schemeId: { voterId: id, schemeId },
-      },
-    });
+    await (tenantDb as any).$transaction(async (tx: any) => {
+      await tx.voterScheme.delete({
+        where: {
+          voterId_schemeId: { voterId: id, schemeId },
+        },
+      });
 
-    // Update scheme beneficiary count
-    await (tenantDb as any).scheme.update({
-      where: { id: schemeId },
-      data: { beneficiaryCount: { decrement: 1 } },
+      await tx.scheme.update({
+        where: { id: schemeId },
+        data: { beneficiaryCount: { decrement: 1 } },
+      });
     });
 
     res.json(successResponse({ message: 'Scheme removed from voter' }));

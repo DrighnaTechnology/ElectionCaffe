@@ -1,9 +1,35 @@
 import { Router, Request, Response } from 'express';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { createLogger } from '@electioncaffe/shared';
+import { z } from 'zod';
 import { superAdminAuth } from '../middleware/superAdminAuth.js';
 
 const logger = createLogger('super-admin-service');
+
+const createActionSchema = z.object({
+  tenantId: z.string().uuid('Invalid tenant ID'),
+  newsId: z.string().uuid().optional().nullable(),
+  title: z.string().min(1, 'Title is required').max(500),
+  titleLocal: z.string().max(500).optional().nullable(),
+  description: z.string().optional().nullable(),
+  descriptionLocal: z.string().optional().nullable(),
+  actionType: z.string().default('OTHER'),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
+  geographicLevel: z.string().default('CONSTITUENCY'),
+  state: z.string().optional().nullable(),
+  district: z.string().optional().nullable(),
+  constituency: z.string().optional().nullable(),
+  section: z.string().optional().nullable(),
+  booth: z.string().optional().nullable(),
+  targetAudience: z.string().optional().nullable(),
+  targetCount: z.number().int().positive().optional().nullable(),
+  targetRoles: z.array(z.string()).default([]),
+  assignedTo: z.string().optional().nullable(),
+  assignedToName: z.string().optional().nullable(),
+  suggestedDeadline: z.string().datetime().optional().nullable(),
+  deadline: z.string().datetime().optional().nullable(),
+  executionSteps: z.array(z.string()).default([]),
+});
 
 const router = Router();
 
@@ -143,65 +169,48 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const superAdminId = (req as any).superAdmin?.id;
-    const {
-      tenantId,
-      newsId,
-      title,
-      titleLocal,
-      description,
-      descriptionLocal,
-      actionType,
-      priority,
-      geographicLevel,
-      state,
-      district,
-      constituency,
-      section,
-      booth,
-      targetAudience,
-      targetCount,
-      targetRoles,
-      assignedTo,
-      assignedToName,
-      suggestedDeadline,
-      deadline,
-      executionSteps,
-    } = req.body;
+    const parsed = createActionSchema.safeParse(req.body);
 
-    if (!tenantId || !title) {
+    if (!parsed.success) {
       return res.status(400).json({
         success: false,
-        error: 'Tenant ID and title are required',
+        error: 'Validation failed',
+        details: parsed.error.errors.map(e => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
       });
     }
 
+    const data = parsed.data;
+
     const action = await (prisma as any).actionItem.create({
       data: {
-        tenantId,
-        newsId: newsId || null,
-        title,
-        titleLocal,
-        description,
-        descriptionLocal,
-        actionType: actionType || 'OTHER',
-        priority: priority || 'MEDIUM',
+        tenantId: data.tenantId,
+        newsId: data.newsId || null,
+        title: data.title,
+        titleLocal: data.titleLocal,
+        description: data.description,
+        descriptionLocal: data.descriptionLocal,
+        actionType: data.actionType,
+        priority: data.priority,
         status: 'PENDING_REVIEW',
-        geographicLevel: geographicLevel || 'CONSTITUENCY',
-        state,
-        district,
-        constituency,
-        section,
-        booth,
-        targetAudience,
-        targetCount,
-        targetRoles: targetRoles || [],
-        assignedTo,
-        assignedToName,
-        assignedBy: assignedTo ? superAdminId : null,
-        assignedAt: assignedTo ? new Date() : null,
-        suggestedDeadline: suggestedDeadline ? new Date(suggestedDeadline) : null,
-        deadline: deadline ? new Date(deadline) : null,
-        executionSteps: executionSteps || [],
+        geographicLevel: data.geographicLevel,
+        state: data.state,
+        district: data.district,
+        constituency: data.constituency,
+        section: data.section,
+        booth: data.booth,
+        targetAudience: data.targetAudience,
+        targetCount: data.targetCount,
+        targetRoles: data.targetRoles,
+        assignedTo: data.assignedTo,
+        assignedToName: data.assignedToName,
+        assignedBy: data.assignedTo ? superAdminId : null,
+        assignedAt: data.assignedTo ? new Date() : null,
+        suggestedDeadline: data.suggestedDeadline ? new Date(data.suggestedDeadline) : null,
+        deadline: data.deadline ? new Date(data.deadline) : null,
+        executionSteps: data.executionSteps,
         isAiGenerated: false,
         createdBy: superAdminId,
       },

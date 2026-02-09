@@ -8,9 +8,11 @@ import { Server as SocketIOServer } from 'socket.io';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { setupSocketIO } from './config/socket.js';
-import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
+import { SERVICE_PORTS, createLogger, requestIdMiddleware, validateEnv } from '@electioncaffe/shared';
 
 export const logger = createLogger('gateway');
+
+validateEnv('gateway');
 
 const app = express();
 const httpServer = createServer(app);
@@ -37,6 +39,7 @@ setupSocketIO(io);
 
 // Middleware
 app.use(helmet());
+app.use(requestIdMiddleware);
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -55,8 +58,9 @@ app.use(express.json({ limit: '10mb' }));
 // Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
+  const requestId = req.headers['x-request-id'];
   res.on('finish', () => {
-    logger.info({ method: req.method, url: req.url, statusCode: res.statusCode, durationMs: Date.now() - start }, 'request completed');
+    logger.info({ method: req.method, url: req.url, statusCode: res.statusCode, durationMs: Date.now() - start, requestId }, 'request completed');
   });
   next();
 });
@@ -78,7 +82,18 @@ const authLimiter = rateLimit({
 
 // Health check
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'gateway', timestamp: new Date().toISOString() });
+  const memUsage = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    service: 'gateway',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: {
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+    },
+  });
 });
 
 // Create proxy - NO body parsing, just forward the raw request
@@ -202,5 +217,21 @@ httpServer.listen(PORT, () => {
     },
   }, 'Services routing configured');
 });
+
+function gracefulShutdown(signal: string) {
+  logger.info({ signal }, 'Received shutdown signal, closing server...');
+  httpServer.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export { io };

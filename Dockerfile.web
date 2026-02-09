@@ -1,0 +1,65 @@
+# =============================================================================
+# Multi-stage Dockerfile for ElectionCaffe frontend apps (web, super-admin)
+# Usage: docker build --build-arg BUILD_APP=web -f Dockerfile.web .
+# =============================================================================
+
+# --- Dependencies stage: install workspace deps ---
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+ARG BUILD_APP=web
+
+# Copy root workspace manifests
+COPY package.json package-lock.json ./
+
+# Copy package.json for shared packages
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/database/package.json ./packages/database/
+
+# Copy target app package.json
+COPY apps/${BUILD_APP}/package.json ./apps/${BUILD_APP}/
+
+# Install dependencies for the specific workspace and its dependencies
+RUN npm ci --workspace=packages/shared --workspace=packages/database --workspace=apps/${BUILD_APP} --include-workspace-root
+
+# --- Builder stage: build the frontend app ---
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+ARG BUILD_APP=web
+
+# Copy installed node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+
+# Copy root config files needed for build
+COPY package.json turbo.json tsconfig.base.json ./
+
+# Copy shared packages source (needed for build)
+COPY packages/shared ./packages/shared
+COPY packages/database ./packages/database
+
+# Copy target app source
+COPY apps/${BUILD_APP} ./apps/${BUILD_APP}
+
+# Build shared packages and the app (turbo handles dependency order)
+RUN npx turbo run build --filter=@electioncaffe/shared --filter=apps/${BUILD_APP}
+
+# --- Runner stage: serve with nginx ---
+FROM nginx:alpine AS runner
+
+ARG BUILD_APP=web
+
+# Remove default nginx config
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy built static files
+COPY --from=builder /app/apps/${BUILD_APP}/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

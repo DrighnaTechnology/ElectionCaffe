@@ -66,8 +66,13 @@ export async function licenseEnforcementMiddleware(
     next();
   } catch (error) {
     logger.error({ err: error }, 'License enforcement error');
-    // Don't block on errors - just log and continue
-    next();
+    res.status(503).json({
+      success: false,
+      error: {
+        code: 'E5003',
+        message: 'License validation service temporarily unavailable',
+      },
+    });
   }
 }
 
