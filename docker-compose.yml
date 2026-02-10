@@ -36,10 +36,12 @@ services:
       dockerfile: Dockerfile.service
       args:
         BUILD_SERVICE: auth-service
+    # Production: use migrate deploy only (no fallback to db push to prevent schema drift)
+    # For first-time setup, run: npx prisma db push --schema=packages/database/prisma/core/schema.prisma --skip-generate && npx prisma db push --schema=packages/database/prisma/tenant/schema.prisma --skip-generate
     command: >
       sh -c "
-        npx prisma db push --schema=packages/database/prisma/core/schema.prisma --skip-generate &&
-        npx prisma db push --schema=packages/database/prisma/tenant/schema.prisma --skip-generate
+        npx prisma migrate deploy --schema=packages/database/prisma/core/schema.prisma &&
+        npx prisma migrate deploy --schema=packages/database/prisma/tenant/schema.prisma
       "
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -111,6 +113,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   election-service:
     build:
@@ -132,6 +140,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   voter-service:
     build:
@@ -153,6 +167,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   cadre-service:
     build:
@@ -174,6 +194,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3004/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   analytics-service:
     build:
@@ -195,6 +221,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3005/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   reporting-service:
     build:
@@ -216,6 +248,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3006/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   ai-analytics-service:
     build:
@@ -237,6 +275,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3007/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   super-admin-service:
     build:
@@ -259,6 +303,12 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3008/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ---------------------------------------------------------------------------
   # Frontend Apps (served via nginx)

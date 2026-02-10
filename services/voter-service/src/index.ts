@@ -4,7 +4,9 @@ import cors from 'cors';
 import { voterRoutes } from './routes/voters.js';
 import { familyRoutes } from './routes/families.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
+import { SERVICE_PORTS, createLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
+
+validateEnv('voter-service');
 
 export const logger = createLogger('voter-service');
 
@@ -13,6 +15,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(metricsMiddleware);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -29,6 +32,9 @@ app.get('/health', (_req, res) => {
     },
   });
 });
+
+// Metrics endpoint
+app.get('/metrics', metricsEndpoint);
 
 // Routes
 app.use('/api/voters', voterRoutes);
@@ -58,3 +64,13 @@ function gracefulShutdown(signal: string) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ reason }, 'Unhandled rejection');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception');
+  process.exit(1);
+});

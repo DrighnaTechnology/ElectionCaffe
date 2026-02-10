@@ -15,7 +15,9 @@ import { newsRoutes } from './routes/news.js';
 import { actionsRoutes } from './routes/actions.js';
 import { databasesRoutes } from './routes/databases.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
+import { SERVICE_PORTS, createLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
+
+validateEnv('super-admin-service');
 
 export const logger = createLogger('super-admin-service');
 
@@ -24,6 +26,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -40,6 +43,9 @@ app.get('/health', (_req, res) => {
     },
   });
 });
+
+// Metrics endpoint
+app.get('/metrics', metricsEndpoint);
 
 // Routes
 app.use('/api/super-admin/auth', authRoutes);
@@ -80,3 +86,13 @@ function gracefulShutdown(signal: string) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ reason }, 'Unhandled rejection');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception');
+  process.exit(1);
+});

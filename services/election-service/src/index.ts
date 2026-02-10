@@ -7,8 +7,11 @@ import { sectionRoutes } from './routes/sections.js';
 import { masterDataRoutes } from './routes/masterData.js';
 import { candidateRoutes } from './routes/candidates.js';
 import { surveyRoutes } from './routes/surveys.js';
+import { boothRoutes } from './routes/booths.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
+import { SERVICE_PORTS, createLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
+
+validateEnv('election-service');
 
 export const logger = createLogger('election-service');
 
@@ -17,6 +20,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+app.use(metricsMiddleware);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -34,12 +38,16 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Metrics endpoint
+app.get('/metrics', metricsEndpoint);
+
 // Routes
 app.use('/api/elections', electionRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/api/parts', partRoutes);
 app.use('/api/sections', sectionRoutes);
+app.use('/api/booths', boothRoutes);
 app.use('/api', masterDataRoutes);
 
 // Error handler
@@ -66,3 +74,13 @@ function gracefulShutdown(signal: string) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ reason }, 'Unhandled rejection');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception');
+  process.exit(1);
+});

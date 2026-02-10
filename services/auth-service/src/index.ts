@@ -11,8 +11,10 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, '../../../.env') });
 
 // Verify environment variables are loaded
-import { createLogger as _createStartupLogger } from '@electioncaffe/shared';
+import { createLogger as _createStartupLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
 const startupLogger = _createStartupLogger('auth-service-startup');
+
+validateEnv('auth-service');
 
 startupLogger.info({ CORE_DATABASE_URL: process.env.CORE_DATABASE_URL ? 'SET' : 'NOT SET', DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET' }, '[STARTUP] Environment variables loaded');
 
@@ -60,6 +62,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -76,6 +79,9 @@ app.get('/health', (_req, res) => {
     },
   });
 });
+
+// Metrics endpoint
+app.get('/metrics', metricsEndpoint);
 
 // Routes
 app.use('/api', authRoutes);
@@ -118,3 +124,13 @@ function gracefulShutdown(signal: string) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ reason }, 'Unhandled rejection');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception');
+  process.exit(1);
+});

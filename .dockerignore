@@ -9,3 +9,9 @@ dist
 .turbo
 coverage
 .next
+docs
+tests
+.github
+monitoring
+backups
+certs

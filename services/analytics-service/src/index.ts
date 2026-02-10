@@ -3,7 +3,10 @@ import cors from 'cors';
 
 import { dashboardRoutes } from './routes/dashboard.js';
 import { analyticsRoutes } from './routes/analytics.js';
-import { SERVICE_PORTS, createLogger } from '@electioncaffe/shared';
+import { errorHandler } from './middleware/errorHandler.js';
+import { SERVICE_PORTS, createLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
+
+validateEnv('analytics-service');
 
 export const logger = createLogger('analytics-service');
 
@@ -11,6 +14,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -28,15 +32,15 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Metrics endpoint
+app.get('/metrics', metricsEndpoint);
+
 // Routes
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
 // Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error({ err }, 'Internal server error');
-  res.status(500).json({ success: false, error: { code: 'E5001', message: 'Internal server error' } });
-});
+app.use(errorHandler);
 
 const PORT = process.env.PORT || SERVICE_PORTS.ANALYTICS;
 
@@ -59,3 +63,13 @@ function gracefulShutdown(signal: string) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ reason }, 'Unhandled rejection');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception');
+  process.exit(1);
+});
