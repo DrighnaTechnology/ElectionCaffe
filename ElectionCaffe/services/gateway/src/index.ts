@@ -7,6 +7,16 @@ import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load environment variables from root .env
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
 
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -69,6 +79,22 @@ const createServiceProxy = (target: string, pathRewrite?: Record<string, string>
     target,
     changeOrigin: true,
     ...(pathRewrite && { pathRewrite }),
+    onProxyReq: (proxyReq, req) => {
+      // Forward tenant and user headers set by authMiddleware
+      const tenantId = (req as any).headers['x-tenant-id'];
+      const userId = (req as any).headers['x-user-id'];
+      const userRole = (req as any).headers['x-user-role'];
+
+      if (tenantId) {
+        proxyReq.setHeader('x-tenant-id', tenantId);
+      }
+      if (userId) {
+        proxyReq.setHeader('x-user-id', userId);
+      }
+      if (userRole) {
+        proxyReq.setHeader('x-user-role', userRole);
+      }
+    },
     onError: (err, req, res) => {
       logger.error({ err, path: req.url }, 'Proxy error');
       (res as any).status(503).json({

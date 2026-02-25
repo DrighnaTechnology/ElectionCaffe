@@ -133,14 +133,17 @@ export async function getTenantClientBySlug(
     return getTenantClient(tenantId, tenantDbConfig.databaseConnectionUrl, tenantSlug);
   }
 
-  // Otherwise, construct the URL from individual parts
-  const databaseUrl = generateTenantDbUrl(tenantSlug, {
-    host: tenantDbConfig.databaseHost || undefined,
-    port: tenantDbConfig.databasePort || undefined,
-    user: tenantDbConfig.databaseUser || undefined,
-    password: tenantDbConfig.databasePassword || undefined,
-    ssl: tenantDbConfig.databaseSSL,
-  });
+  // Build connection URL using the configured database name if available
+  const host = tenantDbConfig.databaseHost || process.env.DB_HOST || 'localhost';
+  const port = tenantDbConfig.databasePort || parseInt(process.env.DB_PORT || '5432');
+  const user = tenantDbConfig.databaseUser || process.env.DB_USER || 'postgres';
+  const password = tenantDbConfig.databasePassword || process.env.DB_PASSWORD || 'postgres';
+  const ssl = tenantDbConfig.databaseSSL ?? (process.env.DB_SSL === 'true');
+  // Use configured databaseName if available, otherwise generate from slug
+  const dbName = tenantDbConfig.databaseName || generateTenantDbName(tenantSlug);
+
+  const sslParam = ssl ? '?sslmode=require' : '';
+  const databaseUrl = `postgresql://${user}:${password}@${host}:${port}/${dbName}${sslParam}`;
 
   return getTenantClient(tenantId, databaseUrl, tenantSlug);
 }
