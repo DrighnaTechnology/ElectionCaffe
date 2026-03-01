@@ -2,10 +2,18 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { Client } from 'pg';
-import { coreDb as prisma } from '@electioncaffe/database';
-import { createLogger } from '@electioncaffe/shared';
+import {
+  coreDb as prisma,
+  provisionTenantDatabase,
+  getTenantClient,
+  syncTenantCounts,
+} from '@electioncaffe/database';
+import { createLogger, SERVICE_URLS, buildTenantUrl } from '@electioncaffe/shared';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
 import { createFeatureTables, featureTablesExist } from '../utils/createFeatureTables.js';
+import { auditLog } from '../utils/auditLog.js';
+
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
 
 const logger = createLogger('super-admin-service');
 
@@ -14,48 +22,18 @@ const router = Router();
 // All tenant routes require super admin authentication
 router.use(superAdminAuthMiddleware);
 
-// Base domain for tenant URLs
-const TENANT_BASE_DOMAIN = 'election.datacaffe.ai';
-
-// Helper function to generate unique tenant URL prefix
-async function generateUniqueTenantUrlPrefix(): Promise<string> {
-  // Get the count of tenants to generate a sequential prefix
-  const tenantCount = await prisma.tenant.count();
-  let prefix = String(tenantCount + 1).padStart(4, '0'); // e.g., "0001", "0002", etc.
-
-  // Make sure it's unique
-  let attempts = 0;
-  while (attempts < 100) {
-    const existingTenant = await prisma.tenant.findFirst({
-      where: { tenantUrl: `${prefix}.${TENANT_BASE_DOMAIN}` },
-    });
-    if (!existingTenant) {
-      return prefix;
-    }
-    // Increment the prefix and try again
-    prefix = String(parseInt(prefix) + 1).padStart(4, '0');
-    attempts++;
-  }
-
-  // If all sequential attempts fail, use timestamp + random
-  return `${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
-}
-
 // Database type options:
-// - NONE: No database configured yet (tenant admin will set up later)
-// - SHARED: Use shared ElectionCaffe platform database with tenant isolation
-// - DEDICATED_MANAGED: Super Admin creates and manages the dedicated database
-// - DEDICATED_SELF: Tenant admin provides their own database connection
+// - SHARED: Use shared ElectionCaffe platform database with tenant isolation (no new DB)
+// - DEDICATED_PLATFORM: Platform creates and manages a dedicated DB on the platform server
+// - DEDICATED_EXTERNAL: Platform creates a dedicated DB on tenant's external server using provided credentials
 
 const createTenantSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
   tenantType: z.enum(['POLITICAL_PARTY', 'INDIVIDUAL_CANDIDATE', 'ELECTION_MANAGEMENT']),
-  // Tenant URL configuration (optional - auto-generated if not provided)
-  tenantUrlPrefix: z.string().regex(/^[a-z0-9-]+$/).optional(), // Custom prefix for tenant URL (e.g., "acme" -> "acme.election.datacaffe.ai")
   // Database configuration
-  databaseType: z.enum(['NONE', 'SHARED', 'DEDICATED_MANAGED', 'DEDICATED_SELF']).default('NONE'),
-  // For DEDICATED_MANAGED - Super Admin provides the database config
+  databaseType: z.enum(['SHARED', 'DEDICATED_PLATFORM', 'DEDICATED_EXTERNAL']).default('SHARED'),
+  // For DEDICATED_EXTERNAL - tenant provides external database server credentials
   databaseHost: z.string().optional(),
   databaseName: z.string().optional(),
   databaseUser: z.string().optional(),
@@ -128,7 +106,7 @@ router.get('/', async (req, res, next) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const search = req.query.search as string;
     const tenantType = req.query.tenantType as string;
-    const isActive = req.query.isActive === 'true' ? true : req.query.isActive === 'false' ? false : undefined;
+    const status = req.query.status as string;
 
     const where: any = {};
 
@@ -144,8 +122,8 @@ router.get('/', async (req, res, next) => {
       where.tenantType = tenantType;
     }
 
-    if (isActive !== undefined) {
-      where.isActive = isActive;
+    if (status) {
+      where.status = status;
     }
 
     const [tenants, total] = await Promise.all([
@@ -165,9 +143,16 @@ router.get('/', async (req, res, next) => {
       prisma.tenant.count({ where }),
     ]);
 
+    // Add computed fields for frontend
+    const tenantsWithActive = tenants.map(t => ({
+      ...t,
+      tenantUrl: buildTenantUrl(t.slug),
+      isActive: t.status === 'ACTIVE' || t.status === 'TRIAL',
+    }));
+
     res.json({
       success: true,
-      data: tenants,
+      data: tenantsWithActive,
       meta: {
         page,
         limit,
@@ -191,6 +176,11 @@ router.get('/:id', async (req, res, next) => {
             feature: true,
           },
         },
+        license: {
+          include: {
+            plan: { select: { planName: true, planType: true } },
+          },
+        },
       },
     });
 
@@ -204,9 +194,17 @@ router.get('/:id', async (req, res, next) => {
       });
     }
 
+    // Use license plan name as the source of truth for subscription plan
+    const activePlan = tenant.license?.plan?.planName || tenant.subscriptionPlan || 'free';
+
     res.json({
       success: true,
-      data: tenant,
+      data: {
+        ...tenant,
+        tenantUrl: buildTenantUrl(tenant.slug),
+        subscriptionPlan: activePlan,
+        isActive: tenant.status === 'ACTIVE' || tenant.status === 'TRIAL',
+      },
     });
   } catch (error) {
     next(error);
@@ -242,24 +240,24 @@ router.post('/', async (req, res, next) => {
     let databaseManagedBy: string | null;
 
     switch (data.databaseType) {
-      case 'NONE':
-        // Tenant will set up their own database later
-        databaseStatus = 'NOT_CONFIGURED';
-        canTenantEditDb = true;
-        databaseManagedBy = null;
-        break;
       case 'SHARED':
-        // Using shared platform database
+        // Using shared platform database — no new DB created
         databaseStatus = 'READY';
         canTenantEditDb = false;
         databaseManagedBy = 'super_admin';
         break;
-      case 'DEDICATED_MANAGED':
-        // Super admin manages the dedicated database
+      case 'DEDICATED_PLATFORM':
+        // Platform creates and manages a dedicated DB on the platform server
         databaseStatus = 'PENDING_SETUP';
         canTenantEditDb = false;
         databaseManagedBy = 'super_admin';
-        // If database config is provided, test the connection
+        break;
+      case 'DEDICATED_EXTERNAL':
+        // Platform creates a dedicated DB on tenant's external server
+        databaseStatus = 'PENDING_SETUP';
+        canTenantEditDb = false;
+        databaseManagedBy = 'super_admin';
+        // Validate that external server credentials are provided
         if (data.databaseHost || data.databaseConnectionUrl) {
           const connectionTest = await testDatabaseConnection({
             host: data.databaseHost,
@@ -270,54 +268,22 @@ router.post('/', async (req, res, next) => {
             ssl: data.databaseSSL,
             connectionUrl: data.databaseConnectionUrl,
           });
-          if (connectionTest.success) {
-            databaseStatus = 'READY';
-          } else {
+          if (!connectionTest.success) {
             databaseStatus = 'CONNECTION_FAILED';
           }
         }
         break;
-      case 'DEDICATED_SELF':
-        // Tenant manages their own database (they will provide config later)
-        databaseStatus = 'PENDING_SETUP';
-        canTenantEditDb = true;
-        databaseManagedBy = 'tenant';
-        break;
       default:
-        databaseStatus = 'NOT_CONFIGURED';
-        canTenantEditDb = true;
-        databaseManagedBy = null;
+        databaseStatus = 'READY';
+        canTenantEditDb = false;
+        databaseManagedBy = 'super_admin';
     }
 
-    // Get default role based on tenant type
-    const defaultRole = data.tenantType === 'POLITICAL_PARTY'
-      ? 'CENTRAL_ADMIN'
-      : data.tenantType === 'ELECTION_MANAGEMENT'
-        ? 'EMC_ADMIN'
-        : 'CANDIDATE_ADMIN';
+    // All tenants get CENTRAL_ADMIN as the default admin role
+    const defaultRole = 'CENTRAL_ADMIN';
 
-    // Generate tenant URL
-    let tenantUrlPrefix = data.tenantUrlPrefix;
-    if (!tenantUrlPrefix) {
-      tenantUrlPrefix = await generateUniqueTenantUrlPrefix();
-    }
-    const tenantUrl = `${tenantUrlPrefix}.${TENANT_BASE_DOMAIN}`;
-
-    // Check if custom URL prefix is already taken
-    if (data.tenantUrlPrefix) {
-      const existingWithUrl = await prisma.tenant.findFirst({
-        where: { tenantUrl },
-      });
-      if (existingWithUrl) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: 'E2005',
-            message: 'Tenant URL prefix is already in use',
-          },
-        });
-      }
-    }
+    // Tenant URL is derived dynamically from slug — no need to store a hardcoded domain
+    const tenantUrl = buildTenantUrl(data.slug);
 
     // Create tenant with admin user and license in transaction
     const result = await prisma.$transaction(async (tx) => {
@@ -379,7 +345,7 @@ router.post('/', async (req, res, next) => {
         if (!defaultPlan) {
           defaultPlan = await tx.licensePlan.findFirst({
             where: { isActive: true },
-            orderBy: { basePrice: 'asc' } as any,
+            orderBy: { monthlyPrice: 'asc' },
           });
         }
 
@@ -391,26 +357,32 @@ router.post('/', async (req, res, next) => {
       let tenantLicense = null;
       if (licensePlanId) {
         const trialDays = data.trialDays || 14;
-        const trialEndsAt = new Date();
-        trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + trialDays);
 
         tenantLicense = await tx.tenantLicense.create({
           data: {
             tenantId: tenant.id,
-            licensePlanId: licensePlanId,
+            planId: licensePlanId,
             status: 'TRIAL',
-            trialEndsAt,
-            activatedAt: new Date(),
-            enforceSessionLimit: true,
-            enforceUserLimit: true,
-            enforceApiLimit: false,
-            enforceDataLimit: false,
-            softLimitMode: true, // Start in soft limit mode for trials
-            adminNotes: `Auto-created trial license for ${trialDays} days`,
-          } as any,
+            billingCycle: 'MONTHLY',
+            startDate,
+            endDate,
+            autoRenew: false,
+          },
           include: {
-            licensePlan: true,
-          } as any,
+            plan: true,
+          },
+        });
+
+        // Update tenant trial dates
+        await tx.tenant.update({
+          where: { id: tenant.id },
+          data: {
+            status: 'TRIAL',
+            trialEndsAt: endDate,
+          },
         });
       }
 
@@ -434,32 +406,225 @@ router.post('/', async (req, res, next) => {
       return { tenant, adminUser, tenantLicense };
     });
 
+    // Provision tenant database and create admin user based on database type
+    let provisionResult: { success: boolean; databaseName?: string; connectionUrl?: string; error?: string } | null = null;
+    let adminUserCreated = false;
+
+    if (data.databaseType === 'SHARED') {
+      // ── SHARED: use the existing shared platform database ──
+      // No new DB creation, no schema push — the shared DB already has the schema.
+      // Row-level isolation is handled by tenantId on every model.
+      try {
+        const sharedDbUrl = process.env.DATABASE_URL;
+        if (!sharedDbUrl) {
+          throw new Error('DATABASE_URL environment variable is not set — cannot configure shared database');
+        }
+
+        logger.info({ tenantId: result.tenant.id, tenantName: data.name }, 'Configuring SHARED tenant database');
+
+        // Update tenant record with shared database connection details
+        await prisma.tenant.update({
+          where: { id: result.tenant.id },
+          data: {
+            databaseStatus: 'READY',
+            databaseName: 'electioncaffe',
+            databaseConnectionUrl: sharedDbUrl,
+            databaseManagedBy: 'super_admin',
+            databaseLastCheckedAt: new Date(),
+            databaseMigrationVersion: 'latest',
+          },
+        });
+
+        provisionResult = { success: true, databaseName: 'electioncaffe', connectionUrl: sharedDbUrl };
+
+        // Insert tenant reference into the shared DB's tenants table (required for FK constraints)
+        try {
+          const tenantClient = await getTenantClient(result.tenant.id, sharedDbUrl, data.slug);
+          await (tenantClient as any).$executeRawUnsafe(
+            `INSERT INTO tenants (id, name, slug, tenant_type, database_type, database_status, status, database_ssl, max_voters, max_cadres, max_elections, max_users, max_constituencies, storage_quota_mb, storage_used_mb, created_at, updated_at)
+             VALUES ($1, $2, $3, $4::"TenantType", 'SHARED'::"DatabaseType", 'READY'::"DatabaseStatus", 'TRIAL'::"TenantStatus", false, $5, $6, $7, $8, $9, 0, 0, NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            result.tenant.id, data.name, data.slug, data.tenantType,
+            data.maxVoters, data.maxCadres, data.maxElections, data.maxUsers, data.maxConstituencies
+          );
+
+          // Create admin user in the shared database
+          const createdSharedAdmin = await tenantClient.user.create({
+            data: {
+              tenantId: result.tenant.id,
+              firstName: result.adminUser.firstName,
+              lastName: result.adminUser.lastName || '',
+              email: result.adminUser.email,
+              mobile: result.adminUser.mobile,
+              passwordHash: result.adminUser.passwordHash,
+              role: result.adminUser.role as any,
+              status: 'ACTIVE',
+              canAccessAllConstituencies: true,
+            },
+          });
+          // Cache admin identity in core DB
+          await prisma.tenant.update({
+            where: { id: result.tenant.id },
+            data: { adminMobile: result.adminUser.mobile, adminEmail: result.adminUser.email, adminUserId: createdSharedAdmin.id },
+          });
+          adminUserCreated = true;
+          logger.info({ email: result.adminUser.email }, 'Admin user created in shared tenant database');
+        } catch (userErr: any) {
+          logger.error({ err: userErr }, 'Failed to create tenant reference / admin user in shared tenant database');
+        }
+      } catch (sharedErr: any) {
+        logger.error({ err: sharedErr }, 'Failed to configure shared database for tenant');
+        provisionResult = { success: false, error: sharedErr.message };
+      }
+
+    } else if (data.databaseType === 'DEDICATED_PLATFORM') {
+      // ── DEDICATED_PLATFORM: create a new DB on the platform's own server ──
+      try {
+        logger.info({ tenantId: result.tenant.id, tenantName: data.name }, 'Auto-provisioning DEDICATED_PLATFORM tenant database');
+        provisionResult = await provisionTenantDatabase(
+          result.tenant.id,
+          data.name,
+          data.slug
+        );
+
+        if (provisionResult.success && provisionResult.connectionUrl) {
+          try {
+            const tenantClient = await getTenantClient(result.tenant.id, provisionResult.connectionUrl, data.slug);
+            const createdPlatformAdmin = await tenantClient.user.create({
+              data: {
+                tenantId: result.tenant.id,
+                firstName: result.adminUser.firstName,
+                lastName: result.adminUser.lastName || '',
+                email: result.adminUser.email,
+                mobile: result.adminUser.mobile,
+                passwordHash: result.adminUser.passwordHash,
+                role: result.adminUser.role as any,
+                status: 'ACTIVE',
+                canAccessAllConstituencies: true,
+              },
+            });
+            // Cache admin identity in core DB
+            await prisma.tenant.update({
+              where: { id: result.tenant.id },
+              data: { adminMobile: result.adminUser.mobile, adminEmail: result.adminUser.email, adminUserId: createdPlatformAdmin.id },
+            });
+            adminUserCreated = true;
+            logger.info({ email: result.adminUser.email }, 'Admin user created in dedicated platform database');
+          } catch (userErr: any) {
+            logger.error({ err: userErr }, 'Failed to create admin user in dedicated platform database');
+          }
+        }
+      } catch (provErr: any) {
+        logger.error({ err: provErr }, 'DEDICATED_PLATFORM provisioning failed (tenant created, DB pending)');
+      }
+
+    } else if (data.databaseType === 'DEDICATED_EXTERNAL') {
+      // ── DEDICATED_EXTERNAL: create a new DB on the tenant's external server ──
+      // Use the credentials provided by the super admin
+      try {
+        const externalConfig: { host?: string; port?: number; user?: string; password?: string; ssl?: boolean } = {};
+        if (data.databaseHost)     externalConfig.host     = data.databaseHost;
+        if (data.databasePort)     externalConfig.port     = data.databasePort;
+        if (data.databaseUser)     externalConfig.user     = data.databaseUser;
+        if (data.databasePassword) externalConfig.password = data.databasePassword;
+        if (data.databaseSSL !== undefined) externalConfig.ssl = data.databaseSSL;
+
+        logger.info({ tenantId: result.tenant.id, tenantName: data.name, host: externalConfig.host }, 'Auto-provisioning DEDICATED_EXTERNAL tenant database');
+        provisionResult = await provisionTenantDatabase(
+          result.tenant.id,
+          data.name,
+          data.slug,
+          externalConfig
+        );
+
+        if (provisionResult.success && provisionResult.connectionUrl) {
+          try {
+            const tenantClient = await getTenantClient(result.tenant.id, provisionResult.connectionUrl, data.slug);
+            const createdExternalAdmin = await tenantClient.user.create({
+              data: {
+                tenantId: result.tenant.id,
+                firstName: result.adminUser.firstName,
+                lastName: result.adminUser.lastName || '',
+                email: result.adminUser.email,
+                mobile: result.adminUser.mobile,
+                passwordHash: result.adminUser.passwordHash,
+                role: result.adminUser.role as any,
+                status: 'ACTIVE',
+                canAccessAllConstituencies: true,
+              },
+            });
+            // Cache admin identity in core DB
+            await prisma.tenant.update({
+              where: { id: result.tenant.id },
+              data: { adminMobile: result.adminUser.mobile, adminEmail: result.adminUser.email, adminUserId: createdExternalAdmin.id },
+            });
+            adminUserCreated = true;
+            logger.info({ email: result.adminUser.email }, 'Admin user created in dedicated external database');
+          } catch (userErr: any) {
+            logger.error({ err: userErr }, 'Failed to create admin user in dedicated external database');
+          }
+        }
+      } catch (provErr: any) {
+        logger.error({ err: provErr }, 'DEDICATED_EXTERNAL provisioning failed (tenant created, DB pending)');
+      }
+    }
+
+    auditLog(req, 'CREATE_TENANT', 'tenant', result.tenant.id, result.tenant.id, { name: data.name, slug: data.slug, tenantType: data.tenantType, adminEmail: data.adminEmail });
+
     res.status(201).json({
       success: true,
       data: {
-        tenant: result.tenant,
+        tenant: {
+          ...result.tenant,
+          isActive: result.tenant.status === 'ACTIVE' || result.tenant.status === 'TRIAL',
+        },
         adminUser: {
           firstName: result.adminUser.firstName,
           lastName: result.adminUser.lastName,
           email: result.adminUser.email,
           mobile: result.adminUser.mobile,
           role: result.adminUser.role,
-          note: 'Admin user will be created when tenant database is provisioned',
+          created: adminUserCreated,
         },
+        database: provisionResult ? {
+          provisioned: provisionResult.success,
+          databaseName: provisionResult.databaseName,
+          error: provisionResult.error,
+        } : null,
         license: result.tenantLicense ? {
           id: result.tenantLicense.id,
           status: result.tenantLicense.status,
-          plan: (result.tenantLicense as any).licensePlan.planName,
-          planType: (result.tenantLicense as any).licensePlan.planType,
-          trialEndsAt: (result.tenantLicense as any).trialEndsAt,
-          limits: {
-            maxUsers: (result.tenantLicense as any).licensePlan.maxUsers,
-            maxSessions: (result.tenantLicense as any).licensePlan.maxConcurrentSessions,
-            maxSessionsPerUser: (result.tenantLicense as any).licensePlan.maxSessionsPerUser,
-          },
+          plan: (result.tenantLicense as any).plan?.planName,
+          planCode: (result.tenantLicense as any).plan?.planCode,
+          startDate: result.tenantLicense.startDate,
+          endDate: result.tenantLicense.endDate,
+          limits: (result.tenantLicense as any).plan?.limits || {},
         } : null,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Regenerate tenant URL from slug
+router.post('/:id/regenerate-url', async (req, res, next) => {
+  try {
+    const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: { code: 'E4004', message: 'Tenant not found' } });
+    }
+
+    const tenantUrl = buildTenantUrl(tenant.slug);
+
+    const updated = await prisma.tenant.update({
+      where: { id: req.params.id },
+      data: { tenantUrl },
+    });
+
+    auditLog(req, 'REGENERATE_TENANT_URL', 'tenant', req.params.id, req.params.id, { oldUrl: tenant.tenantUrl, newUrl: tenantUrl });
+
+    res.json({ success: true, data: updated });
   } catch (error) {
     next(error);
   }
@@ -470,31 +635,43 @@ router.put('/:id', async (req, res, next) => {
   try {
     const updateSchema = z.object({
       name: z.string().min(1).optional(),
-      isActive: z.boolean().optional(),
+      slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
+      displayName: z.string().optional().nullable(),
+      organizationName: z.string().optional().nullable(),
+      tenantType: z.enum(['POLITICAL_PARTY', 'INDIVIDUAL_CANDIDATE', 'ELECTION_MANAGEMENT']).optional(),
+      status: z.enum(['ACTIVE', 'SUSPENDED', 'PENDING', 'EXPIRED', 'TRIAL']).optional(),
       maxVoters: z.number().optional(),
       maxCadres: z.number().optional(),
       maxElections: z.number().optional(),
       maxUsers: z.number().optional(),
       maxConstituencies: z.number().optional(),
-      logoUrl: z.string().optional(),
-      primaryColor: z.string().optional(),
-      contactEmail: z.string().email().optional(),
-      contactPhone: z.string().optional(),
-      address: z.string().optional(),
-      state: z.string().optional(),
-      subscriptionPlan: z.string().optional(),
-      subscriptionEndsAt: z.string().datetime().optional(),
+      logoUrl: z.string().optional().nullable(),
+      primaryColor: z.string().optional().nullable(),
+      secondaryColor: z.string().optional().nullable(),
+      faviconUrl: z.string().optional().nullable(),
+      contactEmail: z.string().email().optional().nullable(),
+      contactPhone: z.string().optional().nullable(),
+      address: z.string().optional().nullable(),
+      state: z.string().optional().nullable(),
+      partyName: z.string().optional().nullable(),
+      partySymbolUrl: z.string().optional().nullable(),
+      // subscriptionPlan is NOT here — it's managed only via License Management
     });
 
     const data = updateSchema.parse(req.body);
 
+    // If slug changes, auto-update tenantUrl
+    const updateData: any = { ...data };
+    if (data.slug) {
+      updateData.tenantUrl = buildTenantUrl(data.slug);
+    }
+
     const tenant = await prisma.tenant.update({
       where: { id: req.params.id },
-      data: {
-        ...data,
-        subscriptionEndsAt: data.subscriptionEndsAt ? new Date(data.subscriptionEndsAt) : undefined,
-      } as any,
+      data: updateData,
     });
+
+    auditLog(req, 'UPDATE_TENANT', 'tenant', req.params.id, req.params.id, { fields: Object.keys(data) });
 
     res.json({
       success: true,
@@ -510,8 +687,10 @@ router.delete('/:id', async (req, res, next) => {
   try {
     await prisma.tenant.update({
       where: { id: req.params.id },
-      data: { isActive: false } as any,
+      data: { status: 'SUSPENDED' },
     });
+
+    auditLog(req, 'DELETE_TENANT', 'tenant', req.params.id, req.params.id);
 
     res.json({
       success: true,
@@ -577,6 +756,8 @@ router.put('/:id/features', async (req, res, next) => {
       include: { feature: true },
     });
 
+    auditLog(req, 'UPDATE_TENANT_FEATURES', 'tenant', req.params.id, req.params.id, { featureCount: features.length });
+
     res.json({
       success: true,
       data: updatedTenantFeatures,
@@ -639,8 +820,6 @@ router.get('/:id/stats', async (req, res, next) => {
       });
     }
 
-    // Return limits from core database
-    // Actual usage counts require tenant database connection
     res.json({
       success: true,
       data: {
@@ -651,21 +830,49 @@ router.get('/:id/stats', async (req, res, next) => {
           maxUsers: tenant.maxUsers,
           maxConstituencies: tenant.maxConstituencies,
         },
-        // Usage data requires tenant database connection
-        // These would be populated by connecting to the tenant's dedicated database
         usage: {
-          voters: 0,
-          cadres: 0,
-          elections: 0,
-          users: 0,
-          constituencies: 0,
-          note: 'Usage data requires tenant database connection',
+          voters: (tenant as any).currentVoterCount || 0,
+          cadres: (tenant as any).currentCadreCount || 0,
+          elections: (tenant as any).currentElectionCount || 0,
+          users: (tenant as any).currentUserCount || 0,
         },
+        countsLastSyncedAt: (tenant as any).countsLastSyncedAt || null,
         tenant: {
           databaseStatus: tenant.databaseStatus,
           databaseName: tenant.databaseName,
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Sync counts for a specific tenant from its database
+router.post('/:id/sync-counts', async (req, res, next) => {
+  try {
+    const results = await syncTenantCounts(req.params.id);
+    const result = results[0];
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'E3001', message: 'Tenant not found or database not READY' },
+      });
+    }
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: { code: 'E5001', message: result.error || 'Sync failed' },
+      });
+    }
+
+    auditLog(req, 'SYNC_TENANT_COUNTS', 'tenant', req.params.id, req.params.id);
+
+    res.json({
+      success: true,
+      data: result,
     });
   } catch (error) {
     next(error);
@@ -712,11 +919,11 @@ router.get('/:id/database', async (req, res, next) => {
   }
 });
 
-// Update tenant database configuration (Super Admin only for DEDICATED_MANAGED)
+// Update tenant database configuration
 router.put('/:id/database', async (req, res, next) => {
   try {
     const schema = z.object({
-      databaseType: z.enum(['NONE', 'SHARED', 'DEDICATED_MANAGED', 'DEDICATED_SELF']).optional(),
+      databaseType: z.enum(['SHARED', 'DEDICATED_PLATFORM', 'DEDICATED_EXTERNAL']).optional(),
       databaseHost: z.string().optional(),
       databaseName: z.string().optional(),
       databaseUser: z.string().optional(),
@@ -746,25 +953,20 @@ router.put('/:id/database', async (req, res, next) => {
 
     if (data.databaseType && data.databaseType !== tenant.databaseType) {
       switch (data.databaseType) {
-        case 'NONE':
-          databaseStatus = 'NOT_CONFIGURED';
-          canTenantEditDb = true;
-          databaseManagedBy = null;
-          break;
         case 'SHARED':
           databaseStatus = 'READY';
           canTenantEditDb = false;
           databaseManagedBy = 'super_admin';
           break;
-        case 'DEDICATED_MANAGED':
+        case 'DEDICATED_PLATFORM':
           databaseStatus = 'PENDING_SETUP';
           canTenantEditDb = false;
           databaseManagedBy = 'super_admin';
           break;
-        case 'DEDICATED_SELF':
+        case 'DEDICATED_EXTERNAL':
           databaseStatus = 'PENDING_SETUP';
-          canTenantEditDb = true;
-          databaseManagedBy = 'tenant';
+          canTenantEditDb = false;
+          databaseManagedBy = 'super_admin';
           break;
       }
     }
@@ -828,6 +1030,8 @@ router.put('/:id/database', async (req, res, next) => {
       },
     });
 
+    auditLog(req, 'UPDATE_TENANT_DATABASE', 'tenant', req.params.id, req.params.id, { databaseType: data.databaseType, databaseStatus });
+
     res.json({
       success: true,
       data: updatedTenant,
@@ -885,6 +1089,8 @@ router.post('/:id/database/test', async (req, res, next) => {
         databaseStatus: result.success ? 'CONNECTED' : 'CONNECTION_FAILED',
       },
     });
+
+    auditLog(req, 'TEST_DATABASE_CONNECTION', 'tenant', req.params.id, req.params.id, { connected: result.success, error: result.error });
 
     res.json({
       success: true,
@@ -996,6 +1202,8 @@ router.put('/:id/features/:featureId', async (req, res, next) => {
       include: { feature: true },
     });
 
+    auditLog(req, isEnabled ? 'ENABLE_TENANT_FEATURE' : 'DISABLE_TENANT_FEATURE', 'tenant_feature', featureId, tenantId, { featureKey: feature.featureKey });
+
     res.json({
       success: true,
       data: updatedFeature,
@@ -1004,6 +1212,185 @@ router.put('/:id/features/:featureId', async (req, res, next) => {
           ? `Feature enabled and database tables created successfully`
           : `Feature enabled successfully`
         : `Feature disabled successfully`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==================== TENANT ADMIN MANAGEMENT ====================
+
+// Get tenant admin info
+router.get('/:id/admin', async (req, res, next) => {
+  try {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        slug: true,
+        adminMobile: true,
+        adminEmail: true,
+        adminUserId: true,
+        databaseHost: true,
+        databaseName: true,
+        databaseUser: true,
+        databasePassword: true,
+        databasePort: true,
+        databaseSSL: true,
+        databaseConnectionUrl: true,
+        databaseStatus: true,
+      },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: { code: 'E3001', message: 'Tenant not found' } });
+    }
+
+    // Fast path: cached admin identity in core DB
+    if (tenant.adminMobile || tenant.adminEmail) {
+      return res.json({
+        success: true,
+        data: {
+          userId: tenant.adminUserId,
+          mobile: tenant.adminMobile,
+          email: tenant.adminEmail,
+        },
+      });
+    }
+
+    // Slow path: fetch from tenant DB via Auth Service (for legacy tenants)
+    if (tenant.databaseStatus !== 'READY') {
+      return res.json({
+        success: true,
+        data: { userId: null, mobile: null, email: null },
+      });
+    }
+
+    const authResponse = await fetch(`${SERVICE_URLS.AUTH}/api/internal/admin-info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
+      body: JSON.stringify({
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+        dbConfig: {
+          databaseHost: tenant.databaseHost,
+          databaseName: tenant.databaseName,
+          databaseUser: tenant.databaseUser,
+          databasePassword: tenant.databasePassword,
+          databasePort: tenant.databasePort,
+          databaseSSL: tenant.databaseSSL,
+          databaseConnectionUrl: tenant.databaseConnectionUrl,
+        },
+      }),
+    });
+
+    const authData = await authResponse.json() as any;
+    if (!authResponse.ok || !authData.success) {
+      return res.json({
+        success: true,
+        data: { userId: null, mobile: null, email: null },
+      });
+    }
+
+    // Backfill core DB cache for future requests
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        adminMobile: authData.data.mobile,
+        adminEmail: authData.data.email,
+        adminUserId: authData.data.userId,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        userId: authData.data.userId,
+        mobile: authData.data.mobile,
+        email: authData.data.email,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Generate temp password for tenant admin
+router.post('/:id/admin/reset-password', async (req, res, next) => {
+  try {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        databaseHost: true,
+        databaseName: true,
+        databaseUser: true,
+        databasePassword: true,
+        databasePort: true,
+        databaseSSL: true,
+        databaseConnectionUrl: true,
+        databaseStatus: true,
+      },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: { code: 'E3001', message: 'Tenant not found' } });
+    }
+
+    if (tenant.databaseStatus !== 'READY') {
+      return res.status(400).json({ success: false, error: { code: 'E2005', message: 'Tenant database is not ready' } });
+    }
+
+    // Call Auth Service to generate temp password (proper boundary)
+    const authResponse = await fetch(`${SERVICE_URLS.AUTH}/api/internal/admin-reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
+      body: JSON.stringify({
+        tenantId: tenant.id,
+        tenantSlug: tenant.slug,
+        dbConfig: {
+          databaseHost: tenant.databaseHost,
+          databaseName: tenant.databaseName,
+          databaseUser: tenant.databaseUser,
+          databasePassword: tenant.databasePassword,
+          databasePort: tenant.databasePort,
+          databaseSSL: tenant.databaseSSL,
+          databaseConnectionUrl: tenant.databaseConnectionUrl,
+        },
+      }),
+    });
+
+    const authData = await authResponse.json() as any;
+    if (!authResponse.ok || !authData.success) {
+      return res.status(authResponse.status).json(authData);
+    }
+
+    // Cache admin identity in core DB
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        adminMobile: authData.data.adminMobile,
+        adminEmail: authData.data.adminEmail,
+        adminUserId: authData.data.adminUserId,
+      },
+    });
+
+    // Audit log (fire-and-forget, no await needed)
+    auditLog(req, 'RESET_TENANT_ADMIN_PASSWORD', 'tenant', tenant.id, tenant.id, {
+      tenantName: tenant.name,
+      adminMobile: authData.data.adminMobile,
+    });
+
+    res.setHeader('Cache-Control', 'no-store, no-cache');
+    res.json({
+      success: true,
+      data: {
+        tempPassword: authData.data.tempPassword,
+        adminMobile: authData.data.adminMobile,
+        adminEmail: authData.data.adminEmail,
+      },
     });
   } catch (error) {
     next(error);

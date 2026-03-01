@@ -18,7 +18,15 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      '/uploads': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       '/ws': {
+        target: 'ws://localhost:3000',
+        ws: true,
+      },
+      '/socket.io': {
         target: 'ws://localhost:3000',
         ws: true,
       },

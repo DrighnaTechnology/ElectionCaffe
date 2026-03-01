@@ -1,3 +1,10 @@
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
+
 import express from 'express';
 import cors from 'cors';
 
@@ -7,8 +14,11 @@ import { sectionRoutes } from './routes/sections.js';
 import { masterDataRoutes } from './routes/masterData.js';
 import { candidateRoutes } from './routes/candidates.js';
 import { surveyRoutes } from './routes/surveys.js';
+import { publicSurveyRoutes } from './routes/public-surveys.js';
+import { campaignRoutes } from './routes/campaigns.js';
 import { boothRoutes } from './routes/booths.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { startCampaignScheduler } from './workers/campaign-scheduler.js';
 import { SERVICE_PORTS, createLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
 
 validateEnv('election-service');
@@ -45,6 +55,8 @@ app.get('/metrics', metricsEndpoint);
 app.use('/api/elections', electionRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/surveys', surveyRoutes);
+app.use('/api/public/surveys', publicSurveyRoutes);
+app.use('/api/campaigns', campaignRoutes);
 app.use('/api/parts', partRoutes);
 app.use('/api/sections', sectionRoutes);
 app.use('/api/booths', boothRoutes);
@@ -57,6 +69,7 @@ const PORT = process.env.PORT || SERVICE_PORTS.ELECTION;
 
 const server = app.listen(PORT, () => {
   logger.info({ port: PORT }, 'Election Service running');
+  startCampaignScheduler();
 });
 
 function gracefulShutdown(signal: string) {

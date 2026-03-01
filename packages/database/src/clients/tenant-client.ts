@@ -312,3 +312,28 @@ export type {
   AIUsageLog,
   TenantConfig,
 } from '../../node_modules/.prisma/tenant-client/index.js';
+
+// Export tenant schema enums (only those used by a model — Prisma skips unused enums)
+export {
+  UserRole,
+  UserStatus,
+  ElectionType,
+  ElectionStatus,
+  Gender,
+  RelationType,
+  PoliticalLeaning,
+  InfluenceLevel,
+  PartType,
+  VulnerabilityType,
+  WebsiteStatus,
+  FundTransactionType,
+  EventStatus,
+  NotificationStatus,
+  ConversationType,
+  SchemeProvider,
+  SchemeValueType,
+  NominationStatus,
+} from '../../node_modules/.prisma/tenant-client/index.js';
+
+// WebsiteTemplateType enum exists in schema but is unused by any model, so Prisma doesn't generate it
+export type TenantWebsiteTemplateType = 'POLITICAL_PARTY' | 'CANDIDATE' | 'CAMPAIGN';

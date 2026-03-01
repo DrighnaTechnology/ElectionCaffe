@@ -1,65 +1,41 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useElectionStore } from '../store/election';
-import { api, electionsAPI, partsAPI } from '../services/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { api, electionsAPI } from '../services/api';
+import { usePollDaySocket } from '../hooks/usePollDaySocket';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Spinner } from '../components/ui/spinner';
-// Progress import removed - not currently used
+import { BattlefieldMap } from '../components/poll-day/BattlefieldMap';
+import { AICommandPanel } from '../components/poll-day/AICommandPanel';
+import { BoothGrid } from '../components/poll-day/BoothGrid';
+import { GOTVWaveManager } from '../components/poll-day/GOTVWaveManager';
+import { AgentLeaderboard } from '../components/poll-day/AgentLeaderboard';
+import { IncidentPanel } from '../components/poll-day/IncidentPanel';
+import { HourlyTimeline } from '../components/poll-day/HourlyTimeline';
+import { EventTicker } from '../components/poll-day/EventTicker';
 import {
-  SearchIcon,
-  UsersIcon,
-  MapPinIcon,
-  ClockIcon,
-  TrendingUpIcon,
-  AlertCircleIcon,
-  CheckCircleIcon,
-  RefreshCwIcon,
-  UserIcon,
-  ActivityIcon,
-  FilterIcon,
+  WifiIcon, WifiOffIcon, RefreshCwIcon, UsersIcon, MapPinIcon,
+  AlertTriangleIcon, TrendingUpIcon, ShieldIcon,
+  SwordsIcon, ActivityIcon, TargetIcon,
 } from 'lucide-react';
-
-interface BoothTurnout {
-  boothId: string;
-  boothNumber: number;
-  boothName: string;
-  totalVoters: number;
-  votedCount: number;
-  turnoutPercent: number;
-  lastVotedAt?: string;
-  agentName?: string;
-}
-
-interface TurnoutByTime {
-  time: string;
-  count: number;
-  cumulative: number;
-  percent: number;
-}
-
-// Progress Component (simple implementation)
-function ProgressBar({ value, className }: { value: number; className?: string }) {
-  return (
-    <div className={`h-2 bg-gray-200 rounded-full overflow-hidden ${className}`}>
-      <div
-        className="h-full bg-orange-500 transition-all duration-300"
-        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
-      />
-    </div>
-  );
-}
 
 export function PollDayPage() {
   const { selectedElectionId } = useElectionStore();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPart, setSelectedPart] = useState<string>('all');
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [activeTab, setActiveTab] = useState('booths');
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const queryClient = useQueryClient();
+
+  // Live clock
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // WebSocket connection
+  const { isConnected, eventFeed, on } = usePollDaySocket(selectedElectionId);
 
   // Fetch election details
   const { data: electionData } = useQuery({
@@ -68,377 +44,258 @@ export function PollDayPage() {
     enabled: !!selectedElectionId,
   });
 
-  // Fetch parts for filter
-  const { data: partsData } = useQuery({
-    queryKey: ['parts', selectedElectionId],
-    queryFn: () => partsAPI.getAll(selectedElectionId!, { limit: 1000 }),
+  // War Room aggregated data
+  const { data: warRoomData, isLoading: warRoomLoading, refetch: refetchWarRoom } = useQuery({
+    queryKey: ['war-room', selectedElectionId],
+    queryFn: () => api.get(`/poll-day/war-room/${selectedElectionId}`),
     enabled: !!selectedElectionId,
+    refetchInterval: isConnected ? 60000 : 15000, // slower when WS active
   });
 
-  // Fetch poll day statistics
-  const { data: pollDayData, isLoading, refetch } = useQuery({
-    queryKey: ['pollDay', selectedElectionId, selectedPart],
-    queryFn: () => api.get('/poll-day/turnout', {
-      params: {
-        electionId: selectedElectionId,
-        ...(selectedPart !== 'all' && { partId: selectedPart })
-      }
-    }),
+  // Map data
+  const { data: mapData } = useQuery({
+    queryKey: ['war-room-map', selectedElectionId],
+    queryFn: () => api.get(`/poll-day/war-room/${selectedElectionId}/map-data`),
     enabled: !!selectedElectionId,
-    refetchInterval: autoRefresh ? 30000 : false, // Auto refresh every 30 seconds
+    refetchInterval: isConnected ? 60000 : 30000,
   });
 
-  // Fetch booth agents
+  // Victory calculator
+  const { data: victoryData } = useQuery({
+    queryKey: ['victory-calc', selectedElectionId],
+    queryFn: () => api.get(`/poll-day/war-room/${selectedElectionId}/victory-calc`),
+    enabled: !!selectedElectionId,
+    refetchInterval: 120000, // every 2 min
+  });
+
+  // Hourly turnout
+  const { data: hourlyData } = useQuery({
+    queryKey: ['hourly-turnout', selectedElectionId],
+    queryFn: () => api.get(`/poll-day/hourly/${selectedElectionId}`),
+    enabled: !!selectedElectionId,
+    refetchInterval: 60000,
+  });
+
+  // Incidents
+  const { data: incidentsData } = useQuery({
+    queryKey: ['incidents', selectedElectionId],
+    queryFn: () => api.get('/poll-day/incidents', { params: { electionId: selectedElectionId } }),
+    enabled: !!selectedElectionId,
+    refetchInterval: 30000,
+  });
+
+  // GOTV stats
+  const { data: gotvData } = useQuery({
+    queryKey: ['gotv', selectedElectionId],
+    queryFn: () => api.get(`/poll-day/gotv/${selectedElectionId}/stats`),
+    enabled: !!selectedElectionId,
+    refetchInterval: 60000,
+  });
+
+  // Agents data
   const { data: agentsData } = useQuery({
-    queryKey: ['boothAgents', selectedElectionId],
-    queryFn: () => api.get('/poll-day/agents', { params: { electionId: selectedElectionId } }),
+    queryKey: ['agents-leaderboard', selectedElectionId],
+    queryFn: () => api.get(`/poll-day/agents/leaderboard/${selectedElectionId}`),
     enabled: !!selectedElectionId,
-    refetchInterval: autoRefresh ? 60000 : false,
+    refetchInterval: 60000,
+  });
+
+  // Snapshot trigger
+  const snapshotMutation = useMutation({
+    mutationFn: () => api.post(`/poll-day/war-room/${selectedElectionId}/snapshot`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['war-room', selectedElectionId] });
+    },
   });
 
   const election = electionData?.data?.data;
-  const parts = partsData?.data?.data || [];
-  const pollDay = pollDayData?.data?.data || {};
-  const boothTurnouts: BoothTurnout[] = pollDay.booths || [];
-  const agents = agentsData?.data?.data || [];
+  const wr = warRoomData?.data?.data;
+  const map = mapData?.data?.data;
+  const victory = victoryData?.data?.data;
+  const hourly = hourlyData?.data?.data;
+  const incidents = incidentsData?.data?.data;
+  const gotv = gotvData?.data?.data;
+  const agents = agentsData?.data?.data;
 
-  // Calculate summary stats
-  const totalVoters = election?.totalVoters || boothTurnouts.reduce((sum, b) => sum + b.totalVoters, 0);
-  const totalVoted = boothTurnouts.reduce((sum, b) => sum + b.votedCount, 0);
-  const overallTurnout = totalVoters > 0 ? ((totalVoted / totalVoters) * 100).toFixed(1) : '0.0';
-  const activeAgents = agents.filter((a: any) => a.isActive).length;
-
-  // Filter booths by search
-  const filteredBooths = boothTurnouts.filter((booth) =>
-    booth.boothName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    booth.boothNumber.toString().includes(searchTerm)
-  );
-
-  // Time-based turnout for chart (mock data - would come from API)
-  const hourlyTurnout: TurnoutByTime[] = [
-    { time: '7:00', count: 0, cumulative: 0, percent: 0 },
-    { time: '8:00', count: Math.floor(totalVoted * 0.05), cumulative: Math.floor(totalVoted * 0.05), percent: parseFloat(overallTurnout) * 0.05 },
-    { time: '9:00', count: Math.floor(totalVoted * 0.1), cumulative: Math.floor(totalVoted * 0.15), percent: parseFloat(overallTurnout) * 0.15 },
-    { time: '10:00', count: Math.floor(totalVoted * 0.15), cumulative: Math.floor(totalVoted * 0.3), percent: parseFloat(overallTurnout) * 0.3 },
-    { time: '11:00', count: Math.floor(totalVoted * 0.15), cumulative: Math.floor(totalVoted * 0.45), percent: parseFloat(overallTurnout) * 0.45 },
-    { time: '12:00', count: Math.floor(totalVoted * 0.1), cumulative: Math.floor(totalVoted * 0.55), percent: parseFloat(overallTurnout) * 0.55 },
-    { time: '13:00', count: Math.floor(totalVoted * 0.08), cumulative: Math.floor(totalVoted * 0.63), percent: parseFloat(overallTurnout) * 0.63 },
-    { time: '14:00', count: Math.floor(totalVoted * 0.1), cumulative: Math.floor(totalVoted * 0.73), percent: parseFloat(overallTurnout) * 0.73 },
-    { time: '15:00', count: Math.floor(totalVoted * 0.1), cumulative: Math.floor(totalVoted * 0.83), percent: parseFloat(overallTurnout) * 0.83 },
-    { time: '16:00', count: Math.floor(totalVoted * 0.1), cumulative: Math.floor(totalVoted * 0.93), percent: parseFloat(overallTurnout) * 0.93 },
-    { time: '17:00', count: Math.floor(totalVoted * 0.07), cumulative: totalVoted, percent: parseFloat(overallTurnout) },
-  ];
+  // KPI calculations
+  const totalVoters = wr?.overall?.totalVoters || election?.totalVoters || 0;
+  const totalVoted = wr?.overall?.totalVoted || 0;
+  const turnoutPct = wr?.overall?.turnoutPercentage?.toFixed(1) || (totalVoters > 0 ? ((totalVoted / totalVoters) * 100).toFixed(1) : '0.0');
+  const activeAgents = wr?.activeAgents || 0;
+  const totalAgents = (wr?.booths || []).filter((b: any) => b.agent).length || activeAgents;
+  const openIncidentCount = wr?.openIncidents
+    ? Object.values(wr.openIncidents as Record<string, number>).reduce((sum: number, v: number) => sum + v, 0)
+    : 0;
+  const winMargin = victory?.winMargin ?? null;
 
   if (!selectedElectionId) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16">
-          <AlertCircleIcon className="h-12 w-12 text-orange-500 mb-4" />
-          <h2 className="text-xl font-semibold mb-2">No Election Selected</h2>
-          <p className="text-gray-500">Please select an election from the sidebar to view poll day data.</p>
+          <SwordsIcon className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-lg font-medium text-muted-foreground">Select an election to open the War Room</p>
         </CardContent>
       </Card>
     );
   }
 
+  if (warRoomLoading) {
+    return (
+      <div className="flex items-center justify-center h-[80vh]">
+        <Spinner className="h-8 w-8" />
+        <span className="ml-3 text-lg text-muted-foreground">Initializing War Room...</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Poll Day Manager</h1>
-          <p className="text-gray-500">Real-time voter turnout tracking</p>
+    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+      {/* HEADER BAR */}
+      <div className="flex-shrink-0 bg-card border-b px-4 py-2 space-y-1.5">
+        {/* Row 1: Title + Status + Clock + Actions */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <SwordsIcon className="h-5 w-5 text-brand" />
+              <h1 className="text-lg font-bold">War Room</h1>
+            </div>
+            <span className="text-sm text-muted-foreground hidden md:inline">{election?.name}</span>
+            <Badge variant={isConnected ? 'default' : 'destructive'} className="text-xs">
+              {isConnected ? <WifiIcon className="h-3 w-3 mr-1" /> : <WifiOffIcon className="h-3 w-3 mr-1" />}
+              {isConnected ? 'LIVE' : 'OFFLINE'}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-mono tabular-nums text-muted-foreground">
+              {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => snapshotMutation.mutate()} disabled={snapshotMutation.isPending}>
+              <ActivityIcon className="h-4 w-4 mr-1" />
+              Snapshot
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetchWarRoom()}>
+              <RefreshCwIcon className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={autoRefresh ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-          >
-            <ActivityIcon className={`h-4 w-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
-            {autoRefresh ? 'Live' : 'Paused'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCwIcon className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
+        {/* Row 2: KPI strip */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <KPIChip icon={<UsersIcon className="h-4 w-4" />} label="Voted" value={`${totalVoted.toLocaleString()} / ${totalVoters.toLocaleString()}`} />
+          <KPIChip icon={<TrendingUpIcon className="h-4 w-4" />} label="Turnout" value={`${turnoutPct}%`} highlight />
+          <KPIChip icon={<MapPinIcon className="h-4 w-4" />} label="Agents" value={`${activeAgents}/${totalAgents || activeAgents}`} warn={totalAgents > 0 && activeAgents < totalAgents * 0.5} />
+          <KPIChip icon={<AlertTriangleIcon className="h-4 w-4" />} label="Incidents" value={String(openIncidentCount)} warn={openIncidentCount > 0} />
+          {winMargin !== null && (
+            <KPIChip
+              icon={<TargetIcon className="h-4 w-4" />}
+              label="Margin"
+              value={`${winMargin > 0 ? '+' : ''}${winMargin}`}
+              highlight={winMargin > 0}
+              warn={winMargin < 0}
+            />
+          )}
         </div>
       </div>
 
-      {/* Overall Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <UsersIcon className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Total Voters</p>
-                <p className="text-2xl font-bold">{totalVoters.toLocaleString()}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <CheckCircleIcon className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Voted</p>
-                <p className="text-2xl font-bold">{totalVoted.toLocaleString()}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <TrendingUpIcon className="h-6 w-6 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Turnout</p>
-                <p className="text-2xl font-bold">{overallTurnout}%</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <MapPinIcon className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Booths</p>
-                <p className="text-2xl font-bold">{boothTurnouts.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-teal-100 rounded-lg">
-                <UserIcon className="h-6 w-6 text-teal-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Active Agents</p>
-                <p className="text-2xl font-bold">{activeAgents}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* MAIN CONTENT: Map + AI Panel */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* LEFT: Battlefield Map */}
+        <div className="w-3/5 border-r relative">
+          <BattlefieldMap
+            booths={map?.booths || []}
+            agents={map?.agents || []}
+            incidents={incidents || []}
+            onBoothClick={(boothId) => setActiveTab('booths')}
+          />
+        </div>
+
+        {/* RIGHT: AI Command Panel */}
+        <div className="w-2/5 flex flex-col overflow-hidden">
+          <AICommandPanel
+            electionId={selectedElectionId}
+            warRoomData={wr}
+            victory={victory}
+            incidents={incidents}
+            gotv={gotv}
+          />
+        </div>
       </div>
 
-      {/* Overall Progress */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Overall Turnout Progress</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Progress</span>
-              <span className="font-medium">{overallTurnout}%</span>
-            </div>
-            <ProgressBar value={parseFloat(overallTurnout)} />
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>{totalVoted.toLocaleString()} voted</span>
-              <span>{(totalVoters - totalVoted).toLocaleString()} remaining</span>
-            </div>
+      {/* BOTTOM: Tabbed Panels */}
+      <div className="flex-shrink-0 border-t bg-card" style={{ height: '320px' }}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+          <TabsList className="flex-shrink-0 w-full justify-start rounded-none border-b bg-transparent px-4">
+            <TabsTrigger value="booths" className="text-xs">
+              <MapPinIcon className="h-3 w-3 mr-1" />Booth Grid
+            </TabsTrigger>
+            <TabsTrigger value="gotv" className="text-xs">
+              <TargetIcon className="h-3 w-3 mr-1" />GOTV Waves
+            </TabsTrigger>
+            <TabsTrigger value="agents" className="text-xs">
+              <ShieldIcon className="h-3 w-3 mr-1" />Agents
+            </TabsTrigger>
+            <TabsTrigger value="incidents" className="text-xs">
+              <AlertTriangleIcon className="h-3 w-3 mr-1" />Incidents
+            </TabsTrigger>
+            <TabsTrigger value="timeline" className="text-xs">
+              <ActivityIcon className="h-3 w-3 mr-1" />Hourly Timeline
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="flex-1 overflow-auto">
+            <TabsContent value="booths" className="h-full m-0 p-2">
+              <BoothGrid booths={(wr?.booths || []).map((b: any) => ({
+                boothId: b.boothId,
+                boothNumber: b.boothNumber,
+                boothName: b.boothName,
+                totalVoters: b.totalVoters,
+                voted: b.voted,
+                turnout: b.turnout,
+                classification: b.classification,
+                agentName: b.agent?.name || null,
+                agentCheckedIn: b.agent?.isCheckedIn || false,
+                latestMood: b.latestMood,
+                hasIncident: false,
+              }))} electionId={selectedElectionId} />
+            </TabsContent>
+            <TabsContent value="gotv" className="h-full m-0 p-2">
+              <GOTVWaveManager electionId={selectedElectionId} stats={gotv} />
+            </TabsContent>
+            <TabsContent value="agents" className="h-full m-0 p-2">
+              <AgentLeaderboard agents={agents || []} electionId={selectedElectionId} />
+            </TabsContent>
+            <TabsContent value="incidents" className="h-full m-0 p-2">
+              <IncidentPanel incidents={incidents || []} electionId={selectedElectionId} />
+            </TabsContent>
+            <TabsContent value="timeline" className="h-full m-0 p-2">
+              <HourlyTimeline data={hourly?.hourly || []} totalVoters={totalVoters} />
+            </TabsContent>
           </div>
-        </CardContent>
-      </Card>
+        </Tabs>
+      </div>
 
-      {/* Tabs for different views */}
-      <Tabs defaultValue="booths" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="booths" className="flex items-center gap-2">
-            <MapPinIcon className="h-4 w-4" />Booth-wise Turnout
-          </TabsTrigger>
-          <TabsTrigger value="timeline" className="flex items-center gap-2">
-            <ClockIcon className="h-4 w-4" />Hourly Timeline
-          </TabsTrigger>
-          <TabsTrigger value="agents" className="flex items-center gap-2">
-            <UserIcon className="h-4 w-4" />Booth Agents
-          </TabsTrigger>
-        </TabsList>
+      {/* EVENT TICKER */}
+      <EventTicker events={eventFeed} />
+    </div>
+  );
+}
 
-        {/* Booth-wise Turnout */}
-        <TabsContent value="booths" className="space-y-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search booths..."
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <Select value={selectedPart} onValueChange={setSelectedPart}>
-              <SelectTrigger className="w-full md:w-[250px]">
-                <FilterIcon className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Filter by Part" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Parts</SelectItem>
-                {parts.map((part: any) => (
-                  <SelectItem key={part.id} value={part.id}>
-                    Part {part.partNumber || part.partNo} - {part.partName || part.boothName || part.partNameEn || '-'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Card>
-            <CardContent className="pt-6">
-              {isLoading ? (
-                <div className="flex justify-center py-8"><Spinner /></div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Booth #</TableHead>
-                      <TableHead>Booth Name</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Voted</TableHead>
-                      <TableHead>Turnout</TableHead>
-                      <TableHead>Agent</TableHead>
-                      <TableHead>Last Update</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredBooths.map((booth) => (
-                      <TableRow key={booth.boothId}>
-                        <TableCell className="font-medium">{booth.boothNumber}</TableCell>
-                        <TableCell>{booth.boothName}</TableCell>
-                        <TableCell className="text-right">{booth.totalVoters.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">{booth.votedCount.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <ProgressBar value={booth.turnoutPercent} className="flex-1" />
-                            <span className="text-sm font-medium w-12 text-right">
-                              {booth.turnoutPercent.toFixed(1)}%
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {booth.agentName ? (
-                            <Badge variant="outline">{booth.agentName}</Badge>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {booth.lastVotedAt ? (
-                            <span className="text-sm text-gray-500">
-                              {new Date(booth.lastVotedAt).toLocaleTimeString()}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredBooths.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                          No booth data available yet.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Hourly Timeline */}
-        <TabsContent value="timeline">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Hourly Voter Turnout</CardTitle>
-              <CardDescription>Voting pattern throughout the day</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {hourlyTurnout.map((hour) => (
-                  <div key={hour.time} className="flex items-center gap-4">
-                    <span className="w-16 text-sm font-medium">{hour.time}</span>
-                    <div className="flex-1">
-                      <ProgressBar value={hour.percent} />
-                    </div>
-                    <span className="w-20 text-sm text-right">{hour.cumulative.toLocaleString()}</span>
-                    <span className="w-16 text-sm text-right font-medium">{hour.percent.toFixed(1)}%</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Booth Agents */}
-        <TabsContent value="agents">
-          <Card>
-            <CardContent className="pt-6">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Agent Name</TableHead>
-                    <TableHead>Mobile</TableHead>
-                    <TableHead>Booth</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Votes Marked</TableHead>
-                    <TableHead>Last Active</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {agents.map((agent: any) => (
-                    <TableRow key={agent.id}>
-                      <TableCell className="font-medium">{agent.cadre?.voterName || agent.cadre?.name || agent.name || '-'}</TableCell>
-                      <TableCell>{agent.cadre?.mobile || agent.mobile || '-'}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          Booth {agent.booth?.boothNumber || agent.booth?.partNumber || agent.booth?.partNo || '-'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={agent.isActive ? 'default' : 'secondary'}>
-                          {agent.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{agent.cadre?.votesMarked || 0}</TableCell>
-                      <TableCell>
-                        {agent.cadre?.lastActiveAt ? (
-                          <span className="text-sm text-gray-500">
-                            {new Date(agent.cadre.lastActiveAt).toLocaleTimeString()}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {agents.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                        No booth agents assigned yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+// KPI Chip component for header
+function KPIChip({ icon, label, value, highlight, warn }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  highlight?: boolean;
+  warn?: boolean;
+}) {
+  return (
+    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs ${
+      warn ? 'bg-destructive/10 text-destructive' :
+      highlight ? 'bg-brand/10 text-brand' :
+      'bg-muted text-muted-foreground'
+    }`}>
+      {icon}
+      <span className="font-medium">{label}:</span>
+      <span className="font-bold">{value}</span>
     </div>
   );
 }

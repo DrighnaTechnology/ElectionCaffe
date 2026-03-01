@@ -155,6 +155,19 @@ export function DashboardLayout() {
     }
   }, [isAuthenticated, fetchBranding]);
 
+  // Close Google Translate popover on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const el = document.getElementById('google_translate_element');
+      const target = e.target as HTMLElement;
+      if (el?.classList.contains('show') && !el.contains(target) && !target.closest('[title="Change Language"]')) {
+        el.classList.remove('show');
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const toggleExpanded = (path: string) => {
     const newExpanded = new Set(expandedItems);
     if (newExpanded.has(path)) {
@@ -383,6 +396,27 @@ export function DashboardLayout() {
           </div>
 
           <div className="flex-1" />
+
+          {/* Google Translate Toggle */}
+          <button
+            onClick={(e) => {
+              const el = document.getElementById('google_translate_element');
+              if (!el) return;
+              const isVisible = el.classList.contains('show');
+              if (isVisible) {
+                el.classList.remove('show');
+              } else {
+                const rect = e.currentTarget.getBoundingClientRect();
+                el.style.top = `${rect.bottom + 8}px`;
+                el.style.right = `${window.innerWidth - rect.right}px`;
+                el.classList.add('show');
+              }
+            }}
+            className="p-2 rounded-md hover:bg-gray-100 mr-1"
+            title="Change Language"
+          >
+            <GlobeIcon className="h-5 w-5 text-gray-600" />
+          </button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

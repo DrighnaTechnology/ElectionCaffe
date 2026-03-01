@@ -84,7 +84,7 @@ export function ECDataPage() {
       case 'FAILED':
         return <XCircleIcon className="h-4 w-4 text-red-600" />;
       default:
-        return <AlertTriangleIcon className="h-4 w-4 text-gray-600" />;
+        return <AlertTriangleIcon className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
@@ -212,8 +212,8 @@ export function ECDataPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <DatabaseIcon className="h-6 w-6 text-orange-600" />
+                <div className="p-2 bg-brand-muted rounded-lg">
+                  <DatabaseIcon className="h-6 w-6 text-brand" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{summary.lastUpdateRecords?.toLocaleString() || 0}</p>

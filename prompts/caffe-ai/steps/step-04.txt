@@ -1,0 +1,17 @@
+CURRENT STEP: Step 4 — Configure Master Data
+
+Go to the **Master Data** page and add all reference data BEFORE you import any voters.
+
+Add the following:
+
+| Data Type | Examples |
+|---|---|
+| Religions | Hindu, Muslim, Christian, Sikh, Buddhist, Jain |
+| Caste Categories | General, OBC, SC, ST, EWS |
+| Castes & Sub-castes | Yadav, Rajput, Paswan, Kushwaha |
+| Languages | Hindi, Bhojpuri, Maithili, Urdu |
+| Parties | BJP, INC, RJD, JDU (add all parties in your constituency) |
+| Voter Categories | Regular, NRI, Service, New Voter |
+| Schemes | PM Kisan, MGNREGA, Ujjwala |
+
+WHY: Voter records reference these values. If master data is missing, you cannot link voters to their religion, caste, language, or schemes during or after import.

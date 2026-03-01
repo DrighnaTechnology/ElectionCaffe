@@ -1,0 +1,18 @@
+CURRENT STEP: Step 10 — Add Candidates
+
+Go to the **Candidates** page → click **Create Candidate**.
+
+Fill in:
+- Name, Party, Contact details
+- Upload photo and documents
+- Add social media profiles: Twitter/X, Facebook, Instagram
+
+Add your own party's candidate AND all opponent candidates (needed for battle cards and comparative analysis).
+
+Optional — Battle Cards:
+- Select a candidate → Battle Cards tab
+- Create comparative analysis against opponent candidates
+- AI can generate battle card content: key issues, strengths/weaknesses, talking points
+- Useful for briefing campaign workers and speech preparation
+
+Track social media engagement metrics per candidate from the candidate profile page.

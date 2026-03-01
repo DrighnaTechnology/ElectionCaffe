@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { cadresAPI, votersAPI } from '../services/api';
+import { cadresAPI } from '../services/api';
 import { useElectionStore } from '../store/election';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -52,20 +52,20 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const cadreTypes = [
-  { value: 'BOOTH_AGENT', label: 'Booth Agent' },
-  { value: 'SECTOR_OFFICER', label: 'Sector Officer' },
-  { value: 'WARD_PRESIDENT', label: 'Ward President' },
-  { value: 'MANDAL_PRESIDENT', label: 'Mandal President' },
-  { value: 'VOLUNTEER', label: 'Volunteer' },
+// Role enum values matching backend createCadreSchema
+const cadreRoles = [
   { value: 'COORDINATOR', label: 'Coordinator' },
+  { value: 'BOOTH_INCHARGE', label: 'Booth In-Charge' },
+  { value: 'VOLUNTEER', label: 'Volunteer' },
+  { value: 'AGENT', label: 'Agent' },
 ];
 
-// Template columns for bulk upload
+// Template columns for bulk upload — matches backend createCadreSchema
 const cadresTemplateColumns: TemplateColumn[] = [
-  { key: 'voterEpic', label: 'Voter EPIC/ID', required: true, type: 'string', description: 'Voter ID (EPIC number) of the person to assign as cadre', example: 'ABC1234567' },
-  { key: 'cadreType', label: 'Cadre Type', required: true, type: 'string', description: 'BOOTH_AGENT, SECTOR_OFFICER, WARD_PRESIDENT, MANDAL_PRESIDENT, VOLUNTEER, or COORDINATOR', example: 'BOOTH_AGENT' },
-  { key: 'role', label: 'Role', type: 'string', description: 'Optional role description', example: 'Team Lead' },
+  { key: 'name', label: 'Full Name', required: true, type: 'string', description: 'Cadre full name', example: 'Rajesh Kumar' },
+  { key: 'mobile', label: 'Mobile', required: true, type: 'string', description: '10-digit mobile number', example: '9876543210' },
+  { key: 'role', label: 'Role', required: true, type: 'string', description: 'COORDINATOR, BOOTH_INCHARGE, VOLUNTEER, or AGENT', example: 'VOLUNTEER' },
+  { key: 'email', label: 'Email', type: 'string', description: 'Email address (optional)', example: 'rajesh@example.com' },
 ];
 
 export function CadresPage() {
@@ -74,9 +74,11 @@ export function CadresPage() {
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [formData, setFormData] = useState({
-    voterId: '',
-    cadreType: 'BOOTH_AGENT',
-    role: '',
+    name: '',
+    mobile: '',
+    email: '',
+    role: 'VOLUNTEER',
+    address: '',
   });
 
   const queryClient = useQueryClient();
@@ -92,26 +94,24 @@ export function CadresPage() {
     enabled: !!selectedElectionId,
   });
 
-  const { data: votersData } = useQuery({
-    queryKey: ['voters-for-cadre', selectedElectionId],
-    queryFn: () => votersAPI.getAll(selectedElectionId!, { limit: 1000 }),
-    enabled: !!selectedElectionId && createOpen,
-  });
-
   const createMutation = useMutation({
     mutationFn: () =>
       cadresAPI.create(selectedElectionId!, {
-        voterId: formData.voterId,
-        cadreType: formData.cadreType,
-        role: formData.role || undefined,
+        name: formData.name,
+        mobile: formData.mobile,
+        email: formData.email || undefined,
+        role: formData.role,
+        address: formData.address || undefined,
       }),
     onSuccess: () => {
       toast.success('Cadre created successfully');
       setCreateOpen(false);
       setFormData({
-        voterId: '',
-        cadreType: 'BOOTH_AGENT',
-        role: '',
+        name: '',
+        mobile: '',
+        email: '',
+        role: 'VOLUNTEER',
+        address: '',
       });
       queryClient.invalidateQueries({ queryKey: ['cadres'] });
     },
@@ -133,25 +133,15 @@ export function CadresPage() {
 
   const cadres = cadresData?.data?.data || [];
   const pagination = cadresData?.data?.meta;
-  const voters = votersData?.data?.data || [];
 
   const handleBulkUpload = async (data: Record<string, unknown>[]) => {
     try {
-      // Map voter EPIC to voter ID
-      const epicToId = new Map(voters.map((v: any) => [v.voterId, v.id]));
-
-      const cadresToCreate = data.map(row => {
-        const voterEpic = String(row.voterEpic || '');
-        const voterId = epicToId.get(voterEpic);
-        if (!voterId) {
-          throw new Error(`Voter EPIC "${voterEpic}" not found`);
-        }
-        return {
-          voterId,
-          cadreType: String(row.cadreType || 'BOOTH_AGENT'),
-          role: row.role ? String(row.role) : undefined,
-        };
-      });
+      const cadresToCreate = data.map(row => ({
+        name: String(row.name || ''),
+        mobile: String(row.mobile || ''),
+        role: String(row.role || 'VOLUNTEER'),
+        email: row.email ? String(row.email) : undefined,
+      }));
 
       const response = await cadresAPI.bulkCreate(selectedElectionId!, cadresToCreate);
       queryClient.invalidateQueries({ queryKey: ['cadres'] });
@@ -170,34 +160,38 @@ export function CadresPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election from the sidebar to view cadres.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election from the sidebar to view cadres.</p>
       </div>
     );
   }
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.voterId || !formData.cadreType) {
-      toast.error('Please select a voter and cadre type');
+    if (!formData.name || !formData.mobile) {
+      toast.error('Please fill in name and mobile number');
       return;
     }
     createMutation.mutate();
   };
 
-  const getCadreTypeBadge = (type: string) => {
+  const getCadreRoleBadge = (role: string) => {
     const colors: Record<string, string> = {
-      BOOTH_AGENT: 'bg-blue-100 text-blue-800',
-      SECTOR_OFFICER: 'bg-green-100 text-green-800',
-      WARD_PRESIDENT: 'bg-purple-100 text-purple-800',
-      MANDAL_PRESIDENT: 'bg-orange-100 text-orange-800',
-      VOLUNTEER: 'bg-gray-100 text-gray-800',
       COORDINATOR: 'bg-pink-100 text-pink-800',
+      BOOTH_INCHARGE: 'bg-blue-100 text-blue-800',
+      VOLUNTEER: 'bg-green-100 text-green-800',
+      AGENT: 'bg-brand-muted text-brand',
+    };
+    const labels: Record<string, string> = {
+      COORDINATOR: 'Coordinator',
+      BOOTH_INCHARGE: 'Booth In-Charge',
+      VOLUNTEER: 'Volunteer',
+      AGENT: 'Agent',
     };
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[type] || 'bg-gray-100 text-gray-800'}`}>
-        {type.replace('_', ' ')}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${colors[role] || 'bg-muted text-foreground'}`}>
+        {labels[role] || role?.replace('_', ' ') || '-'}
       </span>
     );
   };
@@ -207,7 +201,7 @@ export function CadresPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Cadres</h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Manage election cadres {pagination && `(${pagination.total} total)`}
           </p>
         </div>
@@ -227,53 +221,66 @@ export function CadresPage() {
             <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Add New Cadre</DialogTitle>
-              <DialogDescription>Assign a voter as cadre</DialogDescription>
+              <DialogDescription>Add a cadre member for this election</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreate}>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="voterId">Select Voter *</Label>
-                  <Select
-                    value={formData.voterId}
-                    onValueChange={(value) => setFormData({ ...formData, voterId: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Search and select voter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {voters.map((voter: any) => (
-                        <SelectItem key={voter.id} value={voter.id}>
-                          {voter.name || voter.voterName || `${voter.firstName || ''} ${voter.lastName || ''}`} - {voter.epicNumber || voter.epicNo || voter.voterId || 'No ID'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="name">Full Name *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g., Rajesh Kumar"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="mobile">Mobile *</Label>
+                    <Input
+                      id="mobile"
+                      type="tel"
+                      value={formData.mobile}
+                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                      placeholder="10-digit number"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="email@example.com"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cadreType">Cadre Type *</Label>
+                  <Label htmlFor="role">Role *</Label>
                   <Select
-                    value={formData.cadreType}
-                    onValueChange={(value) => setFormData({ ...formData, cadreType: value })}
+                    value={formData.role}
+                    onValueChange={(value) => setFormData({ ...formData, role: value })}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {cadreTypes.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
+                      {cadreRoles.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="role">Role (Optional)</Label>
+                  <Label htmlFor="address">Address</Label>
                   <Input
-                    id="role"
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    placeholder="e.g., Team Lead"
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="Optional address"
                   />
                 </div>
               </div>
@@ -296,7 +303,7 @@ export function CadresPage() {
       <Card>
         <CardContent className="p-4">
           <div className="relative max-w-md">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search cadres..."
               value={search}
@@ -323,18 +330,18 @@ export function CadresPage() {
             </div>
           ) : cadres.length === 0 ? (
             <div className="p-8 text-center">
-              <UserCogIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No cadres found</p>
+              <UserCogIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No cadres found</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Voter ID</TableHead>
+                  <TableHead>Email</TableHead>
                   <TableHead>Mobile</TableHead>
-                  <TableHead>Type</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Designation</TableHead>
                   <TableHead>Assignments</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[80px]">Actions</TableHead>
@@ -344,21 +351,23 @@ export function CadresPage() {
                 {cadres.map((cadre: any) => (
                   <TableRow key={cadre.id}>
                     <TableCell className="font-medium">
-                      {cadre.user?.firstName || cadre.voter?.voterName || cadre.voter?.firstName || '-'} {cadre.user?.lastName || cadre.voter?.lastName || ''}
+                      {cadre.user?.firstName || '-'} {cadre.user?.lastName || ''}
                     </TableCell>
-                    <TableCell>{cadre.voter?.epicNo || cadre.voter?.voterId || '-'}</TableCell>
                     <TableCell>
-                      {(cadre.user?.mobile || cadre.voter?.mobile) ? (
+                      {cadre.user?.email || '-'}
+                    </TableCell>
+                    <TableCell>
+                      {cadre.user?.mobile ? (
                         <span className="flex items-center gap-1">
                           <PhoneIcon className="h-3 w-3" />
-                          {cadre.user?.mobile || cadre.voter?.mobile}
+                          {cadre.user.mobile}
                         </span>
                       ) : (
                         '-'
                       )}
                     </TableCell>
-                    <TableCell>{getCadreTypeBadge(cadre.cadreType)}</TableCell>
-                    <TableCell>{cadre.designation || cadre.role || '-'}</TableCell>
+                    <TableCell>{getCadreRoleBadge(cadre.cadreType)}</TableCell>
+                    <TableCell>{cadre.designation || '-'}</TableCell>
                     <TableCell>{cadre._count?.assignments || 0}</TableCell>
                     <TableCell>
                       <Badge variant={cadre.isActive ? 'success' : 'secondary'}>
@@ -410,7 +419,7 @@ export function CadresPage() {
           >
             Previous
           </Button>
-          <span className="flex items-center px-4 text-sm text-gray-600">
+          <span className="flex items-center px-4 text-sm text-muted-foreground">
             Page {page} of {pagination.totalPages}
           </span>
           <Button

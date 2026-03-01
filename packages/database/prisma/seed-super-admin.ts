@@ -7,7 +7,7 @@ async function main() {
   console.log('🌱 Seeding Super Admin and basic data...\n');
 
   const superAdminPasswordHash = await bcrypt.hash('SuperAdmin@123', 10);
-  const adminPasswordHash = await bcrypt.hash('admin123', 10);
+  const adminPasswordHash = await bcrypt.hash('Admin@123', 10);
 
   // ========== Create Super Admin ==========
   console.log('👑 Creating Super Admin...');
@@ -400,7 +400,7 @@ async function main() {
   console.log('   🌐 Portal: http://localhost:5174');
   console.log('\n🔐 Tenant Admin Credentials (for Main App):');
   console.log('   📱 Mobile: 9876543210');
-  console.log('   🔑 Password: admin123');
+  console.log('   🔑 Password: Admin@123');
   console.log('   🌐 Portal: http://localhost:5173');
   console.log('\n📊 Database Architecture:');
   console.log('   - Super Admin Database: ElectionCaffe (Platform DB)');

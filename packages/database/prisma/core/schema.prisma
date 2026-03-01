@@ -79,9 +79,9 @@ model TenantFeature {
 // ==================== ENUMS ====================
 
 enum TenantType {
-  POLITICAL_PARTY      // Full party with multiple candidates/constituencies
-  INDIVIDUAL_CANDIDATE // Single candidate managing their constituency
-  ELECTION_MANAGEMENT  // Company managing elections for others
+  POLITICAL_PARTY
+  INDIVIDUAL_CANDIDATE
+  ELECTION_MANAGEMENT
 }
 
 enum TenantStatus {
@@ -93,21 +93,75 @@ enum TenantStatus {
 }
 
 enum DatabaseType {
-  SHARED               // Uses shared ElectionCaffe platform database with tenant isolation
-  DEDICATED_MANAGED    // Super Admin creates and manages the dedicated database
-  DEDICATED_SELF       // Tenant admin provides their own database connection
-  NONE                 // No database configured yet (tenant needs to set up)
+  SHARED
+  DEDICATED_PLATFORM
+  DEDICATED_EXTERNAL
 }
 
 enum DatabaseStatus {
-  NOT_CONFIGURED       // Database not set up yet
-  PENDING_SETUP        // Waiting for tenant to provide connection
-  CONNECTING           // Testing connection
-  CONNECTED            // Successfully connected
-  CONNECTION_FAILED    // Failed to connect
-  MIGRATING            // Running migrations
-  READY                // Fully operational
-  SUSPENDED            // Suspended by super admin
+  NOT_CONFIGURED
+  PENDING_SETUP
+  CONNECTING
+  CONNECTED
+  CONNECTION_FAILED
+  MIGRATING
+  READY
+  SUSPENDED
+}
+
+enum LicensePlanType {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+  CUSTOM
+}
+
+enum LicenseStatus {
+  ACTIVE
+  TRIAL
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  GRACE_PERIOD
+}
+
+enum LicenseBillingCycle {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  LIFETIME
+}
+
+enum UsageAlertLevel {
+  INFO
+  WARNING
+  CRITICAL
+  EXCEEDED
+}
+
+enum AIProviderType {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+  XAI
+  CUSTOM
+}
+
+enum AIProviderStatus {
+  ACTIVE
+  INACTIVE
+  TESTING
+  ERROR
+}
+
+enum AIFeatureStatus {
+  DRAFT
+  TRAINING
+  TESTING
+  PUBLISHED
+  DEPRECATED
+  ARCHIVED
 }
 
 // ==================== TENANT MANAGEMENT (Core) ====================
@@ -134,20 +188,25 @@ model Tenant {
   state             String?
   country           String?      @default("India")
 
+  // Tenant Admin Identity (cached from tenant DB during creation)
+  adminMobile       String?      @map("admin_mobile")
+  adminEmail        String?      @map("admin_email")
+  adminUserId       String?      @map("admin_user_id")
+
   // For Political Party tenants
   partyName         String?      @map("party_name")
   partySymbolUrl    String?      @map("party_symbol_url")
 
   // Database Configuration
-  databaseType          DatabaseType   @default(DEDICATED_MANAGED) @map("database_type")
+  databaseType          DatabaseType   @default(SHARED) @map("database_type")
   databaseStatus        DatabaseStatus @default(NOT_CONFIGURED) @map("database_status")
   databaseHost          String?        @map("database_host")
-  databaseName          String?        @map("database_name") // e.g., EC_Demo, EC_BJP
+  databaseName          String?        @map("database_name")
   databaseUser          String?        @map("database_user")
-  databasePassword      String?        @map("database_password") // Encrypted
+  databasePassword      String?        @map("database_password")
   databasePort          Int?           @map("database_port") @default(5432)
   databaseSSL           Boolean        @default(true) @map("database_ssl")
-  databaseConnectionUrl String?        @map("database_connection_url") // Full connection string (encrypted)
+  databaseConnectionUrl String?        @map("database_connection_url")
 
   // Database Management
   canTenantEditDb       Boolean        @default(false) @map("can_tenant_edit_db")
@@ -167,6 +226,13 @@ model Tenant {
   storageQuotaMB    Int          @map("storage_quota_mb") @default(5000)
   storageUsedMB     Int          @map("storage_used_mb") @default(0)
 
+  // Cached usage counts (synced from tenant DBs)
+  currentVoterCount    Int       @map("current_voter_count") @default(0)
+  currentUserCount     Int       @map("current_user_count") @default(0)
+  currentElectionCount Int       @map("current_election_count") @default(0)
+  currentCadreCount    Int       @map("current_cadre_count") @default(0)
+  countsLastSyncedAt   DateTime? @map("counts_last_synced_at")
+
   // Status & Dates
   status            TenantStatus @default(PENDING)
   trialEndsAt       DateTime?    @map("trial_ends_at")
@@ -183,6 +249,13 @@ model Tenant {
   license           TenantLicense?
   sessions          TenantSession[]
   invitations       Invitation[]
+  aiCredits         TenantAICredits?
+  aiSubscriptions   TenantAISubscription[]
+  aiUsageLogs       AIUsageLog[]
+  aiAdminAlerts     AIAdminAlert[]
+  newsItems         NewsInformation[]
+  actionItems       ActionItem[]
+  creditTransactions AICreditTransaction[]
 
   @@map("tenants")
 }
@@ -191,14 +264,60 @@ model Tenant {
 
 model LicensePlan {
   id              String   @id @default(uuid())
-  planCode        String   @unique @map("plan_code")
-  planName        String   @map("plan_name")
+  planCode        String?  @unique @map("plan_code")
+  planName        String   @unique @map("plan_name")
+  planType        LicensePlanType @default(FREE) @map("plan_type")
   description     String?
-  monthlyPrice    Decimal  @map("monthly_price") @db.Decimal(10, 2)
-  yearlyPrice     Decimal  @map("yearly_price") @db.Decimal(10, 2)
+  monthlyPrice    Decimal  @default(0) @map("monthly_price") @db.Decimal(10, 2)
+  yearlyPrice     Decimal  @default(0) @map("yearly_price") @db.Decimal(10, 2)
   features        Json     @default("[]")
   limits          Json     @default("{}")
+
+  // User Limits
+  maxUsers              Int   @map("max_users") @default(10)
+  maxAdminUsers         Int   @map("max_admin_users") @default(2)
+
+  // Session Limits
+  maxConcurrentSessions Int   @map("max_concurrent_sessions") @default(5)
+  maxSessionsPerUser    Int   @map("max_sessions_per_user") @default(2)
+  sessionTimeoutMinutes Int   @map("session_timeout_minutes") @default(30)
+
+  // Data Processing Limits
+  maxDataProcessingGB   Float @map("max_data_processing_gb") @default(5.0)
+  maxVoters             Int   @map("max_voters") @default(10000)
+  maxElections          Int   @map("max_elections") @default(3)
+  maxConstituencies     Int   @map("max_constituencies") @default(1)
+  maxStorageMB          Int   @map("max_storage_mb") @default(5000)
+
+  // API Limits
+  maxApiRequestsPerDay  Int   @map("max_api_requests_per_day") @default(10000)
+  maxApiRequestsPerHour Int   @map("max_api_requests_per_hour") @default(1000)
+
+  // Pricing
+  basePrice             Float @map("base_price") @default(0)
+  pricePerUser          Float? @map("price_per_user")
+  pricePerSession       Float? @map("price_per_session")
+  pricePerGBProcessed   Float? @map("price_per_gb_processed")
+  billingCycle          LicenseBillingCycle @default(MONTHLY) @map("billing_cycle")
+  currency              String @default("INR")
+
+  // Feature Toggles
+  includedFeatures      Json   @default("[]") @map("included_features")
+  excludedFeatures      Json   @default("[]") @map("excluded_features")
+
+  // Trial & Grace
+  gracePeriodDays       Int    @default(7) @map("grace_period_days")
+  trialDays             Int    @default(14) @map("trial_days")
+
+  // Overage
+  allowOverage          Boolean @default(false) @map("allow_overage")
+  overagePricePerUser   Float?  @map("overage_price_per_user")
+  overagePricePerGB     Float?  @map("overage_price_per_gb")
+  overageSessionPrice   Float?  @map("overage_session_price")
+
   isActive        Boolean  @default(true) @map("is_active")
+  isPublic        Boolean  @default(true) @map("is_public")
+  displayOrder    Int      @default(0) @map("display_order")
   sortOrder       Int      @default(0) @map("sort_order")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -212,19 +331,58 @@ model TenantLicense {
   id              String   @id @default(uuid())
   tenantId        String   @unique @map("tenant_id")
   planId          String   @map("plan_id")
+  // Keep licensePlanId as alias for backward compat
+  licensePlanId   String?  @map("license_plan_id")
   billingCycle    String   @default("monthly") @map("billing_cycle")
-  startDate       DateTime @map("start_date")
-  endDate         DateTime @map("end_date")
+  startDate       DateTime @default(now()) @map("start_date")
+  endDate         DateTime @default(now()) @map("end_date")
   autoRenew       Boolean  @default(true) @map("auto_renew")
   status          String   @default("active")
   paymentMethod   String?  @map("payment_method")
   lastPaymentDate DateTime? @map("last_payment_date")
   nextBillingDate DateTime? @map("next_billing_date")
+
+  // Custom overrides
+  customMaxUsers          Int?    @map("custom_max_users")
+  customMaxSessions       Int?    @map("custom_max_sessions")
+  customMaxSessionsPerUser Int?   @map("custom_max_sessions_per_user")
+  customMaxDataGB         Float?  @map("custom_max_data_gb")
+  customMaxVoters         Int?    @map("custom_max_voters")
+  customMaxElections      Int?    @map("custom_max_elections")
+  customMaxConstituencies Int?    @map("custom_max_constituencies")
+  customMaxStorageMB      Int?    @map("custom_max_storage_mb")
+  customMaxApiPerDay      Int?    @map("custom_max_api_per_day")
+  customMaxApiPerHour     Int?    @map("custom_max_api_per_hour")
+  customBasePrice         Float?  @map("custom_base_price")
+  discountPercent         Float   @default(0) @map("discount_percent")
+
+  // Dates
+  activatedAt     DateTime? @map("activated_at")
+  expiresAt       DateTime? @map("expires_at")
+  trialEndsAt     DateTime? @map("trial_ends_at")
+  suspendedAt     DateTime? @map("suspended_at")
+  suspendedReason String?   @map("suspended_reason")
+  cancelledAt     DateTime? @map("cancelled_at")
+
+  // Enforcement
+  enforceSessionLimit Boolean @default(true) @map("enforce_session_limit")
+  enforceUserLimit    Boolean @default(true) @map("enforce_user_limit")
+  enforceDataLimit    Boolean @default(true) @map("enforce_data_limit")
+  enforceApiLimit     Boolean @default(true) @map("enforce_api_limit")
+  softLimitMode       Boolean @default(false) @map("soft_limit_mode")
+
+  // Admin
+  adminNotes      String?  @map("admin_notes")
+  createdBy       String?  @map("created_by")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan            LicensePlan @relation(fields: [planId], references: [id])
+  sessions        TenantSession[]
+  usageMetrics    TenantUsageMetrics[]
+  usageAlerts     UsageAlert[]
+  billingHistory  BillingHistory[]
 
   @@map("tenant_licenses")
 }
@@ -232,19 +390,90 @@ model TenantLicense {
 model TenantSession {
   id              String   @id @default(uuid())
   tenantId        String   @map("tenant_id")
+  tenantLicenseId String?  @map("tenant_license_id")
   userId          String   @map("user_id")
   sessionToken    String   @unique @map("session_token")
   deviceInfo      Json?    @map("device_info")
   ipAddress       String?  @map("ip_address")
+  isActive        Boolean  @default(true) @map("is_active")
   lastActivityAt  DateTime @default(now()) @map("last_activity_at")
   expiresAt       DateTime @map("expires_at")
+  terminatedAt    DateTime? @map("terminated_at")
+  terminationReason String? @map("termination_reason")
   createdAt       DateTime @default(now()) @map("created_at")
 
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  license         TenantLicense? @relation(fields: [tenantLicenseId], references: [id])
 
   @@index([tenantId])
   @@index([userId])
+  @@index([tenantLicenseId])
   @@map("tenant_sessions")
+}
+
+model TenantUsageMetrics {
+  id                    String   @id @default(uuid())
+  tenantLicenseId       String   @map("tenant_license_id")
+  metricDate            DateTime @map("metric_date")
+  metricHour            Int?     @map("metric_hour")
+  activeUsers           Int      @default(0) @map("active_users")
+  peakConcurrentSessions Int     @default(0) @map("peak_concurrent_sessions")
+  apiRequestCount       Int      @default(0) @map("api_request_count")
+  dataProcessedMB       Float    @default(0) @map("data_processed_mb")
+  computedCost          Float    @default(0) @map("computed_cost")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  license               TenantLicense @relation(fields: [tenantLicenseId], references: [id])
+
+  @@index([tenantLicenseId, metricDate])
+  @@map("tenant_usage_metrics")
+}
+
+model UsageAlert {
+  id              String   @id @default(uuid())
+  tenantLicenseId String   @map("tenant_license_id")
+  alertLevel      UsageAlertLevel @map("alert_level")
+  alertType       String   @map("alert_type")
+  message         String
+  currentValue    Float?   @map("current_value")
+  thresholdValue  Float?   @map("threshold_value")
+  isRead          Boolean  @default(false) @map("is_read")
+  isDismissed     Boolean  @default(false) @map("is_dismissed")
+  isResolved      Boolean  @default(false) @map("is_resolved")
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  license         TenantLicense @relation(fields: [tenantLicenseId], references: [id])
+
+  @@index([tenantLicenseId])
+  @@map("usage_alerts")
+}
+
+model BillingHistory {
+  id                  String   @id @default(uuid())
+  tenantLicenseId     String   @map("tenant_license_id")
+  invoiceNumber       String   @unique @map("invoice_number")
+  billingPeriodStart  DateTime @map("billing_period_start")
+  billingPeriodEnd    DateTime @map("billing_period_end")
+  baseAmount          Float    @default(0) @map("base_amount")
+  userOverageAmount   Float    @default(0) @map("user_overage_amount")
+  sessionOverageAmount Float   @default(0) @map("session_overage_amount")
+  dataOverageAmount   Float    @default(0) @map("data_overage_amount")
+  discountAmount      Float    @default(0) @map("discount_amount")
+  taxAmount           Float    @default(0) @map("tax_amount")
+  totalAmount         Float    @default(0) @map("total_amount")
+  paymentStatus       String   @default("pending") @map("payment_status")
+  paymentMethod       String?  @map("payment_method")
+  paymentReference    String?  @map("payment_reference")
+  paidAt              DateTime? @map("paid_at")
+  usageSummary        Json?    @map("usage_summary")
+  notes               String?
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  license             TenantLicense @relation(fields: [tenantLicenseId], references: [id])
+
+  @@index([tenantLicenseId])
+  @@map("billing_history")
 }
 
 // ==================== INVITATIONS (Cross-tenant) ====================
@@ -258,67 +487,43 @@ enum InvitationStatus {
 }
 
 enum InvitationType {
-  TENANT_ADMIN     // Super Admin invites Tenant Admin
-  TENANT_USER      // Tenant Admin invites users within tenant
+  TENANT_ADMIN
+  TENANT_USER
 }
 
 enum UserRole {
   SUPER_ADMIN
-  TENANT_ADMIN
   CENTRAL_ADMIN
-  CENTRAL_CAMPAIGN_TEAM
-  CONSTITUENCY_ADMIN
-  CAMPAIGN_MANAGER
-  COORDINATOR
-  SECTOR_OFFICER
-  BOOTH_INCHARGE
-  VOLUNTEER
-  AGENT
-  POLLING_AGENT
-  COUNTING_AGENT
-  CANDIDATE
-  CANDIDATE_ADMIN
-  EMC_ADMIN
-  EMC_MANAGER
-  EMC_OPERATOR
 }
 
 model Invitation {
   id                String           @id @default(uuid())
   invitationType    InvitationType   @map("invitation_type")
 
-  // For TENANT_ADMIN invitations
   tenantId          String?          @map("tenant_id")
-
-  // For TENANT_USER invitations
   invitedByTenantId String?          @map("invited_by_tenant_id")
   electionId        String?          @map("election_id")
 
-  // Invitee details
   email             String?
   mobile            String
   firstName         String           @map("first_name")
   lastName          String?          @map("last_name")
   role              UserRole
 
-  // Invitation token and status
   token             String           @unique
   status            InvitationStatus @default(PENDING)
   message           String?
 
-  // Tracking
   invitedBy         String           @map("invited_by")
   invitedByName     String?          @map("invited_by_name")
   invitedByType     String           @map("invited_by_type")
 
-  // Dates
   expiresAt         DateTime         @map("expires_at")
   acceptedAt        DateTime?        @map("accepted_at")
   cancelledAt       DateTime?        @map("cancelled_at")
   lastResentAt      DateTime?        @map("last_resent_at")
   resentCount       Int              @default(0) @map("resent_count")
 
-  // Result
   createdUserId     String?          @map("created_user_id")
 
   createdAt         DateTime         @default(now()) @map("created_at")
@@ -339,16 +544,50 @@ model Invitation {
 model AIProvider {
   id              String   @id @default(uuid())
   providerName    String   @unique @map("provider_name")
+  providerType    AIProviderType @default(CUSTOM) @map("provider_type")
+  displayName     String?  @map("display_name")
+  description     String?
   apiEndpoint     String?  @map("api_endpoint")
-  apiKey          String?  @map("api_key") // Encrypted
+  apiKey          String?  @map("api_key")
+  apiVersion      String?  @map("api_version")
+  organizationId  String?  @map("organization_id")
+  region          String?
+  defaultModel    String?  @map("default_model")
+  availableModels Json     @default("[]") @map("available_models")
   models          Json     @default("[]")
-  isActive        Boolean  @default(true) @map("is_active")
+
+  // Rate limits
+  maxRequestsPerMinute Int  @default(60) @map("max_requests_per_minute")
+  maxTokensPerRequest  Int  @default(4096) @map("max_tokens_per_request")
   rateLimits      Json?    @map("rate_limits")
+
+  // Cost
   costPerToken    Decimal? @map("cost_per_token") @db.Decimal(10, 8)
+  costPerInputToken  Float @default(0) @map("cost_per_input_token")
+  costPerOutputToken Float @default(0) @map("cost_per_output_token")
+  costPerImage    Float    @default(0) @map("cost_per_image")
+  costPerPage     Float    @default(0) @map("cost_per_page")
+  currency        String   @default("USD")
+
+  // Status
+  status          AIProviderStatus @default(INACTIVE)
+  lastHealthCheck DateTime? @map("last_health_check")
+  lastError       String?  @map("last_error")
+  errorCount      Int      @default(0) @map("error_count")
+  successRate     Float    @default(0) @map("success_rate")
+
+  // Capabilities
+  supportsVision    Boolean @default(false) @map("supports_vision")
+  supportsStreaming  Boolean @default(false) @map("supports_streaming")
+  supportsAsync     Boolean @default(false) @map("supports_async")
+  isDefault         Boolean @default(false) @map("is_default")
+
+  isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   features        AIFeature[]
+  usageLogs       AIUsageLog[]
 
   @@map("ai_providers")
 }
@@ -357,33 +596,170 @@ model AIFeature {
   id              String   @id @default(uuid())
   featureKey      String   @unique @map("feature_key")
   featureName     String   @map("feature_name")
+  displayName     String?  @map("display_name")
   description     String?
   providerId      String   @map("provider_id")
   modelName       String?  @map("model_name")
-  isActive        Boolean  @default(true) @map("is_active")
-  creditsPerUse   Int      @default(1) @map("credits_per_use")
   category        String?
+
+  // Status
+  status          AIFeatureStatus @default(DRAFT)
+
+  // Prompts
+  systemPrompt        String? @map("system_prompt")
+  userPromptTemplate  String? @map("user_prompt_template")
+  outputFormat        String? @map("output_format")
+  outputSchema        Json?   @map("output_schema")
+
+  // Input Configuration
+  acceptedFileTypes   Json    @default("[]") @map("accepted_file_types")
+  maxFileSize         Float   @default(10) @map("max_file_size")
+  maxPagesPerRequest  Int     @default(50) @map("max_pages_per_request")
+
+  // Credits/Pricing
+  creditsPerUse   Int      @default(1) @map("credits_per_use")
+  creditsPerPage  Float    @default(1) @map("credits_per_page")
+  creditsPerImage Float    @default(1) @map("credits_per_image")
+  creditsPerRequest Float  @default(0) @map("credits_per_request")
+  minCreditsRequired Float @default(1) @map("min_credits_required")
+
+  // Training
+  isCustomTrained Boolean @default(false) @map("is_custom_trained")
+  trainingData    Json?   @map("training_data")
+  trainingNotes   String? @map("training_notes")
+
+  // Availability
+  isAddon         Boolean @default(true) @map("is_addon")
+  isPublic        Boolean @default(false) @map("is_public")
+  displayOrder    Int     @default(0) @map("display_order")
+  iconUrl         String? @map("icon_url")
+
+  // Dates
+  publishedAt     DateTime? @map("published_at")
+  deprecatedAt    DateTime? @map("deprecated_at")
+
+  isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   provider        AIProvider @relation(fields: [providerId], references: [id])
+  subscriptions   TenantAISubscription[]
+  usageLogs       AIUsageLog[]
 
   @@map("ai_features")
 }
 
 model AICreditPackage {
   id              String   @id @default(uuid())
-  packageName     String   @map("package_name")
+  packageName     String   @unique @map("package_name")
+  displayName     String?  @map("display_name")
+  description     String?
   credits         Int
   price           Decimal  @db.Decimal(10, 2)
+  currency        String   @default("USD")
   bonusCredits    Int      @default(0) @map("bonus_credits")
   validityDays    Int      @default(365) @map("validity_days")
+  discountPercent Float    @default(0) @map("discount_percent")
+  isPopular       Boolean  @default(false) @map("is_popular")
   isActive        Boolean  @default(true) @map("is_active")
   sortOrder       Int      @default(0) @map("sort_order")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
+  transactions    AICreditTransaction[]
+
   @@map("ai_credit_packages")
+}
+
+model TenantAICredits {
+  id                    String   @id @default(uuid())
+  tenantId              String   @unique @map("tenant_id")
+  balance               Int      @default(0)
+  totalPurchased        Int      @default(0) @map("total_purchased")
+  totalUsed             Int      @default(0) @map("total_used")
+  lifetimeCredits       Int      @default(0) @map("lifetime_credits")
+  lowBalanceAlert       Int      @default(100) @map("low_balance_alert")
+  autoRechargeEnabled   Boolean  @default(false) @map("auto_recharge_enabled")
+  autoRechargeThreshold Int      @default(50) @map("auto_recharge_threshold")
+  autoRechargeAmount    Int      @default(0) @map("auto_recharge_amount")
+  monthlyLimit          Int      @default(0) @map("monthly_limit")
+  lastPurchaseAt        DateTime? @map("last_purchase_at")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_ai_credits")
+}
+
+model AICreditTransaction {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  transactionType   String   @map("transaction_type")
+  creditsAmount     Int      @map("credits_amount")
+  creditsBalance    Int      @default(0) @map("credits_balance")
+  packageId         String?  @map("package_id")
+  paymentReference  String?  @map("payment_reference")
+  paymentAmount     Float?   @map("payment_amount")
+  paymentCurrency   String   @default("USD") @map("payment_currency")
+  notes             String?
+  expiresAt         DateTime? @map("expires_at")
+  processedBy       String?  @map("processed_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  package           AICreditPackage? @relation(fields: [packageId], references: [id])
+
+  @@index([tenantId])
+  @@map("ai_credit_transactions")
+}
+
+model TenantAISubscription {
+  id                  String   @id @default(uuid())
+  tenantId            String   @map("tenant_id")
+  featureId           String   @map("feature_id")
+  isEnabled           Boolean  @default(true) @map("is_enabled")
+  customCreditsPerUse Float?   @map("custom_credits_per_use")
+  customCreditsPerPage Float?  @map("custom_credits_per_page")
+  expiresAt           DateTime? @map("expires_at")
+  maxUsagePerDay      Int?     @map("max_usage_per_day")
+  maxUsagePerMonth    Int?     @map("max_usage_per_month")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feature             AIFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureId])
+  @@map("tenant_ai_subscriptions")
+}
+
+model AIUsageLog {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  featureId       String   @map("feature_id")
+  providerId      String   @map("provider_id")
+  userId          String?  @map("user_id")
+  inputTokens     Int      @default(0) @map("input_tokens")
+  outputTokens    Int      @default(0) @map("output_tokens")
+  totalCost       Float    @default(0) @map("total_cost")
+  creditsUsed     Int      @default(0) @map("credits_used")
+  processingTimeMs Int     @default(0) @map("processing_time_ms")
+  status          String   @default("success")
+  errorMessage    String?  @map("error_message")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feature         AIFeature  @relation(fields: [featureId], references: [id])
+  provider        AIProvider @relation(fields: [providerId], references: [id])
+
+  @@index([tenantId])
+  @@index([featureId])
+  @@index([providerId])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
 }
 
 // ==================== WEBSITE TEMPLATES (Global) ====================
@@ -423,16 +799,141 @@ model ECIntegrationConfig {
   configKey       String   @unique @map("config_key")
   state           String?
   apiEndpoint     String?  @map("api_endpoint")
-  apiKey          String?  @map("api_key") // Encrypted
+  apiKey          String?  @map("api_key")
+  apiSecret       String?  @map("api_secret")
   authMethod      String?  @map("auth_method")
   settings        Json?
+  syncIntervalHours Int    @default(24) @map("sync_interval_hours")
+  autoSyncEnabled Boolean  @default(false) @map("auto_sync_enabled")
+  nextSyncAt      DateTime? @map("next_sync_at")
+  syncStatus      String?  @map("sync_status")
   isActive        Boolean  @default(true) @map("is_active")
   lastTestedAt    DateTime? @map("last_tested_at")
   lastError       String?  @map("last_error")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
+  syncLogs        ECSyncLog[]
+
   @@map("ec_integration_configs")
+}
+
+model ECSyncLog {
+  id              String   @id @default(uuid())
+  integrationId   String   @map("integration_id")
+  syncType        String   @map("sync_type")
+  status          String
+  recordsProcessed Int     @default(0) @map("records_processed")
+  recordsFailed   Int      @default(0) @map("records_failed")
+  errorMessage    String?  @map("error_message")
+  metadata        Json?
+  startedAt       DateTime @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  integration     ECIntegrationConfig @relation(fields: [integrationId], references: [id])
+
+  @@index([integrationId])
+  @@map("ec_sync_logs")
+}
+
+// ==================== NEWS & ACTIONS ====================
+
+model NewsInformation {
+  id              String    @id @default(uuid())
+  title           String
+  titleLocal      String?   @map("title_local")
+  content         String
+  summary         String?
+  category        String?
+  subCategory     String?   @map("sub_category")
+  tags            Json      @default("[]")
+  imageUrl        String?   @map("image_url")
+  imageUrls       Json      @default("[]") @map("image_urls")
+  sourceUrl       String?   @map("source_url")
+  sourceName      String?   @map("source_name")
+  source          String?
+  author          String?
+  publishedAt     DateTime? @map("published_at")
+  priority        String    @default("MEDIUM")
+  // Geo scope
+  scope           String    @default("national")
+  geographicLevel String    @default("NATIONAL") @map("geographic_level")
+  state           String?
+  district        String?
+  constituency    String?
+  tenantId        String?   @map("tenant_id")
+  // Status
+  status          String    @default("draft")
+  isActive        Boolean   @default(true) @map("is_active")
+  isPinned        Boolean   @default(false) @map("is_pinned")
+  viewCount       Int       @default(0) @map("view_count")
+  // AI analysis
+  aiAnalysis      Json?     @map("ai_analysis")
+  sentimentScore  Float?    @map("sentiment_score")
+  impactScore     Float?    @map("impact_score")
+  relevanceScore  Float?    @map("relevance_score")
+  suggestedActions Json?    @map("suggested_actions")
+  analyzedAt      DateTime? @map("analyzed_at")
+  createdBy       String?   @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant          Tenant?   @relation(fields: [tenantId], references: [id])
+  actions         ActionItem[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([scope])
+  @@index([geographicLevel])
+  @@map("news_information")
+}
+
+model ActionItem {
+  id                String    @id @default(uuid())
+  title             String
+  titleLocal        String?   @map("title_local")
+  description       String?
+  descriptionLocal  String?   @map("description_local")
+  actionType        String    @map("action_type")
+  priority          String    @default("MEDIUM")
+  status            String    @default("pending")
+  dueDate           DateTime? @map("due_date")
+  assignedTo        String?   @map("assigned_to")
+  assignedToName    String?   @map("assigned_to_name")
+  assignedAt        DateTime? @map("assigned_at")
+  tenantId          String?   @map("tenant_id")
+  newsId            String?   @map("news_id")
+  metadata          Json?
+  aiGenerated       Boolean   @default(false) @map("ai_generated")
+  // Geographic scope
+  geographicLevel   String    @default("CONSTITUENCY") @map("geographic_level")
+  state             String?
+  region            String?
+  district          String?
+  constituency      String?
+  section           String?
+  booth             String?
+  // Impact & tracking
+  estimatedImpact   String?   @map("estimated_impact")
+  requiredResources String?   @map("required_resources")
+  targetAudience    String?   @map("target_audience")
+  successMetrics    String?   @map("success_metrics")
+  startedAt         DateTime? @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  completionNotes   String?   @map("completion_notes")
+  outcome           String?
+  createdBy         String?   @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  tenant            Tenant?   @relation(fields: [tenantId], references: [id])
+  news              NewsInformation? @relation(fields: [newsId], references: [id])
+
+  @@index([tenantId])
+  @@index([newsId])
+  @@index([status])
+  @@map("action_items")
 }
 
 // ==================== AUDIT & MONITORING (Core) ====================
@@ -440,7 +941,7 @@ model ECIntegrationConfig {
 model PlatformAuditLog {
   id              String   @id @default(uuid())
   actorId         String   @map("actor_id")
-  actorType       String   @map("actor_type") // 'super_admin' | 'system'
+  actorType       String   @map("actor_type")
   action          String
   entityType      String   @map("entity_type")
   entityId        String?  @map("entity_id")
@@ -466,13 +967,20 @@ model AIAdminAlert {
   tenantId        String?  @map("tenant_id")
   metadata        Json?
   isRead          Boolean  @default(false) @map("is_read")
+  isResolved      Boolean  @default(false) @map("is_resolved")
   readAt          DateTime? @map("read_at")
   readBy          String?  @map("read_by")
+  resolvedAt      DateTime? @map("resolved_at")
+  resolvedBy      String?  @map("resolved_by")
+  resolutionNotes String?  @map("resolution_notes")
   createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id])
 
   @@index([alertType])
   @@index([severity])
   @@index([tenantId])
   @@index([isRead])
+  @@index([isResolved])
   @@map("ai_admin_alerts")
 }

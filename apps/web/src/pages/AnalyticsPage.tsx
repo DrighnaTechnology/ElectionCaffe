@@ -60,9 +60,9 @@ export function AnalyticsPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election from the sidebar to view analytics.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election from the sidebar to view analytics.</p>
       </div>
     );
   }
@@ -84,7 +84,7 @@ export function AnalyticsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Analytics</h1>
-        <p className="text-gray-500">Comprehensive data analysis and insights</p>
+        <p className="text-muted-foreground">Comprehensive data analysis and insights</p>
       </div>
 
       {/* Overview Stats */}
@@ -103,25 +103,25 @@ export function AnalyticsPage() {
           <>
             <Card>
               <CardContent className="p-6">
-                <p className="text-sm text-gray-500">Total Voters</p>
-                <p className="text-3xl font-bold text-orange-600">{formatNumber(overview?.totalVoters || 0)}</p>
+                <p className="text-sm text-muted-foreground">Total Voters</p>
+                <p className="text-3xl font-bold text-brand">{formatNumber(overview?.totalVoters || 0)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-6">
-                <p className="text-sm text-gray-500">Total Parts</p>
+                <p className="text-sm text-muted-foreground">Total Parts</p>
                 <p className="text-3xl font-bold text-blue-600">{formatNumber(overview?.totalParts || 0)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-6">
-                <p className="text-sm text-gray-500">Data Coverage</p>
+                <p className="text-sm text-muted-foreground">Data Coverage</p>
                 <p className="text-3xl font-bold text-green-600">{overview?.dataCoverage || 0}%</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-6">
-                <p className="text-sm text-gray-500">Average Age</p>
+                <p className="text-sm text-muted-foreground">Average Age</p>
                 <p className="text-3xl font-bold text-purple-600">{overview?.averageAge || 0}</p>
               </CardContent>
             </Card>
@@ -207,7 +207,7 @@ export function AnalyticsPage() {
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={voterAnalytics?.boothDistribution || []}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="partNo" />
+                    <XAxis dataKey="partNumber" />
                     <YAxis />
                     <Tooltip />
                     <Area type="monotone" dataKey="voters" stroke="#3b82f6" fill="#93c5fd" />
@@ -249,10 +249,10 @@ export function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-center py-8">
-                  <p className="text-5xl font-bold text-orange-600">
+                  <p className="text-5xl font-bold text-brand">
                     {formatNumber(ageGroups.find((g: any) => g.ageGroup === '18-25')?.count || 0)}
                   </p>
-                  <p className="text-gray-500 mt-2">Young voters (18-25)</p>
+                  <p className="text-muted-foreground mt-2">Young voters (18-25)</p>
                 </div>
               </CardContent>
             </Card>
@@ -265,9 +265,9 @@ export function AnalyticsPage() {
               <CardContent>
                 <div className="text-center py-8">
                   <p className="text-5xl font-bold text-blue-600">
-                    {formatNumber(ageGroups.find((g: any) => g.ageGroup === '60+')?.count || 0)}
+                    {formatNumber(ageGroups.find((g: any) => g.ageGroup === '65+' || g.ageGroup === '60+')?.count || 0)}
                   </p>
-                  <p className="text-gray-500 mt-2">Senior citizens (60+)</p>
+                  <p className="text-muted-foreground mt-2">Senior citizens (60+)</p>
                 </div>
               </CardContent>
             </Card>
@@ -327,10 +327,10 @@ export function AnalyticsPage() {
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-gray-500">Mobile Numbers</p>
+                      <p className="text-sm text-muted-foreground">Mobile Numbers</p>
                       <span className="text-2xl font-bold text-green-600">{dataQuality?.mobilePercent || 0}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-muted rounded-full h-2">
                       <div
                         className="bg-green-600 h-2 rounded-full"
                         style={{ width: `${dataQuality?.mobilePercent || 0}%` }}
@@ -342,10 +342,10 @@ export function AnalyticsPage() {
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-gray-500">Age Data</p>
+                      <p className="text-sm text-muted-foreground">Age Data</p>
                       <span className="text-2xl font-bold text-blue-600">{dataQuality?.agePercent || 0}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-muted rounded-full h-2">
                       <div
                         className="bg-blue-600 h-2 rounded-full"
                         style={{ width: `${dataQuality?.agePercent || 0}%` }}
@@ -357,12 +357,12 @@ export function AnalyticsPage() {
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-gray-500">Caste Data</p>
-                      <span className="text-2xl font-bold text-orange-600">{dataQuality?.castePercent || 0}%</span>
+                      <p className="text-sm text-muted-foreground">Caste Data</p>
+                      <span className="text-2xl font-bold text-brand">{dataQuality?.castePercent || 0}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-muted rounded-full h-2">
                       <div
-                        className="bg-orange-600 h-2 rounded-full"
+                        className="bg-brand h-2 rounded-full"
                         style={{ width: `${dataQuality?.castePercent || 0}%` }}
                       />
                     </div>
@@ -372,10 +372,10 @@ export function AnalyticsPage() {
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-gray-500">Religion Data</p>
+                      <p className="text-sm text-muted-foreground">Religion Data</p>
                       <span className="text-2xl font-bold text-purple-600">{dataQuality?.religionPercent || 0}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-muted rounded-full h-2">
                       <div
                         className="bg-purple-600 h-2 rounded-full"
                         style={{ width: `${dataQuality?.religionPercent || 0}%` }}
@@ -387,10 +387,10 @@ export function AnalyticsPage() {
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-gray-500">Voter ID</p>
+                      <p className="text-sm text-muted-foreground">Voter ID</p>
                       <span className="text-2xl font-bold text-cyan-600">{dataQuality?.voterIdPercent || 0}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-muted rounded-full h-2">
                       <div
                         className="bg-cyan-600 h-2 rounded-full"
                         style={{ width: `${dataQuality?.voterIdPercent || 0}%` }}
@@ -402,10 +402,10 @@ export function AnalyticsPage() {
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm text-gray-500">Overall Quality</p>
+                      <p className="text-sm text-muted-foreground">Overall Quality</p>
                       <span className="text-2xl font-bold text-pink-600">{dataQuality?.overallPercent || 0}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-muted rounded-full h-2">
                       <div
                         className="bg-pink-600 h-2 rounded-full"
                         style={{ width: `${dataQuality?.overallPercent || 0}%` }}

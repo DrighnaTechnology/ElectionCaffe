@@ -1,0 +1,1 @@
+{"root":["./src/index.ts","./src/middleware/errorhandler.ts","./src/routes/agentops.ts","./src/routes/cadres.ts","./src/routes/gotv.ts","./src/routes/incidents.ts","./src/routes/pollday.ts","./src/routes/warroom.ts","./src/utils/tenantdb.ts","./src/workers/snapshotworker.ts"],"version":"5.9.3"}

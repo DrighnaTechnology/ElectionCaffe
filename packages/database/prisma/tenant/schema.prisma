@@ -16,23 +16,7 @@ datasource db {
 
 enum UserRole {
   SUPER_ADMIN
-  TENANT_ADMIN
   CENTRAL_ADMIN
-  CENTRAL_CAMPAIGN_TEAM
-  CONSTITUENCY_ADMIN
-  CAMPAIGN_MANAGER
-  COORDINATOR
-  SECTOR_OFFICER
-  BOOTH_INCHARGE
-  VOLUNTEER
-  AGENT
-  POLLING_AGENT
-  COUNTING_AGENT
-  CANDIDATE
-  CANDIDATE_ADMIN
-  EMC_ADMIN
-  EMC_MANAGER
-  EMC_OPERATOR
 }
 
 enum UserStatus {
@@ -95,8 +79,12 @@ enum PartType {
 enum VulnerabilityType {
   NOT_ASSIGNED
   NONE
-  CRITICAL
+  NORMAL
+  LOW
+  MEDIUM
+  HIGH
   SENSITIVE
+  CRITICAL
   HYPERSENSITIVE
 }
 
@@ -172,9 +160,10 @@ model User {
   mobile          String
   passwordHash    String     @map("password_hash")
   profilePhotoUrl String?    @map("profile_photo_url")
-  role            UserRole   @default(VOLUNTEER)
+  role            UserRole   @default(CENTRAL_ADMIN)
   permissions     Json?      @default("[]")
   status          UserStatus @default(ACTIVE)
+  customRoleId    String?    @map("custom_role_id")
 
   isCandidate     Boolean    @default(false) @map("is_candidate")
   candidateProfile Json?     @map("candidate_profile")
@@ -184,10 +173,13 @@ model User {
   accessibleElections        Json?   @default("[]") @map("accessible_elections")
 
   lastLoginAt     DateTime?  @map("last_login_at")
+  isTempPassword  Boolean    @default(false) @map("is_temp_password")
+  passwordChangedAt DateTime? @map("password_changed_at")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
   constituency  Constituency?  @relation(fields: [constituencyId], references: [id])
+  customRole    CustomRole?    @relation(fields: [customRoleId], references: [id])
   refreshTokens RefreshToken[]
   otps          OTP[]
   cadre         Cadre?
@@ -196,6 +188,7 @@ model User {
   @@unique([tenantId, mobile])
   @@index([tenantId])
   @@index([constituencyId])
+  @@index([customRoleId])
   @@index([email])
   @@map("users")
 }
@@ -312,6 +305,16 @@ model Election {
   ecSyncLogs       ECSyncLog[]
   partyEvents      PartyEvent[]
   inventoryAllocations InventoryAllocation[]
+  boothCommitteeMembers BoothCommitteeMember[]
+  bla2Assignments       Bla2Assignment[]
+  campaigns             Campaign[]
+  boothClassifications  BoothClassification[]
+  pollDayIncidents      PollDayIncident[]
+  turnoutSnapshots      TurnoutSnapshot[]
+  gotvTargets           GOTVTarget[]
+  agentActivities       AgentActivity[]
+  agentMoodReports      AgentMoodReport[]
+  battleOrders          BattleOrder[]
 
   @@index([tenantId])
   @@index([constituencyId])
@@ -353,6 +356,8 @@ model Part {
   booths              Booth[]
   voters              Voter[]
   families            Family[]
+  boothCommittee      BoothCommitteeMember[]
+  bla2                Bla2Assignment?
 
   @@unique([electionId, partNumber])
   @@index([electionId])
@@ -395,7 +400,7 @@ model Booth {
   maleVoters          Int              @default(0) @map("male_voters")
   femaleVoters        Int              @default(0) @map("female_voters")
   otherVoters         Int              @default(0) @map("other_voters")
-  vulnerabilityStatus VulnerabilityType @default(NONE) @map("vulnerability_status")
+  vulnerabilityStatus VulnerabilityType @default(NOT_ASSIGNED) @map("vulnerability_status")
   isActive            Boolean          @default(true) @map("is_active")
   createdAt           DateTime         @default(now()) @map("created_at")
   updatedAt           DateTime         @updatedAt @map("updated_at")
@@ -405,6 +410,11 @@ model Booth {
   voters              Voter[]
   boothAgents         BoothAgent[]
   pollDayVotes        PollDayVote[]
+  classification      BoothClassification?
+  incidents           PollDayIncident[]
+  turnoutSnapshots    TurnoutSnapshot[]
+  gotvTargets         GOTVTarget[]
+  moodReports         AgentMoodReport[]
 
   @@unique([electionId, boothNumber])
   @@index([electionId])
@@ -476,6 +486,9 @@ model Voter {
   latitude          Float?
   longitude         Float?
 
+  // AI Pulse Score
+  pulseScore        Int?      @map("pulse_score")
+
   // Contact tracking
   lastContactedAt   DateTime? @map("last_contacted_at")
   lastContactedBy   String?   @map("last_contacted_by")
@@ -499,9 +512,12 @@ model Voter {
   language          Language?      @relation(fields: [languageId], references: [id])
   party             Party?         @relation(fields: [partyId], references: [id])
   voterCategory     VoterCategory? @relation(fields: [voterCategoryId], references: [id])
-  votingHistories   VoterVotingHistory[]
-  feedbackIssues    FeedbackIssue[]
-  surveyResponses   SurveyResponse[]
+  votingHistories       VoterVotingHistory[]
+  feedbackIssues        FeedbackIssue[]
+  surveyResponses       SurveyResponse[]
+  schemeEnrollments     VoterSchemeEnrollment[]
+  gotvTargets           GOTVTarget[]
+  pollDayVotes          PollDayVote[]
 
   @@unique([electionId, epicNumber])
   @@index([electionId])
@@ -746,9 +762,30 @@ model Scheme {
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
   election          Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voterSchemes      VoterSchemeEnrollment[]
 
   @@index([electionId])
   @@map("schemes")
+}
+
+model VoterSchemeEnrollment {
+  id              String    @id @default(uuid())
+  voterId         String    @map("voter_id")
+  schemeId        String    @map("scheme_id")
+  isBeneficiary   Boolean   @default(true) @map("is_beneficiary")
+  enrollmentDate  DateTime? @map("enrollment_date")
+  verifiedBy      String?   @map("verified_by")
+  verifiedAt      DateTime? @map("verified_at")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  voter           Voter     @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  scheme          Scheme    @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@unique([voterId, schemeId])
+  @@index([voterId])
+  @@index([schemeId])
+  @@map("voter_scheme_enrollments")
 }
 
 // ==================== CADRE & ASSIGNMENTS ====================
@@ -775,6 +812,8 @@ model Cadre {
   election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
   assignments     CadreAssignment[]
   locations       CadreLocation[]
+  boothCommittee  BoothCommitteeMember[]
+  bla2Assignments Bla2Assignment[]
 
   @@index([electionId])
   @@index([userId])
@@ -923,10 +962,12 @@ model PollDayVote {
 
   election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
   booth           Booth    @relation(fields: [boothId], references: [id], onDelete: Cascade)
+  voter           Voter?   @relation(fields: [voterId], references: [id])
 
   @@unique([electionId, boothId, epicNo])
   @@index([electionId])
   @@index([boothId])
+  @@index([voterId])
   @@map("poll_day_votes")
 }
 
@@ -938,7 +979,83 @@ model BoothAgent {
   mobile          String
   agentType       String   @map("agent_type")
   isActive        Boolean  @default(true) @map("is_active")
+  checkedInAt     DateTime? @map("checked_in_at")
+  checkedOutAt    DateTime? @map("checked_out_at")
+  lastLatitude    Float?   @map("last_latitude")
+  lastLongitude   Float?   @map("last_longitude")
+  lastActiveAt    DateTime? @map("last_active_at")
+  votesMarked     Int      @default(0) @map("votes_marked")
+  performanceScore Float?  @map("performance_score")
+  battleRating    String?  @map("battle_rating") // S, A, B, C, D
   assignedAt      DateTime @default(now()) @map("assigned_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  booth           Booth    @relation(fields: [boothId], references: [id], onDelete: Cascade)
+  activities      AgentActivity[]
+  moodReports     AgentMoodReport[]
+
+  @@index([electionId])
+  @@index([boothId])
+  @@map("booth_agents")
+}
+
+model BoothCommitteeMember {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  partId          String   @map("part_id")
+  cadreId         String   @map("cadre_id")
+  role            String
+  isActive        Boolean  @default(true) @map("is_active")
+  assignedAt      DateTime @default(now()) @map("assigned_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part            Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  cadre           Cadre    @relation(fields: [cadreId], references: [id], onDelete: Cascade)
+
+  @@unique([partId, cadreId])
+  @@index([electionId])
+  @@index([partId])
+  @@index([cadreId])
+  @@map("booth_committee_members")
+}
+
+model Bla2Assignment {
+  id                  String   @id @default(uuid())
+  electionId          String   @map("election_id")
+  partId              String   @unique @map("part_id")
+  cadreId             String   @map("cadre_id")
+  status              String   @default("ASSIGNED")
+  trainingCompleted   Boolean  @default(false) @map("training_completed")
+  notes               String?
+  assignedAt          DateTime @default(now()) @map("assigned_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  election            Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  part                Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  cadre               Cadre    @relation(fields: [cadreId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@index([cadreId])
+  @@map("bla2_assignments")
+}
+
+// ==================== WAR ROOM ====================
+
+model BoothClassification {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  boothId         String   @unique @map("booth_id")
+  classification  String   @default("UNKNOWN") // SAFE, FAVORABLE, BATTLEGROUND, DIFFICULT, HOSTILE
+  riskScore       Int      @default(0) @map("risk_score") // 0-100
+  priority        Int      @default(0) // 1=highest
+  lastAssessedAt  DateTime? @map("last_assessed_at")
+  assessedBy      String?  @map("assessed_by") // 'AI' or userId
+  notes           String?
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -946,8 +1063,152 @@ model BoothAgent {
   booth           Booth    @relation(fields: [boothId], references: [id], onDelete: Cascade)
 
   @@index([electionId])
+  @@map("booth_classifications")
+}
+
+model PollDayIncident {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  boothId         String?  @map("booth_id")
+  reportedBy      String   @map("reported_by")
+  incidentType    String   @map("incident_type") // VIOLENCE, DISRUPTION, EVM_MALFUNCTION, QUEUE_ISSUE, IMPERSONATION, OTHER
+  severity        String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  title           String
+  description     String?
+  status          String   @default("OPEN") // OPEN, ACKNOWLEDGED, IN_PROGRESS, RESOLVED, ESCALATED
+  assignedTo      String?  @map("assigned_to")
+  escalationLevel Int      @default(0) @map("escalation_level") // 0=booth, 1=sector, 2=constituency, 3=war room
+  slaDeadline     DateTime? @map("sla_deadline")
+  resolvedAt      DateTime? @map("resolved_at")
+  resolution      String?
+  latitude        Float?
+  longitude       Float?
+  attachments     Json?    @default("[]")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  booth           Booth?   @relation(fields: [boothId], references: [id])
+
+  @@index([electionId])
   @@index([boothId])
-  @@map("booth_agents")
+  @@index([status])
+  @@map("poll_day_incidents")
+}
+
+model TurnoutSnapshot {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  boothId         String?  @map("booth_id") // null = election-wide snapshot
+  snapshotTime    DateTime @map("snapshot_time")
+  totalVoters     Int      @map("total_voters")
+  totalVoted      Int      @map("total_voted")
+  maleVoted       Int      @default(0) @map("male_voted")
+  femaleVoted     Int      @default(0) @map("female_voted")
+  otherVoted      Int      @default(0) @map("other_voted")
+  percentage      Float
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  booth           Booth?   @relation(fields: [boothId], references: [id])
+
+  @@index([electionId, snapshotTime])
+  @@index([boothId, snapshotTime])
+  @@map("turnout_snapshots")
+}
+
+model GOTVTarget {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  voterId         String   @map("voter_id")
+  boothId         String?  @map("booth_id")
+  wave            Int      @default(1) // 1=morning(7-11), 2=afternoon(11-2), 3=evening(2-5)
+  priority        Int      @default(0) // higher = more important
+  status          String   @default("PENDING") // PENDING, CONTACTED, CONFIRMED, VOTED, UNREACHABLE
+  contactMethod   String?  @map("contact_method") // SMS, WHATSAPP, CALL, VISIT
+  contactedAt     DateTime? @map("contacted_at")
+  contactedBy     String?  @map("contacted_by")
+  notes           String?
+  needsTransport  Boolean  @default(false) @map("needs_transport")
+  needsAssistance Boolean  @default(false) @map("needs_assistance")
+  familyChainId   String?  @map("family_chain_id") // group family members together
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  voter           Voter    @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  booth           Booth?   @relation(fields: [boothId], references: [id])
+
+  @@unique([electionId, voterId])
+  @@index([electionId, status])
+  @@index([electionId, wave])
+  @@index([boothId])
+  @@map("gotv_targets")
+}
+
+model AgentActivity {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  agentId         String   @map("agent_id") // BoothAgent ID
+  activityType    String   @map("activity_type") // CHECK_IN, CHECK_OUT, VOTE_MARKED, INCIDENT_REPORTED, MOOD_REPORT, TASK_COMPLETED
+  boothId         String?  @map("booth_id")
+  latitude        Float?
+  longitude       Float?
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  agent           BoothAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([electionId, agentId])
+  @@index([electionId, activityType])
+  @@map("agent_activities")
+}
+
+model AgentMoodReport {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  agentId         String   @map("agent_id")
+  boothId         String   @map("booth_id")
+  mood            String   // GREEN, YELLOW, RED
+  confidence      Int      @default(50) // 0-100
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  agent           BoothAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  booth           Booth    @relation(fields: [boothId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@index([agentId])
+  @@index([boothId])
+  @@map("agent_mood_reports")
+}
+
+model BattleOrder {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  orderType       String   @map("order_type") // REDEPLOY_AGENT, GOTV_BLAST, FOCUS_BOOTH, ESCALATE_INCIDENT, COUNTER_NARRATIVE
+  priority        String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  title           String
+  description     String?
+  targetBoothId   String?  @map("target_booth_id")
+  targetAgentId   String?  @map("target_agent_id")
+  status          String   @default("PENDING") // PENDING, ACCEPTED, IN_PROGRESS, COMPLETED, DISMISSED
+  generatedBy     String   @default("AI") @map("generated_by") // AI or userId
+  acceptedBy      String?  @map("accepted_by")
+  acceptedAt      DateTime? @map("accepted_at")
+  completedAt     DateTime? @map("completed_at")
+  result          String?
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@index([status])
+  @@map("battle_orders")
 }
 
 // ==================== FEEDBACK & ISSUES ====================
@@ -1007,6 +1268,8 @@ model AIAnalyticsResult {
   id              String   @id @default(uuid())
   electionId      String   @map("election_id")
   analysisType    String   @map("analysis_type")
+  analysisName    String?  @map("analysis_name")
+  description     String?
   parameters      Json?    @default("{}")
   results         Json?    @default("{}")
   insights        Json?    @default("[]")
@@ -1318,6 +1581,115 @@ model NBBroadcast {
   @@index([tenantId])
   @@index([status])
   @@map("nb_broadcasts")
+}
+
+// ==================== CAMPAIGNS & MESSAGING ====================
+
+enum CampaignType {
+  SMS
+  WHATSAPP
+  EMAIL
+  VOICE
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+enum MessagingProviderType {
+  TWILIO
+  MSG91
+  GUPSHUP
+  SENDGRID
+  NODEMAILER
+  CUSTOM
+}
+
+model Campaign {
+  id              String         @id @default(uuid())
+  tenantId        String         @map("tenant_id")
+  electionId      String         @map("election_id")
+  campaignName    String         @map("campaign_name")
+  campaignType    CampaignType   @map("campaign_type")
+  message         String
+  subject         String?
+  mediaUrl        String?        @map("media_url")
+  targetAudience  Json           @default("{}") @map("target_audience")
+  targetCount     Int            @default(0) @map("target_count")
+  status          CampaignStatus @default(DRAFT)
+  scheduledAt     DateTime?      @map("scheduled_at")
+  startedAt       DateTime?      @map("started_at")
+  completedAt     DateTime?      @map("completed_at")
+  sentCount       Int            @default(0) @map("sent_count")
+  deliveredCount  Int            @default(0) @map("delivered_count")
+  failedCount     Int            @default(0) @map("failed_count")
+  readCount       Int            @default(0) @map("read_count")
+  createdBy       String?        @map("created_by")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  election        Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  messages        CampaignMessage[]
+
+  @@index([tenantId])
+  @@index([electionId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+model CampaignMessage {
+  id                String        @id @default(uuid())
+  campaignId        String        @map("campaign_id")
+  voterId           String?       @map("voter_id")
+  voterName         String?       @map("voter_name")
+  phone             String?
+  email             String?
+  channel           CampaignType
+  status            MessageStatus @default(QUEUED)
+  providerMessageId String?       @map("provider_message_id")
+  errorMessage      String?       @map("error_message")
+  sentAt            DateTime?     @map("sent_at")
+  deliveredAt       DateTime?     @map("delivered_at")
+  readAt            DateTime?     @map("read_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  campaign          Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([voterId])
+  @@index([status])
+  @@map("campaign_messages")
+}
+
+model MessagingProvider {
+  id              String               @id @default(uuid())
+  tenantId        String               @map("tenant_id")
+  channel         CampaignType
+  provider        MessagingProviderType
+  providerName    String?              @map("provider_name")
+  config          Json                 @default("{}")
+  isActive        Boolean              @default(true) @map("is_active")
+  isDefault       Boolean              @default(false) @map("is_default")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([channel])
+  @@index([tenantId, channel])
+  @@map("messaging_providers")
 }
 
 // ==================== WEBSITE BUILDER ====================
@@ -1872,6 +2244,7 @@ model TenantAICredits {
   usedCredits     Int      @default(0) @map("used_credits")
   bonusCredits    Int      @default(0) @map("bonus_credits")
   expiresAt       DateTime? @map("expires_at")
+  creditSignature String?   @map("credit_signature")
   lastPurchasedAt DateTime? @map("last_purchased_at")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -2093,6 +2466,12 @@ model CandidateBattleCard {
   counterArguments    Json     @default("[]") @map("counter_arguments")
   voterAppeal         Json     @default("{}") @map("voter_appeal") // Demographics appeal comparison
   headToHeadStats     Json     @default("{}") @map("head_to_head_stats")
+  campaignAmmunition  Json     @default("{}") @map("campaign_ammunition")
+  speechPoints        Json     @default("[]") @map("speech_points")
+  demographicStrategy Json     @default("{}") @map("demographic_strategy")
+  groundStrategy      Json     @default("{}") @map("ground_strategy")
+  socialMediaStrategy Json     @default("{}") @map("social_media_strategy")
+  winPath             Json     @default("{}") @map("win_path")
   isActive            Boolean  @default(true) @map("is_active")
   createdBy           String?  @map("created_by")
   createdAt           DateTime @default(now()) @map("created_at")
@@ -2105,4 +2484,184 @@ model CandidateBattleCard {
   @@index([candidateId])
   @@index([opponentId])
   @@map("candidate_battle_cards")
+}
+
+// ==================== NEWS & ACTIONS ====================
+
+model NewsInformation {
+  id              String    @id @default(uuid())
+  title           String
+  titleLocal      String?   @map("title_local")
+  content         String
+  summary         String?
+  category        String?
+  subCategory     String?   @map("sub_category")
+  tags            Json      @default("[]")
+  imageUrl        String?   @map("image_url")
+  imageUrls       Json      @default("[]") @map("image_urls")
+  sourceUrl       String?   @map("source_url")
+  sourceName      String?   @map("source_name")
+  source          String?
+  author          String?
+  publishedAt     DateTime? @map("published_at")
+  priority        String    @default("MEDIUM")
+  scope           String    @default("national")
+  geographicLevel String    @default("NATIONAL") @map("geographic_level")
+  state           String?
+  district        String?
+  constituency    String?
+  tenantId        String?   @map("tenant_id")
+  status          String    @default("draft")
+  isActive        Boolean   @default(true) @map("is_active")
+  isPinned        Boolean   @default(false) @map("is_pinned")
+  viewCount       Int       @default(0) @map("view_count")
+  aiAnalysis      Json?     @map("ai_analysis")
+  sentimentScore  Float?    @map("sentiment_score")
+  impactScore     Float?    @map("impact_score")
+  relevanceScore  Float?    @map("relevance_score")
+  suggestedActions Json?    @map("suggested_actions")
+  analyzedAt      DateTime? @map("analyzed_at")
+  createdBy       String?   @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  actions         ActionItem[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([scope])
+  @@index([geographicLevel])
+  @@map("news_information")
+}
+
+model ActionItem {
+  id                String    @id @default(uuid())
+  title             String
+  titleLocal        String?   @map("title_local")
+  description       String?
+  descriptionLocal  String?   @map("description_local")
+  actionType        String    @map("action_type")
+  priority          String    @default("MEDIUM")
+  status            String    @default("pending")
+  dueDate           DateTime? @map("due_date")
+  assignedTo        String?   @map("assigned_to")
+  assignedToName    String?   @map("assigned_to_name")
+  assignedAt        DateTime? @map("assigned_at")
+  tenantId          String?   @map("tenant_id")
+  newsId            String?   @map("news_id")
+  metadata          Json?
+  aiGenerated       Boolean   @default(false) @map("ai_generated")
+  geographicLevel   String    @default("CONSTITUENCY") @map("geographic_level")
+  state             String?
+  region            String?
+  district          String?
+  constituency      String?
+  section           String?
+  booth             String?
+  estimatedImpact   String?   @map("estimated_impact")
+  requiredResources String?   @map("required_resources")
+  targetAudience    String?   @map("target_audience")
+  successMetrics    String?   @map("success_metrics")
+  startedAt         DateTime? @map("started_at")
+  completedAt       DateTime? @map("completed_at")
+  completionNotes   String?   @map("completion_notes")
+  outcome           String?
+  createdBy         String?   @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  news              NewsInformation? @relation(fields: [newsId], references: [id])
+
+  @@index([tenantId])
+  @@index([newsId])
+  @@index([status])
+  @@map("action_items")
+}
+
+// ==================== FEATURE ACCESS CONTROL ====================
+
+model Feature {
+  id            String   @id @default(uuid())
+  featureKey    String   @unique @map("feature_key")
+  featureName   String   @map("feature_name")
+  description   String?
+  category      String?
+  isGlobal      Boolean  @default(true) @map("is_global")
+  defaultEnabled Boolean @default(true) @map("default_enabled")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenantFeatures TenantFeature[]
+
+  @@map("features")
+}
+
+model TenantFeature {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  featureId String   @map("feature_id")
+  isEnabled Boolean  @default(true) @map("is_enabled")
+  settings  Json?    @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureId])
+  @@index([tenantId])
+  @@map("tenant_features")
+}
+
+model RoleFeatureAccess {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  role       UserRole
+  featureKey String   @map("feature_key")
+  isEnabled  Boolean  @default(true) @map("is_enabled")
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, role, featureKey], name: "tenantId_role_featureKey")
+  @@index([tenantId])
+  @@index([role])
+  @@map("role_feature_access")
+}
+
+// Custom roles created by tenant admin (beyond system UserRole enum)
+model CustomRole {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   // Display name e.g. "District Officer"
+  slug        String   // Unique key e.g. "DISTRICT_OFFICER"
+  description String?
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  featureAccess CustomRoleFeatureAccess[]
+  users         User[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("custom_roles")
+}
+
+// Feature access for custom roles (separate from system RoleFeatureAccess which uses enum)
+model CustomRoleFeatureAccess {
+  id           String     @id @default(uuid())
+  tenantId     String     @map("tenant_id")
+  customRoleId String     @map("custom_role_id")
+  featureKey   String     @map("feature_key")
+  isEnabled    Boolean    @default(false) @map("is_enabled")
+  createdBy    String?    @map("created_by")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  customRole   CustomRole @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([customRoleId, featureKey])
+  @@index([tenantId])
+  @@index([customRoleId])
+  @@map("custom_role_feature_access")
 }

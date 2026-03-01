@@ -113,32 +113,65 @@ router.post('/bulk', async (req: Request, res: Response) => {
       return;
     }
 
-    let created = 0;
-    let failed = 0;
-    const errors: string[] = [];
+    const results = {
+      total: sections.length,
+      created: 0,
+      failed: 0,
+      errors: [] as Array<{ row: number; field?: string; error: string }>,
+    };
 
-    for (const sectionData of sections) {
+    for (const [index, sectionData] of sections.entries()) {
       try {
-        const { partId, sectionNumber, sectionName, sectionNameLocal, isOverseas } = sectionData;
+        // Validate with Zod schema
+        const validation = createSectionSchema.safeParse(sectionData);
+
+        if (!validation.success) {
+          results.failed++;
+          results.errors.push({
+            row: index + 1,
+            field: validation.error.errors[0]?.path.join('.'),
+            error: validation.error.errors[0]?.message || 'Validation failed',
+          });
+          continue;
+        }
 
         await (tenantDb as any).section.create({
           data: {
             electionId: electionId as string,
-            partId,
-            sectionNumber,
-            sectionName,
-            sectionNameLocal: sectionNameLocal || null,
-            isOverseas: isOverseas || false,
+            ...validation.data,
           },
         });
-        created++;
+        results.created++;
       } catch (err: any) {
-        failed++;
-        errors.push(`Section "${sectionData.sectionName}": ${err.message}`);
+        results.failed++;
+        // Handle unique constraint violations
+        const errorMsg = err.code === 'P2002'
+          ? `Duplicate section number ${sectionData.sectionNumber} in this election`
+          : err.message;
+        results.errors.push({
+          row: index + 1,
+          field: err.code === 'P2002' ? 'sectionNumber' : undefined,
+          error: errorMsg,
+        });
       }
     }
 
-    res.status(201).json(successResponse({ created, failed, errors }));
+    // Update election section count
+    if (results.created > 0) {
+      try {
+        const totalSections = await (tenantDb as any).section.count({
+          where: { electionId: electionId as string },
+        });
+        await (tenantDb as any).election.update({
+          where: { id: electionId as string },
+          data: { totalSections },
+        });
+      } catch (statsErr) {
+        logger.warn({ err: statsErr }, 'Failed to update election section count (non-critical)');
+      }
+    }
+
+    res.status(201).json(successResponse(results));
   } catch (error) {
     logger.error({ err: error }, 'Bulk create sections error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));

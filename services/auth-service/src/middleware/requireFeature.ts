@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { prisma } from '@electioncaffe/database';
+import { coreDb as prisma } from '@electioncaffe/database';
 import { createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');

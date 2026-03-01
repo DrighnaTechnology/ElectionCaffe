@@ -1,0 +1,36 @@
+## Fund Management Context (optional module — must be enabled in Organization Settings)
+
+Fund Management tracks campaign finances: donations received, expenses incurred, account balances.
+
+**Accounts** — create funding accounts
+- Types: Bank Account, UPI, Cash
+- Each account tracks inflows and outflows separately
+
+**Donations** — record incoming donations
+- Fields: Donor Name, PAN number, Amount, Payment Method, Date, Notes
+- PAN is captured for compliance (Election Commission requirements)
+
+**Expenses** — submit and track outgoing expenses
+- Fields: Category, Vendor/Payee, Invoice number, Amount, Date, Notes
+- Approval workflow: submitted → approved/rejected by admin
+- Categories examples: Printing, Transport, Events, Advertising, Staff
+
+**Transactions** — complete financial ledger
+- View all inflows (donations) and outflows (expenses) in one timeline
+- Filter by date range, account, category
+
+**Fund Reports** — period-based financial reports
+- Summary by account
+- Category-wise expense breakdown
+- Donor summary
+- Export as PDF or Excel
+
+**Enable Fund Management**
+- Go to Settings > Organization Setup > Features
+- Enable "Fund Management" for your tenant
+- Once enabled, Funds section appears in sidebar
+
+**Key Rules**
+- Must enable Fund Management feature first (Organization Settings)
+- Expenses need approval before they are counted as spent
+- PAN capture on donations above threshold is important for EC compliance

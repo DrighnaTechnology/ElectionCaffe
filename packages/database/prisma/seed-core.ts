@@ -42,7 +42,7 @@ async function main() {
     {
       configKey: 'database_config',
       configValue: {
-        defaultType: 'DEDICATED_MANAGED',
+        defaultType: 'DEDICATED_PLATFORM',
         autoProvision: true,
         dbNamePrefix: 'EC_',
       },
@@ -306,21 +306,32 @@ async function main() {
   console.log('  ✓ AI configuration seeded');
 
   // 6. AI Credit Packages
+  // Pricing based on GPT-4o avg ~$0.0075/call, with 50% profit margin
+  // 1 credit = 1 AI call, selling at ~$0.01125/credit
   const creditPackages = [
-    { packageName: 'Starter Pack', credits: 500, price: 499, bonusCredits: 0, validityDays: 365, sortOrder: 1 },
-    { packageName: 'Standard Pack', credits: 2000, price: 1499, bonusCredits: 200, validityDays: 365, sortOrder: 2 },
-    { packageName: 'Premium Pack', credits: 5000, price: 2999, bonusCredits: 1000, validityDays: 365, sortOrder: 3 },
-    { packageName: 'Enterprise Pack', credits: 20000, price: 9999, bonusCredits: 5000, validityDays: 365, sortOrder: 4 },
+    { packageName: 'Starter',      displayName: 'Starter',      description: 'Perfect for trying out AI features',                    credits: 200,    price: 2.99,    bonusCredits: 0,     validityDays: 90,  sortOrder: 1, isPopular: false },
+    { packageName: 'Basic',         displayName: 'Basic',         description: 'For small teams getting started with AI',               credits: 500,    price: 5.99,    bonusCredits: 25,    validityDays: 180, sortOrder: 2, isPopular: false },
+    { packageName: 'Professional',  displayName: 'Professional',  description: 'Best value for growing teams',                          credits: 1500,   price: 16.99,   bonusCredits: 100,   validityDays: 365, sortOrder: 3, isPopular: true },
+    { packageName: 'Business',      displayName: 'Business',      description: 'For organizations with regular AI usage',               credits: 5000,   price: 56.99,   bonusCredits: 500,   validityDays: 365, sortOrder: 4, isPopular: false },
+    { packageName: 'Enterprise',    displayName: 'Enterprise',    description: 'High-volume AI for large organizations',                credits: 15000,  price: 169.99,  bonusCredits: 2000,  validityDays: 365, sortOrder: 5, isPopular: false },
+    { packageName: 'Unlimited Pro', displayName: 'Unlimited Pro', description: 'Maximum credits for power users and large deployments', credits: 50000,  price: 549.99,  bonusCredits: 10000, validityDays: 365, sortOrder: 6, isPopular: false },
   ];
+
+  // Delete old packages first
+  await prisma.aICreditPackage.deleteMany({
+    where: {
+      packageName: { in: ['Starter Pack', 'Standard Pack', 'Premium Pack', 'Enterprise Pack'] },
+    },
+  });
 
   for (const pkg of creditPackages) {
     await prisma.aICreditPackage.upsert({
-      where: { id: pkg.packageName },
+      where: { packageName: pkg.packageName },
       update: pkg,
       create: pkg,
     });
   }
-  console.log('  ✓ AI credit packages seeded');
+  console.log('  ✓ AI credit packages seeded (6 plans, 50% profit margin)');
 
   // 7. Super Admin User
   const hashedPassword = await bcrypt.hash('SuperAdmin@123', 12);

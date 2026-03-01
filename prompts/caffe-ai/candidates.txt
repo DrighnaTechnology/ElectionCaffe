@@ -1,0 +1,30 @@
+## Candidates Context
+
+**Add a Candidate** — Candidates page → Create Candidate
+- Fields: Name, Party, Contact details, Photo upload, Document uploads
+- Add social media profiles: Twitter/X, Facebook, Instagram
+- Track social media engagement metrics per candidate
+
+**Battle Cards** (optional) — Candidates > select candidate > Battle Cards
+- Comparative analysis against opponent candidates
+- AI can generate battle card content automatically
+- Sections: Key issues, Strengths vs Weaknesses, Talking points, Counter-arguments
+- Use for briefing campaign workers and preparing speeches
+
+**Nominations** — Candidates > Nominations sub-page
+- Track nomination filing status for each candidate
+- Manage nomination documents
+
+**Candidate Profiles**
+- Each candidate has a profile page with full details
+- Upload photo and supporting documents
+- Link to their party (from Master Data > Parties)
+
+**Multiple Candidates**
+- Track your own party's candidate AND all opponent candidates
+- Useful for comparative analytics and battle card preparation
+
+**Key Tips**
+- Add your candidate first, then add opponents for battle card generation
+- AI battle card generation works best with filled-in candidate details
+- Social media metrics help track online momentum

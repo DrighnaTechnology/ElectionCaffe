@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { prisma } from '@electioncaffe/database';
+import { verifyCredits, signCredits, coreDb } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
+import { FEATURE_CREDIT_COSTS } from '../utils/ai-credit-gate.js';
+import crypto from 'crypto';
 
 const router = Router();
 
@@ -22,258 +24,148 @@ const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
 
 router.use(requireAuth);
 
-// Check if tenant has access to a feature and sufficient credits
-async function checkFeatureAccess(
-  tenantId: string,
-  userId: string,
-  featureId: string
-): Promise<{ allowed: boolean; error?: string; subscription?: any; credits?: any; feature?: any }> {
-  // Get feature details
-  const feature = await prisma.aIFeature.findUnique({
-    where: { id: featureId },
-    include: { provider: true },
-  });
+// Feature metadata for the AI Tools UI
+const FEATURE_METADATA: Record<string, {
+  displayName: string;
+  description: string;
+  category: string;
+}> = {
+  caffe_ai_chat: {
+    displayName: 'CaffeAI Chat',
+    description: 'Ask questions and get AI-powered answers about your election data',
+    category: 'General',
+  },
+  caffe_ai_translate: {
+    displayName: 'CaffeAI Translate',
+    description: 'Translate text between languages using AI',
+    category: 'General',
+  },
+  campaign_compose: {
+    displayName: 'Campaign Message Composer',
+    description: 'Generate compelling campaign messages and communications',
+    category: 'Campaign',
+  },
+  campaign_audience: {
+    displayName: 'Audience Analysis',
+    description: 'AI-powered voter audience segmentation and targeting',
+    category: 'Campaign',
+  },
+  dashboard_narrative: {
+    displayName: 'Dashboard Narrative',
+    description: 'Generate narrative summaries from your dashboard analytics',
+    category: 'Analytics',
+  },
+  survey_generate: {
+    displayName: 'Survey Generator',
+    description: 'Generate survey questions using AI based on your objectives',
+    category: 'Survey',
+  },
+  survey_analyze: {
+    displayName: 'Survey Analyzer',
+    description: 'Analyze survey responses with AI-powered insights',
+    category: 'Survey',
+  },
+  caffe_ai_report: {
+    displayName: 'AI Report Generator',
+    description: 'Generate comprehensive analytical reports from your data',
+    category: 'Reports',
+  },
+  nb_parse_news: {
+    displayName: 'News Parser',
+    description: 'Parse and extract key information from news articles',
+    category: 'News',
+  },
+  news_analysis: {
+    displayName: 'News Analysis',
+    description: 'Analyze news articles for sentiment and political impact',
+    category: 'News',
+  },
+  action_generation: {
+    displayName: 'Action Generator',
+    description: 'Generate strategic action items from news and data insights',
+    category: 'Actions',
+  },
+  battle_card: {
+    displayName: 'Battle Card Generator',
+    description: 'Generate competitive battle cards for candidates',
+    category: 'Election',
+  },
+};
 
-  if (!feature || feature.status !== 'PUBLISHED' || !(feature as any).isActive) {
-    return { allowed: false, error: 'Feature not available' };
-  }
-
-  // Check if tenant has subscription to this feature (legacy schema)
-  const subscription = await prisma.tenantAISubscription.findUnique({
-    where: {
-      tenantId_featureId: { tenantId, featureId },
-    },
-  });
-
-  if (!subscription || !subscription.isEnabled) {
-    return { allowed: false, error: 'Tenant does not have access to this feature' };
-  }
-
-  // Check expiry
-  if (subscription.expiresAt && new Date() > subscription.expiresAt) {
-    return { allowed: false, error: 'Feature subscription has expired' };
-  }
-
-  // Check if user has access (if user-level access control is configured, legacy schema)
-  const userAccess = await prisma.tenantUserAIAccess.findUnique({
-    where: {
-      userId_featureId: { userId, featureId },
-    } as any,
-  });
-
-  if (userAccess && !userAccess.isEnabled) {
-    return { allowed: false, error: 'User does not have access to this feature' };
-  }
-
-  // Check user daily/monthly limits if configured
-  if (userAccess?.maxUsagePerDay || userAccess?.maxUsagePerMonth) {
-    const now = new Date();
-    const startOfDay = new Date(now.setHours(0, 0, 0, 0));
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [dailyUsage, monthlyUsage] = await Promise.all([
-      prisma.aIUsageLog.count({
-        where: {
-          userId,
-          featureId,
-          createdAt: { gte: startOfDay },
-        },
-      }),
-      prisma.aIUsageLog.count({
-        where: {
-          userId,
-          featureId,
-          createdAt: { gte: startOfMonth },
-        },
-      }),
-    ]);
-
-    if (userAccess.maxUsagePerDay && dailyUsage >= userAccess.maxUsagePerDay) {
-      return { allowed: false, error: 'Daily usage limit reached' };
-    }
-    if (userAccess.maxUsagePerMonth && monthlyUsage >= userAccess.maxUsagePerMonth) {
-      return { allowed: false, error: 'Monthly usage limit reached' };
-    }
-  }
-
-  // Check tenant credits (legacy schema)
-  const credits = await prisma.tenantAICredits.findUnique({
+// Get available balance from tenant DB
+async function getTenantCredits(tenantDb: any, tenantId: string) {
+  const credits = await tenantDb.tenantAICredits.findUnique({
     where: { tenantId },
   });
 
-  const creditsRequired = (subscription as any).customCreditsPerUse ?? (feature as any).creditsPerUse ?? 1;
-
-  if (!credits || credits.balance < creditsRequired) {
-    // Create alert for depleted credits
-    await prisma.aIAdminAlert.create({
-      data: {
-        tenantId,
-        alertType: 'CREDITS_DEPLETED',
-        severity: 'HIGH',
-        message: `Tenant credits depleted. Cannot use feature: ${feature.displayName}`,
-        details: {
-          featureId,
-          featureName: feature.displayName,
-          creditsRequired,
-          creditsAvailable: credits?.balance ?? 0,
-        },
-      } as any,
-    });
-
-    return { allowed: false, error: 'Insufficient credits. Please contact your administrator.' };
+  if (!credits) {
+    return { balance: 0, totalCredits: 0, usedCredits: 0, bonusCredits: 0, id: null };
   }
 
-  return { allowed: true, subscription, credits, feature };
-}
-
-// Deduct credits and log usage
-async function logUsage(
-  tenantId: string,
-  userId: string,
-  featureId: string,
-  providerId: string,
-  input: string,
-  output: string,
-  processingTimeMs: number,
-  tokensUsed: { input: number; output: number },
-  creditsUsed: number,
-  success: boolean,
-  errorMessage?: string
-): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    // Create usage log
-    await tx.aIUsageLog.create({
-      data: {
-        tenantId,
-        userId,
-        featureId,
-        providerId,
-        inputText: input.substring(0, 1000), // Truncate for storage
-        outputText: output.substring(0, 1000),
-        inputTokens: tokensUsed.input,
-        outputTokens: tokensUsed.output,
-        processingTimeMs,
-        creditsUsed,
-        success,
-        errorMessage,
-      } as any,
-    });
-
-    if (success && creditsUsed > 0) {
-      // Deduct credits
-      await tx.tenantAICredits.update({
-        where: { tenantId },
-        data: {
-          balance: { decrement: creditsUsed },
-          totalUsed: { increment: creditsUsed },
-          lastUsedAt: new Date(),
-        } as any,
-      });
-
-      // Create credit transaction
-      await tx.aICreditTransaction.create({
-        data: {
-          tenantId,
-          transactionType: 'USAGE',
-          creditsAmount: -creditsUsed,
-          featureId,
-          notes: `Used ${creditsUsed} credits for AI feature`,
-        } as any,
-      });
-
-      // Check for low balance and create alert if needed
-      const updatedCredits = await tx.tenantAICredits.findUnique({
-        where: { tenantId },
-      });
-
-      if (updatedCredits && updatedCredits.balance <= ((updatedCredits as any).lowBalanceAlert || 100)) {
-        // Check if alert already exists
-        const existingAlert = await tx.aIAdminAlert.findFirst({
-          where: {
-            tenantId,
-            alertType: 'LOW_BALANCE',
-            isResolved: false,
-          },
-        });
-
-        if (!existingAlert) {
-          await tx.aIAdminAlert.create({
-            data: {
-              tenantId,
-              alertType: 'LOW_BALANCE',
-              severity: 'MEDIUM',
-              message: `Tenant credits are low: ${updatedCredits.balance} remaining`,
-              details: {
-                currentBalance: updatedCredits.balance,
-                threshold: (updatedCredits as any).lowBalanceAlert,
-              },
-            } as any,
-          });
-        }
-      }
-    }
+  // Verify HMAC signature
+  const isValid = verifyCredits({
+    tenantId,
+    totalCredits: credits.totalCredits,
+    bonusCredits: credits.bonusCredits || 0,
+    expiresAt: credits.expiresAt ? new Date(credits.expiresAt).toISOString() : null,
+    creditSignature: credits.creditSignature,
   });
+
+  if (!isValid) {
+    console.error(`[ai-features] TAMPER DETECTED for tenant ${tenantId}!`);
+    return { balance: 0, totalCredits: 0, usedCredits: 0, bonusCredits: 0, id: null, tampered: true };
+  }
+
+  // Check expiry
+  if (credits.expiresAt && new Date() > new Date(credits.expiresAt)) {
+    return { balance: 0, totalCredits: 0, usedCredits: 0, bonusCredits: 0, id: credits.id, expired: true };
+  }
+
+  const balance = credits.totalCredits - credits.usedCredits + (credits.bonusCredits || 0);
+
+  return {
+    balance,
+    totalCredits: credits.totalCredits,
+    usedCredits: credits.usedCredits,
+    bonusCredits: credits.bonusCredits || 0,
+    id: credits.id,
+  };
 }
 
-// List available AI features for tenant
-router.get('/available', async (req: Request, res: Response, next: NextFunction) => {
+// GET /api/ai/features — list features + credits (frontend: aiAPI.getAvailableFeatures)
+router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.headers['x-tenant-id'] as string;
+    const tenantDb = await getTenantDb(req);
 
-    const subscriptions = await prisma.tenantAISubscription.findMany({
-      where: {
-        tenantId,
-        isEnabled: true,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } },
-        ],
-      },
-      include: {
-        feature: {
-          include: {
-            provider: {
-              select: {
-                id: true,
-                providerType: true,
-                displayName: true,
-              },
-            },
-          },
-        },
-      },
+    const features = Object.entries(FEATURE_CREDIT_COSTS).map(([featureKey, creditsPerUse]) => {
+      const meta = FEATURE_METADATA[featureKey] || {
+        displayName: featureKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        description: '',
+        category: 'Other',
+      };
+      return {
+        id: featureKey,
+        featureName: featureKey,
+        displayName: meta.displayName,
+        description: meta.description,
+        category: meta.category,
+        creditsPerUse,
+      };
     });
 
-    const availableFeatures = subscriptions
-      .filter(s => s.feature.status === 'PUBLISHED' && (s.feature as any).isActive)
-      .map(s => ({
-        id: s.feature.id,
-        featureName: s.feature.featureName,
-        displayName: s.feature.displayName,
-        description: s.feature.description,
-        category: s.feature.category,
-        provider: s.feature.provider.displayName,
-        creditsPerUse: (s as any).customCreditsPerUse ?? (s.feature as any).creditsPerUse,
-        requiresFileUpload: (s.feature as any).requiresFileUpload,
-        allowedFileTypes: (s.feature as any).allowedFileTypes,
-        maxFileSizeMB: (s.feature as any).maxFileSizeMB,
-      }));
-
-    // Get tenant credits (legacy schema)
-    const credits = await prisma.tenantAICredits.findUnique({
-      where: { tenantId },
-      select: {
-        balance: true,
-        totalPurchased: true,
-        totalUsed: true,
-      } as any,
-    });
+    const credits = await getTenantCredits(tenantDb, tenantId);
 
     res.json({
       success: true,
       data: {
-        features: availableFeatures,
-        credits: credits || { balance: 0, totalPurchased: 0, totalUsed: 0 },
+        features,
+        credits: {
+          balance: credits.balance,
+          totalCredits: credits.totalCredits,
+          usedCredits: credits.usedCredits,
+          bonusCredits: credits.bonusCredits,
+        },
       },
     });
   } catch (error) {
@@ -281,38 +173,21 @@ router.get('/available', async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-// Get feature details
-router.get('/:featureId', async (req: Request, res: Response, next: NextFunction) => {
+// GET /api/ai/features/credits — credits only (frontend: aiAPI.getCredits)
+router.get('/credits', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.headers['x-tenant-id'] as string;
-    const userId = req.headers['x-user-id'] as string;
-    const { featureId } = req.params;
+    const tenantDb = await getTenantDb(req);
 
-    const accessCheck = await checkFeatureAccess(tenantId, userId, featureId!);
-
-    if (!accessCheck.allowed) {
-      res.status(403).json({
-        success: false,
-        error: { code: 'E4001', message: accessCheck.error },
-      });
-      return;
-    }
+    const credits = await getTenantCredits(tenantDb, tenantId);
 
     res.json({
       success: true,
       data: {
-        feature: {
-          id: accessCheck.feature.id,
-          featureName: accessCheck.feature.featureName,
-          displayName: accessCheck.feature.displayName,
-          description: accessCheck.feature.description,
-          category: accessCheck.feature.category,
-          creditsPerUse: accessCheck.subscription.customCreditsPerUse ?? accessCheck.feature.creditsPerUse,
-          requiresFileUpload: accessCheck.feature.requiresFileUpload,
-          allowedFileTypes: accessCheck.feature.allowedFileTypes,
-          maxFileSizeMB: accessCheck.feature.maxFileSizeMB,
-        },
-        creditsAvailable: accessCheck.credits.balance,
+        balance: credits.balance,
+        totalCredits: credits.totalCredits,
+        usedCredits: credits.usedCredits,
+        bonusCredits: credits.bonusCredits,
       },
     });
   } catch (error) {
@@ -320,145 +195,46 @@ router.get('/:featureId', async (req: Request, res: Response, next: NextFunction
   }
 });
 
-// Execute AI feature
-router.post('/:featureId/execute', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const tenantId = req.headers['x-tenant-id'] as string;
-    const userId = req.headers['x-user-id'] as string;
-    const { featureId } = req.params;
-
-    const schema = z.object({
-      input: z.string().min(1),
-      fileBase64: z.string().optional(), // For file uploads (OCR, etc.)
-      fileName: z.string().optional(),
-      options: z.record(z.any()).optional(),
-    });
-
-    const data = schema.parse(req.body);
-
-    const accessCheck = await checkFeatureAccess(tenantId, userId, featureId!);
-
-    if (!accessCheck.allowed) {
-      res.status(403).json({
-        success: false,
-        error: { code: 'E4001', message: accessCheck.error },
-      });
-      return;
-    }
-
-    const { feature, subscription, credits } = accessCheck;
-    const startTime = Date.now();
-
-    // Calculate credits required
-    const creditsRequired = subscription.customCreditsPerUse ?? feature.creditsPerUse ?? 1;
-
-    try {
-      // Execute AI based on provider type
-      let result: { output: string; tokens: { input: number; output: number } };
-
-      switch (feature.provider.providerType) {
-        case 'OPENAI':
-          result = await executeOpenAI(feature, data.input, data.fileBase64);
-          break;
-        case 'ANTHROPIC':
-          result = await executeAnthropic(feature, data.input, data.fileBase64);
-          break;
-        case 'GOOGLE':
-          result = await executeGoogle(feature, data.input, data.fileBase64);
-          break;
-        case 'XAI':
-          result = await executeXAI(feature, data.input, data.fileBase64);
-          break;
-        default:
-          result = await executeCustom(feature, data.input, data.fileBase64);
-      }
-
-      const processingTimeMs = Date.now() - startTime;
-
-      // Log usage and deduct credits
-      await logUsage(
-        tenantId,
-        userId,
-        featureId!,
-        feature.providerId,
-        data.input,
-        result.output,
-        processingTimeMs,
-        result.tokens,
-        creditsRequired,
-        true
-      );
-
-      res.json({
-        success: true,
-        data: {
-          output: result.output,
-          tokensUsed: result.tokens,
-          processingTimeMs,
-          creditsUsed: creditsRequired,
-          creditsRemaining: credits.balance - creditsRequired,
-        },
-      });
-    } catch (error: any) {
-      const processingTimeMs = Date.now() - startTime;
-
-      // Log failed usage (no credits deducted)
-      await logUsage(
-        tenantId,
-        userId,
-        featureId!,
-        feature.providerId,
-        data.input,
-        '',
-        processingTimeMs,
-        { input: 0, output: 0 },
-        0,
-        false,
-        error.message
-      );
-
-      throw error;
-    }
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Get usage history for current user
+// GET /api/ai/features/usage/history — usage history from tenant DB
 router.get('/usage/history', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.headers['x-tenant-id'] as string;
     const userId = req.headers['x-user-id'] as string;
+    const tenantDb = await getTenantDb(req);
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
 
+    const credits = await tenantDb.tenantAICredits.findUnique({
+      where: { tenantId },
+    });
+
+    if (!credits) {
+      res.json({ success: true, data: [], meta: { page, limit, total: 0, totalPages: 0 } });
+      return;
+    }
+
     const [usageLogs, total] = await Promise.all([
-      prisma.aIUsageLog.findMany({
-        where: { tenantId, userId },
+      tenantDb.aIUsageLog.findMany({
+        where: { tenantCreditsId: credits.id, ...(userId ? { userId } : {}) },
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: {
-          feature: {
-            select: {
-              displayName: true,
-              category: true,
-            },
-          },
-        },
       }),
-      prisma.aIUsageLog.count({ where: { tenantId, userId } }),
+      tenantDb.aIUsageLog.count({
+        where: { tenantCreditsId: credits.id, ...(userId ? { userId } : {}) },
+      }),
     ]);
 
     res.json({
       success: true,
-      data: usageLogs.map(log => ({
+      data: usageLogs.map((log: any) => ({
         id: log.id,
-        featureName: log.feature.displayName,
-        category: log.feature.category,
+        featureName: FEATURE_METADATA[log.featureKey]?.displayName || log.featureKey,
+        category: FEATURE_METADATA[log.featureKey]?.category || 'Other',
+        featureKey: log.featureKey,
         creditsUsed: log.creditsUsed,
-        processingTimeMs: log.processingTimeMs,
-        success: (log as any).success,
+        responseTime: log.responseTime,
+        status: log.status,
         createdAt: log.createdAt,
       })),
       meta: {
@@ -473,267 +249,251 @@ router.get('/usage/history', async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// AI Provider execution functions (simplified - would need actual API calls in production)
-async function executeOpenAI(
-  feature: any,
-  input: string,
-  fileBase64?: string
-): Promise<{ output: string; tokens: { input: number; output: number } }> {
-  const provider = feature.provider;
-
-  if (!provider.apiKey) {
-    throw new Error('OpenAI API key not configured');
-  }
-
-  const messages = [
-    ...(feature.systemPrompt ? [{ role: 'system', content: feature.systemPrompt }] : []),
-    {
-      role: 'user',
-      content: feature.userPromptTemplate
-        ? feature.userPromptTemplate.replace('{{input}}', input)
-        : input,
-    },
-  ];
-
-  // Add image if provided and feature supports vision
-  if (fileBase64 && provider.supportsVision) {
-    (messages[messages.length - 1] as any).content = [
-      { type: 'text', text: input },
-      { type: 'image_url', image_url: { url: `data:image/png;base64,${fileBase64}` } },
-    ];
-  }
-
-  const response = await fetch(provider.apiEndpoint || 'https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${provider.apiKey}`,
-      'Content-Type': 'application/json',
-      ...(provider.organizationId && { 'OpenAI-Organization': provider.organizationId }),
-    },
-    body: JSON.stringify({
-      model: feature.modelName || provider.defaultModel || 'gpt-4o',
-      messages,
-      max_tokens: feature.maxOutputTokens || 4096,
-      temperature: feature.temperature || 0.7,
-    }),
-  });
-
-  if (!response.ok) {
-    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-    throw new Error(error.error?.message || 'OpenAI API error');
-  }
-
-  const result: any = await response.json();
-  return {
-    output: result.choices[0]?.message?.content || '',
-    tokens: {
-      input: result.usage?.prompt_tokens || 0,
-      output: result.usage?.completion_tokens || 0,
-    },
-  };
-}
-
-async function executeAnthropic(
-  feature: any,
-  input: string,
-  fileBase64?: string
-): Promise<{ output: string; tokens: { input: number; output: number } }> {
-  const provider = feature.provider;
-
-  if (!provider.apiKey) {
-    throw new Error('Anthropic API key not configured');
-  }
-
-  const content: any[] = [];
-
-  // Add image if provided
-  if (fileBase64 && provider.supportsVision) {
-    content.push({
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/png', data: fileBase64 },
-    });
-  }
-
-  content.push({
-    type: 'text',
-    text: feature.userPromptTemplate
-      ? feature.userPromptTemplate.replace('{{input}}', input)
-      : input,
-  });
-
-  const response = await fetch(provider.apiEndpoint || 'https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': provider.apiKey,
-      'Content-Type': 'application/json',
-      'anthropic-version': provider.apiVersion || '2024-01-01',
-    },
-    body: JSON.stringify({
-      model: feature.modelName || provider.defaultModel || 'claude-3-sonnet-20240229',
-      max_tokens: feature.maxOutputTokens || 4096,
-      system: feature.systemPrompt,
-      messages: [{ role: 'user', content }],
-    }),
-  });
-
-  if (!response.ok) {
-    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-    throw new Error(error.error?.message || 'Anthropic API error');
-  }
-
-  const result: any = await response.json();
-  return {
-    output: result.content?.[0]?.text || '',
-    tokens: {
-      input: result.usage?.input_tokens || 0,
-      output: result.usage?.output_tokens || 0,
-    },
-  };
-}
-
-async function executeGoogle(
-  feature: any,
-  input: string,
-  fileBase64?: string
-): Promise<{ output: string; tokens: { input: number; output: number } }> {
-  const provider = feature.provider;
-
-  if (!provider.apiKey) {
-    throw new Error('Google API key not configured');
-  }
-
-  const parts: any[] = [];
-
-  // Add image if provided
-  if (fileBase64 && provider.supportsVision) {
-    parts.push({
-      inline_data: { mime_type: 'image/png', data: fileBase64 },
-    });
-  }
-
-  parts.push({
-    text: feature.userPromptTemplate
-      ? feature.userPromptTemplate.replace('{{input}}', input)
-      : input,
-  });
-
-  const model = feature.modelName || provider.defaultModel || 'gemini-pro';
-  const endpoint = provider.apiEndpoint || 'https://generativelanguage.googleapis.com/v1beta';
-
-  const response = await fetch(`${endpoint}/models/${model}:generateContent?key=${provider.apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      systemInstruction: feature.systemPrompt ? { parts: [{ text: feature.systemPrompt }] } : undefined,
-      generationConfig: {
-        maxOutputTokens: feature.maxOutputTokens || 4096,
-        temperature: feature.temperature || 0.7,
+// GET /api/ai/features/packages — list active credit packages for purchase (from core DB)
+router.get('/packages', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const packages = await coreDb.aICreditPackage.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        id: true,
+        packageName: true,
+        displayName: true,
+        description: true,
+        credits: true,
+        price: true,
+        currency: true,
+        bonusCredits: true,
+        validityDays: true,
+        discountPercent: true,
+        isPopular: true,
       },
-    }),
-  });
+    });
 
-  if (!response.ok) {
-    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-    throw new Error(error.error?.message || 'Google API error');
+    res.json({ success: true, data: packages });
+  } catch (error) {
+    next(error);
   }
+});
 
-  const result: any = await response.json();
-  return {
-    output: result.candidates?.[0]?.content?.parts?.[0]?.text || '',
-    tokens: {
-      input: result.usageMetadata?.promptTokenCount || 0,
-      output: result.usageMetadata?.candidatesTokenCount || 0,
-    },
-  };
-}
+// POST /api/ai/features/purchase/create-order — create Razorpay order
+router.post('/purchase/create-order', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.headers['x-tenant-id'] as string;
+    const userId = req.headers['x-user-id'] as string;
+    const { packageId } = req.body;
 
-async function executeXAI(
-  feature: any,
-  input: string,
-  _fileBase64?: string
-): Promise<{ output: string; tokens: { input: number; output: number } }> {
-  const provider = feature.provider;
+    if (!packageId) {
+      res.status(400).json({ success: false, error: { message: 'packageId is required' } });
+      return;
+    }
 
-  if (!provider.apiKey) {
-    throw new Error('xAI API key not configured');
+    // Fetch the package from core DB
+    const pkg = await coreDb.aICreditPackage.findUnique({
+      where: { id: packageId, isActive: true },
+    });
+
+    if (!pkg) {
+      res.status(404).json({ success: false, error: { message: 'Credit package not found' } });
+      return;
+    }
+
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!razorpayKeyId || !razorpayKeySecret) {
+      res.status(500).json({ success: false, error: { message: 'Payment gateway not configured' } });
+      return;
+    }
+
+    // Create Razorpay order via API (no SDK needed)
+    const amountInPaise = Math.round(Number(pkg.price) * 100);
+    const orderData = {
+      amount: amountInPaise,
+      currency: pkg.currency === 'USD' ? 'INR' : pkg.currency, // Default to INR for Razorpay
+      receipt: `credits_${tenantId}_${Date.now()}`,
+      notes: {
+        tenantId,
+        userId,
+        packageId: pkg.id,
+        packageName: pkg.packageName,
+        credits: pkg.credits.toString(),
+        bonusCredits: pkg.bonusCredits.toString(),
+      },
+    };
+
+    const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')}`,
+      },
+      body: JSON.stringify(orderData),
+    });
+
+    if (!razorpayResponse.ok) {
+      const errBody = await razorpayResponse.text();
+      console.error('[ai-features] Razorpay order creation failed:', errBody);
+      res.status(500).json({ success: false, error: { message: 'Failed to create payment order' } });
+      return;
+    }
+
+    const order = await razorpayResponse.json() as any;
+
+    res.json({
+      success: true,
+      data: {
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        keyId: razorpayKeyId,
+        packageName: pkg.displayName || pkg.packageName,
+        credits: pkg.credits,
+        bonusCredits: pkg.bonusCredits,
+      },
+    });
+  } catch (error) {
+    next(error);
   }
+});
 
-  const messages = [
-    ...(feature.systemPrompt ? [{ role: 'system', content: feature.systemPrompt }] : []),
-    {
-      role: 'user',
-      content: feature.userPromptTemplate
-        ? feature.userPromptTemplate.replace('{{input}}', input)
-        : input,
-    },
-  ];
+// POST /api/ai/features/purchase/verify — verify Razorpay payment and add credits
+router.post('/purchase/verify', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.headers['x-tenant-id'] as string;
+    const userId = req.headers['x-user-id'] as string;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, packageId } = req.body;
 
-  const response = await fetch(provider.apiEndpoint || 'https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${provider.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: feature.modelName || provider.defaultModel || 'grok-beta',
-      messages,
-      max_tokens: feature.maxOutputTokens || 4096,
-      temperature: feature.temperature || 0.7,
-    }),
-  });
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !packageId) {
+      res.status(400).json({ success: false, error: { message: 'Missing payment verification fields' } });
+      return;
+    }
 
-  if (!response.ok) {
-    const error: any = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-    throw new Error(error.error?.message || 'xAI API error');
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!razorpayKeySecret) {
+      res.status(500).json({ success: false, error: { message: 'Payment gateway not configured' } });
+      return;
+    }
+
+    // Verify signature
+    const expectedSignature = crypto
+      .createHmac('sha256', razorpayKeySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      res.status(400).json({ success: false, error: { message: 'Payment verification failed — invalid signature' } });
+      return;
+    }
+
+    // Fetch the package
+    const pkg = await coreDb.aICreditPackage.findUnique({
+      where: { id: packageId },
+    });
+
+    if (!pkg) {
+      res.status(404).json({ success: false, error: { message: 'Credit package not found' } });
+      return;
+    }
+
+    const creditsToAdd = pkg.credits + pkg.bonusCredits;
+    const tenantDb = await getTenantDb(req);
+
+    // Add credits to tenant DB with HMAC signature
+    const updatedCredits = await tenantDb.$transaction(async (tx: any) => {
+      // Upsert tenant credits
+      let existing = await tx.tenantAICredits.findUnique({ where: { tenantId } });
+
+      const newTotal = (existing?.totalCredits || 0) + pkg.credits;
+      const newBonus = (existing?.bonusCredits || 0) + pkg.bonusCredits;
+      const expiresAt = existing?.expiresAt
+        ? new Date(Math.max(new Date(existing.expiresAt).getTime(), Date.now()) + pkg.validityDays * 86400000)
+        : new Date(Date.now() + pkg.validityDays * 86400000);
+
+      // Compute HMAC signature for tamper detection
+      const creditSignature = signCredits({
+        tenantId,
+        totalCredits: newTotal,
+        bonusCredits: newBonus,
+        expiresAt: expiresAt.toISOString(),
+      });
+
+      let credits;
+      if (existing) {
+        credits = await tx.tenantAICredits.update({
+          where: { tenantId },
+          data: {
+            totalCredits: newTotal,
+            bonusCredits: newBonus,
+            expiresAt,
+            creditSignature,
+            lastPurchasedAt: new Date(),
+          },
+        });
+      } else {
+        credits = await tx.tenantAICredits.create({
+          data: {
+            tenantId,
+            totalCredits: newTotal,
+            usedCredits: 0,
+            bonusCredits: newBonus,
+            expiresAt,
+            creditSignature,
+            lastPurchasedAt: new Date(),
+          },
+        });
+      }
+
+      // Log the transaction in tenant DB
+      await tx.aICreditTransaction.create({
+        data: {
+          tenantCreditsId: credits.id,
+          transactionType: 'PURCHASE',
+          credits: creditsToAdd,
+          description: `Purchased ${pkg.displayName || pkg.packageName} — ${pkg.credits} credits + ${pkg.bonusCredits} bonus`,
+          referenceType: 'RAZORPAY',
+          referenceId: razorpay_payment_id,
+          createdBy: userId,
+        },
+      });
+
+      return credits;
+    });
+
+    // Also log in core DB for super-admin visibility
+    try {
+      await coreDb.aICreditTransaction.create({
+        data: {
+          tenantId,
+          transactionType: 'PURCHASE',
+          creditsAmount: creditsToAdd,
+          creditsBalance: updatedCredits.totalCredits - updatedCredits.usedCredits + updatedCredits.bonusCredits,
+          packageId: pkg.id,
+          paymentReference: razorpay_payment_id,
+          paymentAmount: Number(pkg.price),
+          paymentCurrency: pkg.currency,
+          notes: `Razorpay order: ${razorpay_order_id}`,
+          processedBy: userId,
+        },
+      });
+    } catch (coreErr) {
+      // Non-critical — tenant credits already updated
+      console.error('[ai-features] Failed to log transaction in core DB:', coreErr);
+    }
+
+    const balance = updatedCredits.totalCredits - updatedCredits.usedCredits + updatedCredits.bonusCredits;
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Credits purchased successfully',
+        creditsAdded: creditsToAdd,
+        balance,
+      },
+    });
+  } catch (error) {
+    next(error);
   }
-
-  const result: any = await response.json();
-  return {
-    output: result.choices[0]?.message?.content || '',
-    tokens: {
-      input: result.usage?.prompt_tokens || 0,
-      output: result.usage?.completion_tokens || 0,
-    },
-  };
-}
-
-async function executeCustom(
-  feature: any,
-  input: string,
-  _fileBase64?: string
-): Promise<{ output: string; tokens: { input: number; output: number } }> {
-  const provider = feature.provider;
-
-  if (!provider.apiEndpoint) {
-    throw new Error('Custom API endpoint not configured');
-  }
-
-  const response = await fetch(provider.apiEndpoint, {
-    method: 'POST',
-    headers: {
-      ...(provider.apiKey && { 'Authorization': `Bearer ${provider.apiKey}` }),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      input,
-      systemPrompt: feature.systemPrompt,
-      userPromptTemplate: feature.userPromptTemplate,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Custom API error: ${response.status}`);
-  }
-
-  const result: any = await response.json();
-  return {
-    output: result.output || result.text || result.result || JSON.stringify(result),
-    tokens: {
-      input: result.inputTokens || 0,
-      output: result.outputTokens || 0,
-    },
-  };
-}
+});
 
 export { router as aiFeaturesRoutes };

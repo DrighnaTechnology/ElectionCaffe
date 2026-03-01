@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 
@@ -67,44 +68,7 @@ router.get('/', async (req, res, next) => {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }] as any,
-        select: {
-          id: true,
-          providerType: true,
-          providerName: true,
-          displayName: true,
-          description: true,
-          apiEndpoint: true,
-          apiVersion: true,
-          region: true,
-          defaultModel: true,
-          availableModels: true,
-          maxRequestsPerMinute: true,
-          maxTokensPerRequest: true,
-          costPerInputToken: true,
-          costPerOutputToken: true,
-          costPerImage: true,
-          costPerPage: true,
-          currency: true,
-          status: true,
-          lastHealthCheck: true,
-          lastError: true,
-          errorCount: true,
-          successRate: true,
-          supportsVision: true,
-          supportsStreaming: true,
-          supportsAsync: true,
-          isDefault: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true,
-          _count: {
-            select: {
-              features: true,
-              usageLogs: true,
-            },
-          },
-        } as any,
+        orderBy: { createdAt: 'desc' },
       }),
       prisma.aIProvider.count({ where }),
     ]);
@@ -129,23 +93,6 @@ router.get('/:id', async (req, res, next) => {
   try {
     const provider = await prisma.aIProvider.findUnique({
       where: { id: req.params.id },
-      include: {
-        features: {
-          select: {
-            id: true,
-            featureName: true,
-            displayName: true,
-            category: true,
-            status: true,
-          } as any,
-        },
-        _count: {
-          select: {
-            features: true,
-            usageLogs: true,
-          },
-        },
-      } as any,
     });
 
     if (!provider) {
@@ -196,18 +143,41 @@ router.post('/', async (req, res, next) => {
     // If setting as default, unset other defaults
     if (data.isDefault) {
       await prisma.aIProvider.updateMany({
-        where: { isDefault: true } as any,
-        data: { isDefault: false } as any,
+        where: { isDefault: true },
+        data: { isDefault: false },
       });
     }
 
     const provider = await prisma.aIProvider.create({
       data: {
-        ...data,
+        providerName: data.providerName,
+        providerType: data.providerType,
+        displayName: data.displayName,
+        description: data.description,
+        apiEndpoint: data.apiEndpoint,
+        apiKey: data.apiKey,
+        apiVersion: data.apiVersion,
+        organizationId: data.organizationId,
+        region: data.region,
+        defaultModel: data.defaultModel,
         availableModels: data.availableModels || [],
+        maxRequestsPerMinute: data.maxRequestsPerMinute,
+        maxTokensPerRequest: data.maxTokensPerRequest,
+        costPerInputToken: data.costPerInputToken,
+        costPerOutputToken: data.costPerOutputToken,
+        costPerImage: data.costPerImage,
+        costPerPage: data.costPerPage,
+        currency: data.currency,
+        supportsVision: data.supportsVision,
+        supportsStreaming: data.supportsStreaming,
+        supportsAsync: data.supportsAsync,
+        isDefault: data.isDefault,
+        isActive: data.isActive,
         status: 'INACTIVE',
-      } as any,
+      },
     });
+
+    auditLog(req, 'CREATE_AI_PROVIDER', 'ai_provider', provider.id, null, { providerName: data.providerName, providerType: data.providerType });
 
     res.status(201).json({
       success: true,
@@ -259,18 +229,17 @@ router.put('/:id', async (req, res, next) => {
     // If setting as default, unset other defaults
     if (data.isDefault) {
       await prisma.aIProvider.updateMany({
-        where: { isDefault: true, id: { not: req.params.id } } as any,
-        data: { isDefault: false } as any,
+        where: { isDefault: true, id: { not: req.params.id } },
+        data: { isDefault: false },
       });
     }
 
     const provider = await prisma.aIProvider.update({
       where: { id: req.params.id },
-      data: {
-        ...data,
-        availableModels: data.availableModels || undefined,
-      } as any,
+      data: data as any,
     });
+
+    auditLog(req, 'UPDATE_AI_PROVIDER', 'ai_provider', req.params.id);
 
     res.json({
       success: true,
@@ -287,16 +256,8 @@ router.put('/:id', async (req, res, next) => {
 // Delete AI provider
 router.delete('/:id', async (req, res, next) => {
   try {
-    const provider: any = await prisma.aIProvider.findUnique({
+    const provider = await prisma.aIProvider.findUnique({
       where: { id: req.params.id },
-      include: {
-        _count: {
-          select: {
-            features: true,
-            usageLogs: true,
-          },
-        },
-      } as any,
     });
 
     if (!provider) {
@@ -309,11 +270,15 @@ router.delete('/:id', async (req, res, next) => {
       });
     }
 
-    // If provider has features, don't delete, just deactivate
-    if (provider._count.features > 0) {
+    // Check if provider has features
+    const featureCount = await prisma.aIFeature.count({
+      where: { providerId: req.params.id },
+    });
+
+    if (featureCount > 0) {
       await prisma.aIProvider.update({
         where: { id: req.params.id },
-        data: { isActive: false, status: 'INACTIVE' } as any,
+        data: { isActive: false, status: 'INACTIVE' },
       });
 
       return res.json({
@@ -325,6 +290,8 @@ router.delete('/:id', async (req, res, next) => {
     await prisma.aIProvider.delete({
       where: { id: req.params.id },
     });
+
+    auditLog(req, 'DELETE_AI_PROVIDER', 'ai_provider', req.params.id, null, { providerName: provider.providerName });
 
     res.json({
       success: true,
@@ -366,7 +333,7 @@ router.post('/:id/test', async (req, res, next) => {
     const startTime = Date.now();
 
     try {
-      switch ((provider as any).providerType) {
+      switch (provider.providerType) {
         case 'OPENAI':
           testResult = await testOpenAI(provider);
           break;
@@ -396,9 +363,11 @@ router.post('/:id/test', async (req, res, next) => {
         status: testResult.success ? 'ACTIVE' : 'ERROR',
         lastHealthCheck: new Date(),
         lastError: testResult.success ? null : testResult.message,
-        errorCount: testResult.success ? 0 : (provider as any).errorCount + 1,
-      } as any,
+        errorCount: testResult.success ? 0 : provider.errorCount + 1,
+      },
     });
+
+    auditLog(req, 'TEST_AI_PROVIDER', 'ai_provider', req.params.id, null, { providerName: provider.providerName, testPassed: testResult.success, latencyMs: testResult.latency });
 
     res.json({
       success: true,
@@ -435,29 +404,11 @@ router.get('/:id/stats', async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const [totalUsage, _dailyUsage, featureCount] = await Promise.all([
-      (prisma as any).aIUsageLog.aggregate({
+    const [usageCount, featureCount] = await Promise.all([
+      prisma.aIUsageLog.count({
         where: {
           providerId: req.params.id,
           createdAt: { gte: thirtyDaysAgo },
-        },
-        _sum: {
-          inputTokens: true,
-          outputTokens: true,
-          totalCost: true,
-          creditsUsed: true,
-        },
-        _count: true,
-      }),
-      (prisma as any).aIUsageLog.groupBy({
-        by: ['createdAt'],
-        where: {
-          providerId: req.params.id,
-          createdAt: { gte: thirtyDaysAgo },
-        },
-        _count: true,
-        _sum: {
-          creditsUsed: true,
         },
       }),
       prisma.aIFeature.count({
@@ -470,17 +421,13 @@ router.get('/:id/stats', async (req, res, next) => {
       data: {
         provider: {
           id: provider.id,
-          displayName: (provider as any).displayName,
-          status: (provider as any).status,
-          successRate: (provider as any).successRate,
-          errorCount: (provider as any).errorCount,
+          displayName: provider.displayName,
+          status: provider.status,
+          successRate: provider.successRate,
+          errorCount: provider.errorCount,
         },
         usage: {
-          totalRequests: totalUsage._count,
-          totalInputTokens: totalUsage._sum.inputTokens || 0,
-          totalOutputTokens: totalUsage._sum.outputTokens || 0,
-          totalCost: totalUsage._sum.totalCost || 0,
-          totalCreditsUsed: totalUsage._sum.creditsUsed || 0,
+          totalRequests: usageCount,
         },
         featureCount,
         period: {

@@ -1,0 +1,22 @@
+CURRENT STEP: Step 7 — Create Families
+
+Go to the **Families** page. You can bulk upload or create families manually.
+
+Families group voters by household and are used for door-to-door campaign outreach.
+
+Each family has:
+- Family Name
+- House Number
+- Address
+- Captain (head of the family — the key contact person)
+
+For bulk upload, download the CSV template. Key column:
+- captainEpic — enter the EPIC (Voter ID) of the family head to auto-link them as captain
+
+After creating families:
+- Click any family row to open the Family Detail page
+- Add Members: search voters by name (min 2 characters) → click to select
+- Remove Members: click the remove icon
+- Change Captain: edit the family and select a new captain
+
+Click any member's name to jump directly to their voter profile.

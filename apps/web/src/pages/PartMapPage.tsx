@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { partsAPI } from '../services/api';
@@ -70,6 +70,16 @@ const vulnerabilityIcons = {
   MEDIUM: createCustomIcon('#f59e0b'),
   LOW: createCustomIcon('#22c55e'),
   NORMAL: createCustomIcon('#6b7280'),
+  NOT_ASSIGNED: createCustomIcon('#6b7280'),
+};
+
+// Colors for area circles matching vulnerability
+const vulnerabilityAreaColors: Record<string, string> = {
+  HIGH: '#ef4444',
+  MEDIUM: '#f59e0b',
+  LOW: '#22c55e',
+  NORMAL: '#6b7280',
+  NOT_ASSIGNED: '#3b82f6',
 };
 
 // Map controls component
@@ -110,13 +120,13 @@ function FlyToLocation({ position }: { position: [number, number] | null }) {
   return null;
 }
 
-// Interface for part with location
+// Interface for part with location — field names match Prisma/API response
 interface PartWithLocation {
   id: string;
-  partNo: number;
-  partNameEn: string;
-  partNameLocal?: string;
-  boothAddress?: string;
+  partNumber: number;
+  boothName: string;
+  boothNameLocal?: string;
+  address?: string;
   latitude?: number;
   longitude?: number;
   totalVoters?: number;
@@ -126,7 +136,7 @@ interface PartWithLocation {
   _count?: {
     sections: number;
     voters: number;
-    cadres: number;
+    booths: number;
   };
 }
 
@@ -138,11 +148,12 @@ export function PartMapPage() {
   const [flyToPosition, setFlyToPosition] = useState<[number, number] | null>(null);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [mapType, setMapType] = useState<'street' | 'satellite'>('street');
+  const [showAreas, setShowAreas] = useState(true);
 
-  // Fetch all parts with location data
+  // Fetch all parts with location data using the dedicated map endpoint
   const { data: partsData, isLoading } = useQuery({
     queryKey: ['parts-map', selectedElectionId],
-    queryFn: () => partsAPI.getAll(selectedElectionId!, { limit: 500 }),
+    queryFn: () => partsAPI.getForMap(selectedElectionId!),
     enabled: !!selectedElectionId,
   });
 
@@ -153,9 +164,9 @@ export function PartMapPage() {
     return parts.filter((part) => {
       const matchesSearch =
         !search ||
-        part.partNameEn?.toLowerCase().includes(search.toLowerCase()) ||
-        part.partNo?.toString().includes(search) ||
-        part.boothAddress?.toLowerCase().includes(search.toLowerCase());
+        part.boothName?.toLowerCase().includes(search.toLowerCase()) ||
+        part.partNumber?.toString().includes(search) ||
+        part.address?.toLowerCase().includes(search.toLowerCase());
 
       const matchesVulnerability =
         vulnerabilityFilter === 'all' || part.vulnerability === vulnerabilityFilter;
@@ -194,8 +205,11 @@ export function PartMapPage() {
   const vulnerabilityStats = useMemo(() => {
     const stats = { HIGH: 0, MEDIUM: 0, LOW: 0, NORMAL: 0 };
     parts.forEach((part) => {
-      const v = (part.vulnerability || 'NORMAL') as keyof typeof stats;
-      if (stats[v] !== undefined) stats[v]++;
+      const v = part.vulnerability || 'NOT_ASSIGNED';
+      if (v === 'HIGH') stats.HIGH++;
+      else if (v === 'MEDIUM') stats.MEDIUM++;
+      else if (v === 'LOW') stats.LOW++;
+      else stats.NORMAL++; // NOT_ASSIGNED and NORMAL both count as Normal
     });
     return stats;
   }, [parts]);
@@ -223,9 +237,9 @@ export function PartMapPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">
           Please select an election from the sidebar to view the part map.
         </p>
       </div>
@@ -241,12 +255,20 @@ export function PartMapPage() {
             <MapIcon className="h-6 w-6" />
             Part Map
           </h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Visualize polling booths on map ({partsWithCoordinates.length} of {filteredParts.length}{' '}
             parts have coordinates)
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={showAreas ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowAreas(!showAreas)}
+          >
+            <MapPinIcon className="h-4 w-4 mr-1" />
+            {showAreas ? 'Hide Areas' : 'Show Areas'}
+          </Button>
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'map' | 'list')}>
             <TabsList>
               <TabsTrigger value="map" className="flex items-center gap-2">
@@ -274,7 +296,7 @@ export function PartMapPage() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-red-500" />
-              <span className="text-sm text-gray-500">High Risk</span>
+              <span className="text-sm text-muted-foreground">High Risk</span>
             </div>
             <p className="text-2xl font-bold text-red-600">{vulnerabilityStats.HIGH}</p>
           </CardContent>
@@ -291,7 +313,7 @@ export function PartMapPage() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-amber-500" />
-              <span className="text-sm text-gray-500">Medium Risk</span>
+              <span className="text-sm text-muted-foreground">Medium Risk</span>
             </div>
             <p className="text-2xl font-bold text-amber-600">{vulnerabilityStats.MEDIUM}</p>
           </CardContent>
@@ -306,7 +328,7 @@ export function PartMapPage() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-green-500" />
-              <span className="text-sm text-gray-500">Low Risk</span>
+              <span className="text-sm text-muted-foreground">Low Risk</span>
             </div>
             <p className="text-2xl font-bold text-green-600">{vulnerabilityStats.LOW}</p>
           </CardContent>
@@ -322,10 +344,10 @@ export function PartMapPage() {
         >
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-gray-500" />
-              <span className="text-sm text-gray-500">Normal</span>
+              <div className="h-3 w-3 rounded-full bg-muted/500" />
+              <span className="text-sm text-muted-foreground">Normal</span>
             </div>
-            <p className="text-2xl font-bold text-gray-600">{vulnerabilityStats.NORMAL}</p>
+            <p className="text-2xl font-bold text-muted-foreground">{vulnerabilityStats.NORMAL}</p>
           </CardContent>
         </Card>
       </div>
@@ -335,7 +357,7 @@ export function PartMapPage() {
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search parts by name, number, or address..."
                 value={search}
@@ -376,7 +398,7 @@ export function PartMapPage() {
               <div className="h-[600px] relative">
                 <MapContainer
                   center={mapCenter}
-                  zoom={10}
+                  zoom={13}
                   className="h-full w-full"
                   scrollWheelZoom={true}
                 >
@@ -391,6 +413,30 @@ export function PartMapPage() {
                   <MapControls />
                   <FlyToLocation position={flyToPosition} />
 
+                  {/* Area circles showing booth coverage */}
+                  {showAreas && partsWithCoordinates.map((part) => {
+                    const color = vulnerabilityAreaColors[part.vulnerability || 'NOT_ASSIGNED'] || '#3b82f6';
+                    const isSelected = selectedPart?.id === part.id;
+                    return (
+                      <Circle
+                        key={`area-${part.id}`}
+                        center={[part.latitude!, part.longitude!]}
+                        radius={250}
+                        pathOptions={{
+                          color: isSelected ? '#f97316' : color,
+                          fillColor: color,
+                          fillOpacity: isSelected ? 0.35 : 0.15,
+                          weight: isSelected ? 3 : 1,
+                          dashArray: isSelected ? undefined : '4 4',
+                        }}
+                        eventHandlers={{
+                          click: () => handlePartClick(part),
+                        }}
+                      />
+                    );
+                  })}
+
+                  {/* Booth markers */}
                   {partsWithCoordinates.map((part) => (
                     <Marker
                       key={part.id}
@@ -406,13 +452,13 @@ export function PartMapPage() {
                     >
                       <Popup>
                         <div className="min-w-[200px]">
-                          <h3 className="font-semibold text-lg">Part {part.partNo}</h3>
-                          <p className="text-gray-600">{part.partNameEn}</p>
-                          {part.boothAddress && (
-                            <p className="text-sm text-gray-500 mt-1">{part.boothAddress}</p>
+                          <h3 className="font-semibold text-lg">Part {part.partNumber}</h3>
+                          <p className="text-muted-foreground">{part.boothName}</p>
+                          {part.address && (
+                            <p className="text-sm text-muted-foreground mt-1">{part.address}</p>
                           )}
                           <div className="flex items-center gap-2 mt-2">
-                            <UsersIcon className="h-4 w-4 text-gray-400" />
+                            <UsersIcon className="h-4 w-4 text-muted-foreground" />
                             <span>{formatNumber(part.totalVoters || 0)} voters</span>
                           </div>
                           <div className="mt-2">{getVulnerabilityBadge(part.vulnerability)}</div>
@@ -433,30 +479,30 @@ export function PartMapPage() {
             <CardContent className="p-0">
               <div className="max-h-[550px] overflow-y-auto">
                 {filteredParts.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500">No parts found</div>
+                  <div className="p-4 text-center text-muted-foreground">No parts found</div>
                 ) : (
                   <div className="divide-y">
                     {filteredParts.map((part) => (
                       <div
                         key={part.id}
                         className={cn(
-                          'p-3 cursor-pointer hover:bg-gray-50 transition-colors',
-                          selectedPart?.id === part.id && 'bg-orange-50'
+                          'p-3 cursor-pointer hover:bg-muted/50 transition-colors',
+                          selectedPart?.id === part.id && 'bg-brand-muted'
                         )}
                         onClick={() => handlePartClick(part)}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">Part {part.partNo}</span>
+                              <span className="font-medium">Part {part.partNumber}</span>
                               {!part.latitude && (
                                 <Badge variant="outline" className="text-xs">
                                   No GPS
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-sm text-gray-600 truncate">{part.partNameEn}</p>
-                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                            <p className="text-sm text-muted-foreground truncate">{part.boothName}</p>
+                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                               <UsersIcon className="h-3 w-3" />
                               {formatNumber(part.totalVoters || 0)}
                             </div>
@@ -486,7 +532,7 @@ export function PartMapPage() {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-muted/50 border-b">
                   <tr>
                     <th className="text-left p-3 font-medium">Part No</th>
                     <th className="text-left p-3 font-medium">Name</th>
@@ -500,28 +546,28 @@ export function PartMapPage() {
                   {filteredParts.map((part) => (
                     <tr
                       key={part.id}
-                      className="hover:bg-gray-50 cursor-pointer"
+                      className="hover:bg-muted/50 cursor-pointer"
                       onClick={() => {
                         handlePartClick(part);
                         setViewMode('map');
                       }}
                     >
-                      <td className="p-3 font-medium">{part.partNo}</td>
+                      <td className="p-3 font-medium">{part.partNumber}</td>
                       <td className="p-3">
-                        <div>{part.partNameEn}</div>
-                        {part.partNameLocal && (
-                          <div className="text-sm text-gray-500">{part.partNameLocal}</div>
+                        <div>{part.boothName}</div>
+                        {part.boothNameLocal && (
+                          <div className="text-sm text-muted-foreground">{part.boothNameLocal}</div>
                         )}
                       </td>
-                      <td className="p-3 text-sm text-gray-600 max-w-[200px] truncate">
-                        {part.boothAddress || '-'}
+                      <td className="p-3 text-sm text-muted-foreground max-w-[200px] truncate">
+                        {part.address || '-'}
                       </td>
                       <td className="p-3">
                         <div className="flex items-center gap-1">
-                          <UsersIcon className="h-4 w-4 text-gray-400" />
+                          <UsersIcon className="h-4 w-4 text-muted-foreground" />
                           {formatNumber(part.totalVoters || 0)}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-muted-foreground">
                           M: {formatNumber(part.maleVoters || 0)} | F:{' '}
                           {formatNumber(part.femaleVoters || 0)}
                         </div>
@@ -551,43 +597,43 @@ export function PartMapPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPinIcon className="h-5 w-5" />
-              Part {selectedPart.partNo} - {selectedPart.partNameEn}
+              Part {selectedPart.partNumber} - {selectedPart.boothName}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <p className="text-sm text-gray-500">Total Voters</p>
+                <p className="text-sm text-muted-foreground">Total Voters</p>
                 <p className="text-lg font-semibold">
                   {formatNumber(selectedPart.totalVoters || 0)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Male Voters</p>
+                <p className="text-sm text-muted-foreground">Male Voters</p>
                 <p className="text-lg font-semibold">
                   {formatNumber(selectedPart.maleVoters || 0)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Female Voters</p>
+                <p className="text-sm text-muted-foreground">Female Voters</p>
                 <p className="text-lg font-semibold">
                   {formatNumber(selectedPart.femaleVoters || 0)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Vulnerability</p>
+                <p className="text-sm text-muted-foreground">Vulnerability</p>
                 <div className="mt-1">{getVulnerabilityBadge(selectedPart.vulnerability)}</div>
               </div>
             </div>
-            {selectedPart.boothAddress && (
+            {selectedPart.address && (
               <div className="mt-4">
-                <p className="text-sm text-gray-500">Booth Address</p>
-                <p className="text-sm">{selectedPart.boothAddress}</p>
+                <p className="text-sm text-muted-foreground">Booth Address</p>
+                <p className="text-sm">{selectedPart.address}</p>
               </div>
             )}
             {selectedPart.latitude && selectedPart.longitude && (
               <div className="mt-4">
-                <p className="text-sm text-gray-500">Coordinates</p>
+                <p className="text-sm text-muted-foreground">Coordinates</p>
                 <p className="text-sm font-mono">
                   {selectedPart.latitude}, {selectedPart.longitude}
                 </p>

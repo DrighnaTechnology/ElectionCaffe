@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { coreDb, getTenantClientBySlug } from '@electioncaffe/database';
 import {
@@ -126,6 +127,7 @@ export class AuthController {
         email: user.email || undefined,
         mobile: user.mobile,
         role: user.role as UserPayload['role'],
+        customRoleId: (user as any).customRoleId || undefined,
         permissions: user.permissions as string[] || [],
       };
 
@@ -152,6 +154,7 @@ export class AuthController {
         refreshToken,
         user: userPayload,
         expiresIn: 15 * 60, // 15 minutes in seconds
+        mustChangePassword: (user as any).isTempPassword === true,
       };
 
       res.json(successResponse(response));
@@ -226,7 +229,7 @@ export class AuthController {
           mobile,
           email,
           passwordHash,
-          role: 'VOLUNTEER',
+          role: 'CENTRAL_ADMIN',
           status: 'ACTIVE',
         },
       });
@@ -312,6 +315,7 @@ export class AuthController {
         email: user.email || undefined,
         mobile: user.mobile,
         role: user.role as UserPayload['role'],
+        customRoleId: (user as any).customRoleId || undefined,
         permissions: user.permissions as string[] || [],
       };
 
@@ -553,7 +557,7 @@ export class AuthController {
       const passwordHash = await bcrypt.hash(newPassword, 10);
       await tenantDb.user.update({
         where: { id: userId },
-        data: { passwordHash },
+        data: { passwordHash, isTempPassword: false, passwordChangedAt: new Date() },
       });
 
       // Invalidate all refresh tokens
@@ -754,7 +758,7 @@ export class AuthController {
       const passwordHash = await bcrypt.hash(newPassword, 10);
       await tenantDb.user.update({
         where: { id: decoded.userId },
-        data: { passwordHash },
+        data: { passwordHash, isTempPassword: false, passwordChangedAt: new Date() },
       });
 
       // Invalidate all refresh tokens
@@ -767,6 +771,150 @@ export class AuthController {
         return;
       }
       logger.error({ err: error }, 'Reset password error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  /**
+   * Internal endpoint: Get admin user info from a tenant database.
+   * Called by Super Admin Service via inter-service HTTP call.
+   */
+  async internalGetAdminInfo(req: Request, res: Response): Promise<void> {
+    try {
+      const { tenantId, tenantSlug, dbConfig } = req.body;
+
+      if (!tenantId || !tenantSlug) {
+        res.status(400).json(errorResponse('E2001', 'tenantId and tenantSlug are required'));
+        return;
+      }
+
+      const tenantDb = await getTenantClientBySlug(
+        tenantSlug,
+        {
+          databaseHost: dbConfig?.databaseHost,
+          databaseName: dbConfig?.databaseName,
+          databaseUser: dbConfig?.databaseUser,
+          databasePassword: dbConfig?.databasePassword,
+          databasePort: dbConfig?.databasePort,
+          databaseSSL: dbConfig?.databaseSSL,
+          databaseConnectionUrl: dbConfig?.databaseConnectionUrl,
+        },
+        tenantId
+      );
+
+      // Find admin user by role
+      const adminUser = await tenantDb.user.findFirst({
+        where: {
+          tenantId,
+          role: 'CENTRAL_ADMIN',
+          status: 'ACTIVE',
+        },
+        select: {
+          id: true,
+          mobile: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          lastLoginAt: true,
+          isTempPassword: true,
+        },
+        orderBy: { createdAt: 'asc' }, // Oldest admin = original admin
+      });
+
+      if (!adminUser) {
+        res.status(404).json(errorResponse('E3001', 'No admin user found for this tenant'));
+        return;
+      }
+
+      res.json(successResponse({
+        userId: adminUser.id,
+        mobile: adminUser.mobile,
+        email: adminUser.email,
+        firstName: adminUser.firstName,
+        lastName: adminUser.lastName,
+        role: adminUser.role,
+        lastLoginAt: adminUser.lastLoginAt,
+        isTempPassword: adminUser.isTempPassword,
+      }));
+    } catch (error) {
+      logger.error({ err: error }, 'Internal get admin info error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  /**
+   * Internal endpoint: Generate temp password for tenant admin.
+   * Called by Super Admin Service via inter-service HTTP call.
+   * The temp password is returned in plaintext ONCE — never stored.
+   */
+  async internalResetAdminPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { tenantId, tenantSlug, dbConfig } = req.body;
+
+      if (!tenantId || !tenantSlug) {
+        res.status(400).json(errorResponse('E2001', 'tenantId and tenantSlug are required'));
+        return;
+      }
+
+      const tenantDb = await getTenantClientBySlug(
+        tenantSlug,
+        {
+          databaseHost: dbConfig?.databaseHost,
+          databaseName: dbConfig?.databaseName,
+          databaseUser: dbConfig?.databaseUser,
+          databasePassword: dbConfig?.databasePassword,
+          databasePort: dbConfig?.databasePort,
+          databaseSSL: dbConfig?.databaseSSL,
+          databaseConnectionUrl: dbConfig?.databaseConnectionUrl,
+        },
+        tenantId
+      );
+
+      // Find admin user by role
+      const adminUser = await tenantDb.user.findFirst({
+        where: {
+          tenantId,
+          role: 'CENTRAL_ADMIN',
+          status: 'ACTIVE',
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (!adminUser) {
+        res.status(404).json(errorResponse('E3001', 'No admin user found for this tenant'));
+        return;
+      }
+
+      // Generate cryptographically secure temp password
+      const tempPassword = crypto.randomBytes(16).toString('base64url');
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+      // Update user with temp password and flag
+      await tenantDb.user.update({
+        where: { id: adminUser.id },
+        data: {
+          passwordHash,
+          isTempPassword: true,
+          passwordChangedAt: null,
+        },
+      });
+
+      // Invalidate all existing sessions
+      await tenantDb.refreshToken.deleteMany({ where: { userId: adminUser.id } });
+
+      logger.info({ tenantId, adminUserId: adminUser.id }, 'Admin temp password generated via internal API');
+
+      // Return temp password — shown once, never stored
+      res.setHeader('Cache-Control', 'no-store, no-cache');
+      res.json(successResponse({
+        tempPassword,
+        adminUserId: adminUser.id,
+        adminMobile: adminUser.mobile,
+        adminEmail: adminUser.email,
+      }));
+    } catch (error) {
+      logger.error({ err: error }, 'Internal reset admin password error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

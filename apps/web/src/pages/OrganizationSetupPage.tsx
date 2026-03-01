@@ -77,23 +77,7 @@ interface User {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  TENANT_ADMIN: 'Tenant Admin',
   CENTRAL_ADMIN: 'Central Admin',
-  CENTRAL_CAMPAIGN_TEAM: 'Central Campaign Team',
-  CONSTITUENCY_ADMIN: 'Constituency Admin',
-  CAMPAIGN_MANAGER: 'Campaign Manager',
-  COORDINATOR: 'Coordinator',
-  SECTOR_OFFICER: 'Sector Officer',
-  BOOTH_INCHARGE: 'Booth Incharge',
-  VOLUNTEER: 'Volunteer',
-  AGENT: 'Agent',
-  POLLING_AGENT: 'Polling Agent',
-  COUNTING_AGENT: 'Counting Agent',
-  CANDIDATE: 'Candidate',
-  CANDIDATE_ADMIN: 'Candidate Admin',
-  EMC_ADMIN: 'EMC Admin',
-  EMC_MANAGER: 'EMC Manager',
-  EMC_OPERATOR: 'EMC Operator',
 };
 
 export function OrganizationSetupPage() {
@@ -111,8 +95,7 @@ export function OrganizationSetupPage() {
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
 
   // Check if user has admin access
-  const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-  const hasAdminAccess = user && allowedRoles.includes(user.role);
+  const hasAdminAccess = user?.role === 'CENTRAL_ADMIN';
 
   // Fetch role-feature matrix
   const { data: roleFeaturesData, isLoading: isLoadingRoleFeatures } = useQuery({
@@ -243,8 +226,8 @@ export function OrganizationSetupPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div className="p-2 bg-orange-100 rounded-lg">
-          <BuildingIcon className="h-6 w-6 text-orange-600" />
+        <div className="p-2 bg-brand-muted rounded-lg">
+          <BuildingIcon className="h-6 w-6 text-brand" />
         </div>
         <div>
           <h1 className="text-2xl font-bold">Organization Setup</h1>
@@ -269,7 +252,7 @@ export function OrganizationSetupPage() {
         {/* Role-Features Tab */}
         <TabsContent value="role-features" className="space-y-4">
           {pendingChanges.size > 0 && (
-            <Card className="border-orange-200 bg-orange-50">
+            <Card className="border-brand/30 bg-brand-muted">
               <CardContent className="py-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-orange-800">
@@ -305,7 +288,7 @@ export function OrganizationSetupPage() {
             <Card>
               <CardContent className="py-10">
                 <div className="flex items-center justify-center">
-                  <LoaderIcon className="h-8 w-8 animate-spin text-orange-500" />
+                  <LoaderIcon className="h-8 w-8 animate-spin text-brand" />
                 </div>
               </CardContent>
             </Card>
@@ -323,7 +306,7 @@ export function OrganizationSetupPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="sticky left-0 bg-white min-w-[180px]">
+                        <TableHead className="sticky left-0 bg-card min-w-[180px]">
                           Role
                         </TableHead>
                         {Object.entries(featuresByCategory).map(([category, categoryFeatures]) => (
@@ -337,7 +320,7 @@ export function OrganizationSetupPage() {
                         ))}
                       </TableRow>
                       <TableRow>
-                        <TableHead className="sticky left-0 bg-white"></TableHead>
+                        <TableHead className="sticky left-0 bg-card"></TableHead>
                         {features.map((feature) => (
                           <TableHead
                             key={feature.key}
@@ -351,7 +334,7 @@ export function OrganizationSetupPage() {
                     <TableBody>
                       {roles.map((role) => (
                         <TableRow key={role}>
-                          <TableCell className="sticky left-0 bg-white font-medium">
+                          <TableCell className="sticky left-0 bg-card font-medium">
                             {ROLE_LABELS[role] || role}
                           </TableCell>
                           {features.map((feature) => {
@@ -361,7 +344,7 @@ export function OrganizationSetupPage() {
                             return (
                               <TableCell
                                 key={feature.key}
-                                className={`text-center ${hasChange ? 'bg-orange-50' : ''}`}
+                                className={`text-center ${hasChange ? 'bg-brand-muted' : ''}`}
                               >
                                 <Checkbox
                                   checked={isEnabled}
@@ -436,7 +419,7 @@ export function OrganizationSetupPage() {
               {/* Users Table */}
               {isLoadingUsers ? (
                 <div className="flex items-center justify-center py-10">
-                  <LoaderIcon className="h-8 w-8 animate-spin text-orange-500" />
+                  <LoaderIcon className="h-8 w-8 animate-spin text-brand" />
                 </div>
               ) : (
                 <>
@@ -463,7 +446,7 @@ export function OrganizationSetupPage() {
                             <TableCell>
                               <div className="flex items-center gap-3">
                                 <Avatar className="h-8 w-8">
-                                  <AvatarFallback className="bg-orange-100 text-orange-600 text-xs">
+                                  <AvatarFallback className="bg-brand-muted text-brand text-xs">
                                     {getInitials(`${u.firstName} ${u.lastName || ''}`)}
                                   </AvatarFallback>
                                 </Avatar>
@@ -560,7 +543,7 @@ export function OrganizationSetupPage() {
           <div className="space-y-4 py-4">
             <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
               <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-orange-100 text-orange-600">
+                <AvatarFallback className="bg-brand-muted text-brand">
                   {selectedUser
                     ? getInitials(`${selectedUser.firstName} ${selectedUser.lastName || ''}`)
                     : ''}

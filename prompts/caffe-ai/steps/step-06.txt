@@ -1,0 +1,21 @@
+CURRENT STEP: Step 6 — Import Voters
+
+Go to **Voters** page → click **Bulk Upload** → download the CSV template.
+
+Fill in for each voter:
+- Full Name (required)
+- Name in Local Language
+- Gender: MALE / FEMALE / TRANSGENDER
+- Age
+- EPIC Number (Voter ID — must be unique)
+- Mobile Number (10 digits, optional but recommended)
+- Serial Number (SL No from the official voter list)
+- Part Number (required — must exactly match a booth you imported in Step 5)
+
+Upload the filled CSV. The system validates and creates all voter records. Voter counts automatically reflect on each booth's detail page.
+
+After import:
+- Check the Dashboard for total voter count, gender split, age distribution
+- Click any voter row to view their full profile
+- Upload voter photos if available
+- Link voters to religion, caste, language, and schemes via the edit form

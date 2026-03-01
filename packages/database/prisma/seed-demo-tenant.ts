@@ -24,7 +24,7 @@ async function main() {
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'demo' },
     update: {
-      databaseType: 'DEDICATED_MANAGED',
+      databaseType: 'DEDICATED_PLATFORM',
       databaseStatus: 'READY',
       databaseName: 'EC_Demo',
       databaseHost: 'localhost',
@@ -46,7 +46,7 @@ async function main() {
       tenantType: 'INDIVIDUAL_CANDIDATE',
 
       // Database configuration
-      databaseType: 'DEDICATED_MANAGED',
+      databaseType: 'DEDICATED_PLATFORM',
       databaseStatus: 'READY',
       databaseName: 'EC_Demo',
       databaseHost: 'localhost',

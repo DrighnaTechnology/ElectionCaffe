@@ -3,36 +3,28 @@ import { coreDb as prisma } from '@electioncaffe/database';
 import { createLogger } from '@electioncaffe/shared';
 import { z } from 'zod';
 import { superAdminAuth } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const logger = createLogger('super-admin-service');
 
 const createNewsSchema = z.object({
   tenantId: z.string().uuid().optional().nullable(),
   title: z.string().min(1, 'Title is required').max(500),
-  titleLocal: z.string().max(500).optional().nullable(),
+  content: z.string().min(1, 'Content is required'),
   summary: z.string().max(2000).optional().nullable(),
-  content: z.string().optional().nullable(),
-  contentLocal: z.string().optional().nullable(),
-  category: z.string().default('OTHER'),
-  subCategory: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
   tags: z.array(z.string()).default([]),
-  keywords: z.array(z.string()).default([]),
-  source: z.string().default('MANUAL_ENTRY'),
+  imageUrl: z.string().url().optional().nullable(),
   sourceUrl: z.string().url().optional().nullable(),
   sourceName: z.string().optional().nullable(),
+  author: z.string().optional().nullable(),
   publishedAt: z.string().datetime().optional().nullable(),
-  geographicLevel: z.string().default('NATIONAL'),
+  scope: z.string().default('national'),
   state: z.string().optional().nullable(),
-  region: z.string().optional().nullable(),
   district: z.string().optional().nullable(),
   constituency: z.string().optional().nullable(),
-  section: z.string().optional().nullable(),
-  booth: z.string().optional().nullable(),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
-  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED', 'FLAGGED']).default('DRAFT'),
-  imageUrls: z.array(z.string()).default([]),
-  videoUrls: z.array(z.string()).default([]),
-  documentUrls: z.array(z.string()).default([]),
+  status: z.enum(['draft', 'published', 'archived']).default('draft'),
+  isPinned: z.boolean().default(false),
 });
 
 const router = Router();
@@ -40,23 +32,20 @@ const router = Router();
 // Apply super admin auth to all routes
 router.use(superAdminAuth);
 
-// Get all news/information with filters
+// Get all news with filters
 router.get('/', async (req: Request, res: Response) => {
   try {
     const {
       page = 1,
       limit = 20,
       tenantId,
-      geographicLevel,
+      scope,
       category,
       status,
-      priority,
       state,
       district,
       constituency,
       search,
-      startDate,
-      endDate,
     } = req.query;
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -64,10 +53,9 @@ router.get('/', async (req: Request, res: Response) => {
     const where: any = {};
 
     if (tenantId) where.tenantId = tenantId;
-    if (geographicLevel) where.geographicLevel = geographicLevel;
+    if (scope) where.scope = scope;
     if (category) where.category = category;
     if (status) where.status = status;
-    if (priority) where.priority = priority;
     if (state) where.state = state;
     if (district) where.district = district;
     if (constituency) where.constituency = constituency;
@@ -76,29 +64,17 @@ router.get('/', async (req: Request, res: Response) => {
       where.OR = [
         { title: { contains: search as string, mode: 'insensitive' } },
         { summary: { contains: search as string, mode: 'insensitive' } },
-        { content: { contains: search as string, mode: 'insensitive' } },
       ];
     }
 
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate as string);
-      if (endDate) where.createdAt.lte = new Date(endDate as string);
-    }
-
     const [news, total] = await Promise.all([
-      (prisma as any).newsInformation.findMany({
+      prisma.newsInformation.findMany({
         where,
         skip,
         take: Number(limit),
         orderBy: { createdAt: 'desc' },
-        include: {
-          _count: {
-            select: { actions: true },
-          },
-        },
       }),
-      (prisma as any).newsInformation.count({ where }),
+      prisma.newsInformation.count({ where }),
     ]);
 
     res.json({
@@ -126,14 +102,8 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const news = await (prisma as any).newsInformation.findUnique({
+    const news = await prisma.newsInformation.findUnique({
       where: { id },
-      include: {
-        actions: {
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        },
-      },
     });
 
     if (!news) {
@@ -144,7 +114,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     // Increment view count
-    await (prisma as any).newsInformation.update({
+    await prisma.newsInformation.update({
       where: { id },
       data: { viewCount: { increment: 1 } },
     });
@@ -182,37 +152,30 @@ router.post('/', async (req: Request, res: Response) => {
 
     const data = parsed.data;
 
-    const news = await (prisma as any).newsInformation.create({
+    const news = await prisma.newsInformation.create({
       data: {
         tenantId: data.tenantId || null,
         title: data.title,
-        titleLocal: data.titleLocal,
-        summary: data.summary,
         content: data.content,
-        contentLocal: data.contentLocal,
+        summary: data.summary,
         category: data.category,
-        subCategory: data.subCategory,
         tags: data.tags,
-        keywords: data.keywords,
-        source: data.source,
+        imageUrl: data.imageUrl,
         sourceUrl: data.sourceUrl,
         sourceName: data.sourceName,
+        author: data.author,
         publishedAt: data.publishedAt ? new Date(data.publishedAt) : null,
-        geographicLevel: data.geographicLevel,
+        scope: data.scope,
         state: data.state,
-        region: data.region,
         district: data.district,
         constituency: data.constituency,
-        section: data.section,
-        booth: data.booth,
-        priority: data.priority,
         status: data.status,
-        imageUrls: data.imageUrls,
-        videoUrls: data.videoUrls,
-        documentUrls: data.documentUrls,
+        isPinned: data.isPinned,
         createdBy: superAdminId,
       },
     });
+
+    auditLog(req, 'CREATE_NEWS', 'news', news.id, data.tenantId, { title: data.title });
 
     res.status(201).json({
       success: true,
@@ -233,9 +196,8 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const superAdminId = (req as any).superAdmin?.id;
 
-    const existing = await (prisma as any).newsInformation.findUnique({
+    const existing = await prisma.newsInformation.findUnique({
       where: { id },
     });
 
@@ -248,63 +210,46 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const {
       title,
-      titleLocal,
-      summary,
       content,
-      contentLocal,
+      summary,
       category,
-      subCategory,
       tags,
-      keywords,
-      source,
+      imageUrl,
       sourceUrl,
       sourceName,
+      author,
       publishedAt,
-      geographicLevel,
+      scope,
       state,
-      region,
       district,
       constituency,
-      section,
-      booth,
-      priority,
       status,
-      imageUrls,
-      videoUrls,
-      documentUrls,
+      isPinned,
     } = req.body;
 
-    const news = await (prisma as any).newsInformation.update({
+    const news = await prisma.newsInformation.update({
       where: { id },
       data: {
         title,
-        titleLocal,
-        summary,
         content,
-        contentLocal,
+        summary,
         category,
-        subCategory,
         tags,
-        keywords,
-        source,
+        imageUrl,
         sourceUrl,
         sourceName,
+        author,
         publishedAt: publishedAt ? new Date(publishedAt) : undefined,
-        geographicLevel,
+        scope,
         state,
-        region,
         district,
         constituency,
-        section,
-        booth,
-        priority,
         status,
-        imageUrls,
-        videoUrls,
-        documentUrls,
-        updatedBy: superAdminId,
+        isPinned,
       },
     });
+
+    auditLog(req, 'UPDATE_NEWS', 'news', id);
 
     res.json({
       success: true,
@@ -325,16 +270,16 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.post('/:id/publish', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const superAdminId = (req as any).superAdmin?.id;
 
-    const news = await (prisma as any).newsInformation.update({
+    const news = await prisma.newsInformation.update({
       where: { id },
       data: {
-        status: 'PUBLISHED',
+        status: 'published',
         publishedAt: new Date(),
-        updatedBy: superAdminId,
       },
     });
+
+    auditLog(req, 'PUBLISH_NEWS', 'news', id);
 
     res.json({
       success: true,
@@ -355,16 +300,16 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
 router.post('/:id/archive', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const superAdminId = (req as any).superAdmin?.id;
 
-    const news = await (prisma as any).newsInformation.update({
+    const news = await prisma.newsInformation.update({
       where: { id },
       data: {
-        status: 'ARCHIVED',
-        archivedAt: new Date(),
-        archivedBy: superAdminId,
+        status: 'archived',
+        isActive: false,
       },
     });
+
+    auditLog(req, 'ARCHIVE_NEWS', 'news', id);
 
     res.json({
       success: true,
@@ -381,86 +326,13 @@ router.post('/:id/archive', async (req: Request, res: Response) => {
   }
 });
 
-// Flag news
-router.post('/:id/flag', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const superAdminId = (req as any).superAdmin?.id;
-
-    const news = await (prisma as any).newsInformation.update({
-      where: { id },
-      data: {
-        status: 'FLAGGED',
-        updatedBy: superAdminId,
-      },
-    });
-
-    res.json({
-      success: true,
-      data: news,
-      message: 'News flagged for review',
-    });
-  } catch (error: any) {
-    logger.error({ err: error }, 'Error flagging news');
-    res.status(500).json({
-      success: false,
-      error: 'Failed to flag news',
-      message: error.message,
-    });
-  }
-});
-
-// Analyze news with AI
-router.post('/:id/analyze', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    const news = await (prisma as any).newsInformation.findUnique({
-      where: { id },
-    });
-
-    if (!news) {
-      return res.status(404).json({
-        success: false,
-        error: 'News not found',
-      });
-    }
-
-    // Check if AI provider is configured
-    const aiProvider = await prisma.aIProvider.findFirst({
-      where: { status: 'ACTIVE', apiKey: { not: null } } as any,
-    });
-
-    if (!aiProvider) {
-      return res.status(503).json({
-        success: false,
-        error: 'No AI provider configured. Please configure an AI provider with a valid API key to analyze news.',
-      });
-    }
-
-    // TODO: Implement actual AI analysis integration using the configured provider
-    return res.status(503).json({
-      success: false,
-      error: 'AI news analysis integration is not yet implemented. An AI provider is configured but the analysis pipeline is pending.',
-    });
-  } catch (error: any) {
-    logger.error({ err: error }, 'Error analyzing news');
-    res.status(500).json({
-      success: false,
-      error: 'Failed to analyze news',
-      message: error.message,
-    });
-  }
-});
-
 // Delete news
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const news = await (prisma as any).newsInformation.findUnique({
+    const news = await prisma.newsInformation.findUnique({
       where: { id },
-      include: { _count: { select: { actions: true } } },
     });
 
     if (!news) {
@@ -470,16 +342,11 @@ router.delete('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    if (news._count.actions > 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Cannot delete news with associated actions',
-      });
-    }
-
-    await (prisma as any).newsInformation.delete({
+    await prisma.newsInformation.delete({
       where: { id },
     });
+
+    auditLog(req, 'DELETE_NEWS', 'news', id, null, { title: news.title });
 
     res.json({
       success: true,
@@ -498,83 +365,24 @@ router.delete('/:id', async (req: Request, res: Response) => {
 // Get news statistics
 router.get('/stats/overview', async (req: Request, res: Response) => {
   try {
-    const { tenantId, startDate, endDate } = req.query;
+    const { tenantId } = req.query;
 
     const where: any = {};
     if (tenantId) where.tenantId = tenantId;
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate as string);
-      if (endDate) where.createdAt.lte = new Date(endDate as string);
-    }
 
-    const [
-      totalNews,
-      byStatus,
-      byCategory,
-      byPriority,
-      byGeographicLevel,
-      recentNews,
-    ] = await Promise.all([
-      (prisma as any).newsInformation.count({ where }),
-      (prisma as any).newsInformation.groupBy({
-        by: ['status'],
-        where,
-        _count: true,
-      }),
-      (prisma as any).newsInformation.groupBy({
-        by: ['category'],
-        where,
-        _count: true,
-        orderBy: { _count: { category: 'desc' } },
-        take: 10,
-      }),
-      (prisma as any).newsInformation.groupBy({
-        by: ['priority'],
-        where,
-        _count: true,
-      }),
-      (prisma as any).newsInformation.groupBy({
-        by: ['geographicLevel'],
-        where,
-        _count: true,
-      }),
-      (prisma as any).newsInformation.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        select: {
-          id: true,
-          title: true,
-          category: true,
-          priority: true,
-          status: true,
-          createdAt: true,
-        },
-      }),
+    const [totalNews, publishedCount, draftCount] = await Promise.all([
+      prisma.newsInformation.count({ where }),
+      prisma.newsInformation.count({ where: { ...where, status: 'published' } }),
+      prisma.newsInformation.count({ where: { ...where, status: 'draft' } }),
     ]);
 
     res.json({
       success: true,
       data: {
         totalNews,
-        byStatus: byStatus.reduce((acc: any, item: any) => {
-          acc[item.status] = item._count;
-          return acc;
-        }, {}),
-        byCategory: byCategory.map((item: any) => ({
-          category: item.category,
-          count: item._count,
-        })),
-        byPriority: byPriority.reduce((acc: any, item: any) => {
-          acc[item.priority] = item._count;
-          return acc;
-        }, {}),
-        byGeographicLevel: byGeographicLevel.reduce((acc: any, item: any) => {
-          acc[item.geographicLevel] = item._count;
-          return acc;
-        }, {}),
-        recentNews,
+        published: publishedCount,
+        draft: draftCount,
+        archived: totalNews - publishedCount - draftCount,
       },
     });
   } catch (error: any) {
@@ -582,56 +390,6 @@ router.get('/stats/overview', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch news statistics',
-      message: error.message,
-    });
-  }
-});
-
-// Get geographic hierarchy options
-router.get('/options/geographic', async (req: Request, res: Response) => {
-  try {
-    const { state, district } = req.query;
-
-    // Get distinct values based on existing data
-    const [states, districts, constituencies] = await Promise.all([
-      (prisma as any).newsInformation.findMany({
-        where: { state: { not: null } },
-        select: { state: true },
-        distinct: ['state'],
-      }),
-      state
-        ? (prisma as any).newsInformation.findMany({
-            where: { state: state as string, district: { not: null } },
-            select: { district: true },
-            distinct: ['district'],
-          })
-        : Promise.resolve([]),
-      district
-        ? (prisma as any).newsInformation.findMany({
-            where: {
-              state: state as string,
-              district: district as string,
-              constituency: { not: null },
-            },
-            select: { constituency: true },
-            distinct: ['constituency'],
-          })
-        : Promise.resolve([]),
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        states: states.map((s: any) => s.state).filter(Boolean),
-        districts: districts.map((d: any) => d.district).filter(Boolean),
-        constituencies: constituencies.map((c: any) => c.constituency).filter(Boolean),
-      },
-    });
-  } catch (error: any) {
-    logger.error({ err: error }, 'Error fetching geographic options');
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch geographic options',
       message: error.message,
     });
   }

@@ -181,6 +181,9 @@ export function CandidateBioPage() {
     mutationFn: () => candidatesAPI.create(selectedElectionId!, {
       ...candidateForm,
       age: candidateForm.age ? parseInt(candidateForm.age) : undefined,
+      partyId: candidateForm.partyId || undefined,
+      nominationNumber: candidateForm.nominationNumber || undefined,
+      dateOfBirth: candidateForm.dateOfBirth || undefined,
     }),
     onSuccess: () => {
       toast.success('Candidate created successfully');
@@ -278,7 +281,7 @@ export function CandidateBioPage() {
   if (!selectedElectionId) {
     return (
       <div className="p-8 text-center">
-        <p className="text-gray-500">Please select an election to view candidates</p>
+        <p className="text-muted-foreground">Please select an election to view candidates</p>
         <Button className="mt-4" onClick={() => navigate('/elections')}>
           Go to Elections
         </Button>
@@ -292,7 +295,7 @@ export function CandidateBioPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Candidate Bio</h1>
-          <p className="text-gray-500">View and manage candidate profiles</p>
+          <p className="text-muted-foreground">View and manage candidate profiles</p>
         </div>
         <Dialog open={addCandidateOpen} onOpenChange={setAddCandidateOpen}>
           <DialogTrigger asChild>
@@ -458,7 +461,7 @@ export function CandidateBioPage() {
           <CardHeader>
             <CardTitle>Candidates</CardTitle>
             <div className="relative mt-2">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search candidates..."
                 value={search}
@@ -476,15 +479,15 @@ export function CandidateBioPage() {
               </div>
             ) : candidates.length === 0 ? (
               <div className="p-8 text-center">
-                <p className="text-gray-500">No candidates found</p>
+                <p className="text-muted-foreground">No candidates found</p>
               </div>
             ) : (
               <div className="divide-y max-h-[600px] overflow-y-auto">
                 {candidates.map((cand: any) => (
                   <div
                     key={cand.id}
-                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-                      selectedCandidate?.id === cand.id ? 'bg-orange-50 border-l-4 border-orange-500' : ''
+                    className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
+                      selectedCandidate?.id === cand.id ? 'bg-brand-muted border-l-4 border-brand' : ''
                     }`}
                     onClick={() => setSelectedCandidate(cand)}
                   >
@@ -496,14 +499,14 @@ export function CandidateBioPage() {
                           className="h-12 w-12 rounded-full object-cover"
                         />
                       ) : (
-                        <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center">
-                          <UserIcon className="h-6 w-6 text-gray-500" />
+                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                          <UserIcon className="h-6 w-6 text-muted-foreground" />
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{cand.name}</p>
                         {cand.party && (
-                          <p className="text-sm text-gray-500 truncate">
+                          <p className="text-sm text-muted-foreground truncate">
                             {cand.party.shortName || cand.party.name}
                           </p>
                         )}
@@ -535,8 +538,8 @@ export function CandidateBioPage() {
                           className="h-32 w-32 rounded-xl object-cover"
                         />
                       ) : (
-                        <div className="h-32 w-32 rounded-xl bg-gray-200 flex items-center justify-center">
-                          <UserIcon className="h-16 w-16 text-gray-500" />
+                        <div className="h-32 w-32 rounded-xl bg-muted flex items-center justify-center">
+                          <UserIcon className="h-16 w-16 text-muted-foreground" />
                         </div>
                       )}
                     </div>
@@ -549,10 +552,10 @@ export function CandidateBioPage() {
                           )}
                         </div>
                         {candidate?.nameLocal && (
-                          <p className="text-gray-500">{candidate.nameLocal}</p>
+                          <p className="text-muted-foreground">{candidate.nameLocal}</p>
                         )}
                         {candidate?.party && (
-                          <p className="text-orange-600 font-medium">
+                          <p className="text-brand font-medium">
                             {candidate.party.name} ({candidate.party.shortName})
                           </p>
                         )}
@@ -560,25 +563,25 @@ export function CandidateBioPage() {
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         {candidate?.age && (
                           <div className="flex items-center gap-2 text-sm">
-                            <CalendarIcon className="h-4 w-4 text-gray-400" />
+                            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                             <span>{candidate.age} years</span>
                           </div>
                         )}
                         {candidate?.education && (
                           <div className="flex items-center gap-2 text-sm">
-                            <GraduationCapIcon className="h-4 w-4 text-gray-400" />
+                            <GraduationCapIcon className="h-4 w-4 text-muted-foreground" />
                             <span className="truncate">{candidate.education}</span>
                           </div>
                         )}
                         {candidate?.profession && (
                           <div className="flex items-center gap-2 text-sm">
-                            <BriefcaseIcon className="h-4 w-4 text-gray-400" />
+                            <BriefcaseIcon className="h-4 w-4 text-muted-foreground" />
                             <span className="truncate">{candidate.profession}</span>
                           </div>
                         )}
                         {candidate?.mobile && (
                           <div className="flex items-center gap-2 text-sm">
-                            <PhoneIcon className="h-4 w-4 text-gray-400" />
+                            <PhoneIcon className="h-4 w-4 text-muted-foreground" />
                             <span>{candidate.mobile}</span>
                           </div>
                         )}
@@ -598,7 +601,7 @@ export function CandidateBioPage() {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{formatNumber(getTotalFollowers())}</p>
-                        <p className="text-sm text-gray-500">Total Followers</p>
+                        <p className="text-sm text-muted-foreground">Total Followers</p>
                       </div>
                     </div>
                   </CardContent>
@@ -611,7 +614,7 @@ export function CandidateBioPage() {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{documents.length}</p>
-                        <p className="text-sm text-gray-500">Documents</p>
+                        <p className="text-sm text-muted-foreground">Documents</p>
                       </div>
                     </div>
                   </CardContent>
@@ -624,7 +627,7 @@ export function CandidateBioPage() {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{socialMedia.length}</p>
-                        <p className="text-sm text-gray-500">Social Profiles</p>
+                        <p className="text-sm text-muted-foreground">Social Profiles</p>
                       </div>
                     </div>
                   </CardContent>
@@ -632,12 +635,12 @@ export function CandidateBioPage() {
                 <Card>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-orange-100">
-                        <TrendingUpIcon className="h-5 w-5 text-orange-600" />
+                      <div className="p-2 rounded-lg bg-brand-muted">
+                        <TrendingUpIcon className="h-5 w-5 text-brand" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.battleCards || 0}</p>
-                        <p className="text-sm text-gray-500">Battle Cards</p>
+                        <p className="text-sm text-muted-foreground">Battle Cards</p>
                       </div>
                     </div>
                   </CardContent>
@@ -760,7 +763,7 @@ export function CandidateBioPage() {
                     </CardHeader>
                     <CardContent>
                       {documents.length === 0 ? (
-                        <div className="p-8 text-center text-gray-500">
+                        <div className="p-8 text-center text-muted-foreground">
                           No documents added yet
                         </div>
                       ) : (
@@ -768,15 +771,15 @@ export function CandidateBioPage() {
                           {documents.map((doc: any) => (
                             <div
                               key={doc.id}
-                              className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                              className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50"
                             >
                               <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-gray-100">
-                                  <FileTextIcon className="h-5 w-5 text-gray-600" />
+                                <div className="p-2 rounded-lg bg-muted">
+                                  <FileTextIcon className="h-5 w-5 text-muted-foreground" />
                                 </div>
                                 <div>
                                   <p className="font-medium">{doc.documentName}</p>
-                                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <Badge variant="outline" className="text-xs">
                                       {doc.documentType}
                                     </Badge>
@@ -874,7 +877,7 @@ export function CandidateBioPage() {
 
                               {/* Audience Stats */}
                               <div className="pt-2 border-t">
-                                <p className="text-sm font-medium text-gray-700 mb-3">Audience Statistics</p>
+                                <p className="text-sm font-medium text-foreground mb-3">Audience Statistics</p>
                                 <div className="grid grid-cols-3 gap-4">
                                   <div className="space-y-2">
                                     <Label htmlFor="followers">Followers</Label>
@@ -911,7 +914,7 @@ export function CandidateBioPage() {
 
                               {/* Content Stats */}
                               <div className="pt-2 border-t">
-                                <p className="text-sm font-medium text-gray-700 mb-3">Content Statistics</p>
+                                <p className="text-sm font-medium text-foreground mb-3">Content Statistics</p>
                                 <div className="grid grid-cols-3 gap-4">
                                   <div className="space-y-2">
                                     <Label htmlFor="posts">Posts</Label>
@@ -949,7 +952,7 @@ export function CandidateBioPage() {
 
                               {/* Engagement Stats */}
                               <div className="pt-2 border-t">
-                                <p className="text-sm font-medium text-gray-700 mb-3">Engagement Metrics</p>
+                                <p className="text-sm font-medium text-foreground mb-3">Engagement Metrics</p>
                                 <div className="grid grid-cols-3 gap-4">
                                   <div className="space-y-2">
                                     <Label htmlFor="likes">Likes</Label>
@@ -999,7 +1002,7 @@ export function CandidateBioPage() {
                     </CardHeader>
                     <CardContent>
                       {socialMedia.length === 0 ? (
-                        <div className="p-8 text-center text-gray-500">
+                        <div className="p-8 text-center text-muted-foreground">
                           No social media profiles added yet
                         </div>
                       ) : (
@@ -1008,23 +1011,23 @@ export function CandidateBioPage() {
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
                             <div className="text-center">
                               <p className="text-3xl font-bold text-blue-600">{formatNumber(getTotalFollowers())}</p>
-                              <p className="text-sm text-gray-600">Total Followers</p>
+                              <p className="text-sm text-muted-foreground">Total Followers</p>
                             </div>
                             <div className="text-center">
                               <p className="text-3xl font-bold text-green-600">
                                 {formatNumber(socialMedia.reduce((sum: number, sm: any) => sum + (sm.views || 0), 0))}
                               </p>
-                              <p className="text-sm text-gray-600">Total Views</p>
+                              <p className="text-sm text-muted-foreground">Total Views</p>
                             </div>
                             <div className="text-center">
                               <p className="text-3xl font-bold text-pink-600">
                                 {formatNumber(socialMedia.reduce((sum: number, sm: any) => sum + (sm.likes || 0), 0))}
                               </p>
-                              <p className="text-sm text-gray-600">Total Likes</p>
+                              <p className="text-sm text-muted-foreground">Total Likes</p>
                             </div>
                             <div className="text-center">
                               <p className="text-3xl font-bold text-purple-600">{socialMedia.length}</p>
-                              <p className="text-sm text-gray-600">Platforms</p>
+                              <p className="text-sm text-muted-foreground">Platforms</p>
                             </div>
                           </div>
 
@@ -1041,7 +1044,7 @@ export function CandidateBioPage() {
                                       <div className="flex items-center gap-2">
                                         <span className="font-medium">{platform?.label || sm.platform}</span>
                                         {sm.username && (
-                                          <span className="text-sm text-gray-500">@{sm.username}</span>
+                                          <span className="text-sm text-muted-foreground">@{sm.username}</span>
                                         )}
                                       </div>
                                       <div className="flex items-center gap-1">
@@ -1068,15 +1071,15 @@ export function CandidateBioPage() {
                                     <div className="grid grid-cols-3 gap-4 text-center">
                                       <div>
                                         <p className="text-xl font-bold">{formatNumber(sm.followers || 0)}</p>
-                                        <p className="text-xs text-gray-500">Followers</p>
+                                        <p className="text-xs text-muted-foreground">Followers</p>
                                       </div>
                                       <div>
                                         <p className="text-xl font-bold">{formatNumber(sm.following || 0)}</p>
-                                        <p className="text-xs text-gray-500">Following</p>
+                                        <p className="text-xs text-muted-foreground">Following</p>
                                       </div>
                                       <div>
                                         <p className="text-xl font-bold">{formatNumber(sm.subscribers || sm.posts || 0)}</p>
-                                        <p className="text-xs text-gray-500">{sm.subscribers ? 'Subscribers' : 'Posts'}</p>
+                                        <p className="text-xs text-muted-foreground">{sm.subscribers ? 'Subscribers' : 'Posts'}</p>
                                       </div>
                                     </div>
 
@@ -1086,25 +1089,25 @@ export function CandidateBioPage() {
                                         {sm.views > 0 && (
                                           <div className="flex flex-col items-center">
                                             <span className="text-lg font-semibold text-blue-600">{formatNumber(sm.views)}</span>
-                                            <span className="text-[10px] text-gray-500">Views</span>
+                                            <span className="text-[10px] text-muted-foreground">Views</span>
                                           </div>
                                         )}
                                         {sm.likes > 0 && (
                                           <div className="flex flex-col items-center">
                                             <span className="text-lg font-semibold text-pink-600">{formatNumber(sm.likes)}</span>
-                                            <span className="text-[10px] text-gray-500">Likes</span>
+                                            <span className="text-[10px] text-muted-foreground">Likes</span>
                                           </div>
                                         )}
                                         {sm.comments > 0 && (
                                           <div className="flex flex-col items-center">
                                             <span className="text-lg font-semibold text-yellow-600">{formatNumber(sm.comments)}</span>
-                                            <span className="text-[10px] text-gray-500">Comments</span>
+                                            <span className="text-[10px] text-muted-foreground">Comments</span>
                                           </div>
                                         )}
                                         {sm.shares > 0 && (
                                           <div className="flex flex-col items-center">
                                             <span className="text-lg font-semibold text-green-600">{formatNumber(sm.shares)}</span>
-                                            <span className="text-[10px] text-gray-500">Shares</span>
+                                            <span className="text-[10px] text-muted-foreground">Shares</span>
                                           </div>
                                         )}
                                       </div>
@@ -1119,7 +1122,7 @@ export function CandidateBioPage() {
                                         </span>
                                       </div>
                                     )}
-                                    <p className="text-xs text-gray-400 mt-2 text-center">
+                                    <p className="text-xs text-muted-foreground mt-2 text-center">
                                       Last updated: {formatDate(sm.lastUpdated)}
                                     </p>
                                   </CardContent>
@@ -1143,58 +1146,58 @@ export function CandidateBioPage() {
                       {candidate?.biography && (
                         <div>
                           <h4 className="font-medium mb-2">Biography</h4>
-                          <p className="text-gray-600 whitespace-pre-wrap">{candidate.biography}</p>
+                          <p className="text-muted-foreground whitespace-pre-wrap">{candidate.biography}</p>
                         </div>
                       )}
                       {candidate?.experience && (
                         <div>
                           <h4 className="font-medium mb-2">Experience</h4>
-                          <p className="text-gray-600 whitespace-pre-wrap">{candidate.experience}</p>
+                          <p className="text-muted-foreground whitespace-pre-wrap">{candidate.experience}</p>
                         </div>
                       )}
                       <div className="grid grid-cols-2 gap-4">
                         {candidate?.education && (
                           <div className="flex items-start gap-3">
-                            <GraduationCapIcon className="h-5 w-5 text-gray-400 mt-0.5" />
+                            <GraduationCapIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
                             <div>
                               <p className="font-medium">Education</p>
-                              <p className="text-gray-600">{candidate.education}</p>
+                              <p className="text-muted-foreground">{candidate.education}</p>
                             </div>
                           </div>
                         )}
                         {candidate?.profession && (
                           <div className="flex items-start gap-3">
-                            <BriefcaseIcon className="h-5 w-5 text-gray-400 mt-0.5" />
+                            <BriefcaseIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
                             <div>
                               <p className="font-medium">Profession</p>
-                              <p className="text-gray-600">{candidate.profession}</p>
+                              <p className="text-muted-foreground">{candidate.profession}</p>
                             </div>
                           </div>
                         )}
                         {candidate?.mobile && (
                           <div className="flex items-start gap-3">
-                            <PhoneIcon className="h-5 w-5 text-gray-400 mt-0.5" />
+                            <PhoneIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
                             <div>
                               <p className="font-medium">Mobile</p>
-                              <p className="text-gray-600">{candidate.mobile}</p>
+                              <p className="text-muted-foreground">{candidate.mobile}</p>
                             </div>
                           </div>
                         )}
                         {candidate?.email && (
                           <div className="flex items-start gap-3">
-                            <MailIcon className="h-5 w-5 text-gray-400 mt-0.5" />
+                            <MailIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
                             <div>
                               <p className="font-medium">Email</p>
-                              <p className="text-gray-600">{candidate.email}</p>
+                              <p className="text-muted-foreground">{candidate.email}</p>
                             </div>
                           </div>
                         )}
                         {candidate?.address && (
                           <div className="flex items-start gap-3 col-span-2">
-                            <MapPinIcon className="h-5 w-5 text-gray-400 mt-0.5" />
+                            <MapPinIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
                             <div>
                               <p className="font-medium">Address</p>
-                              <p className="text-gray-600">{candidate.address}</p>
+                              <p className="text-muted-foreground">{candidate.address}</p>
                             </div>
                           </div>
                         )}
@@ -1207,8 +1210,8 @@ export function CandidateBioPage() {
           ) : (
             <Card className="h-full flex items-center justify-center">
               <CardContent className="text-center p-8">
-                <UserIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Select a candidate to view details</p>
+                <UserIcon className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">Select a candidate to view details</p>
               </CardContent>
             </Card>
           )}

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { prisma, WebsiteTemplateType } from '@electioncaffe/database';
-import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
+import { coreDb as prisma, WebsiteTemplateType } from '@electioncaffe/database';
+import { successResponse, errorResponse, createLogger, buildTenantUrl } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');
 const router = Router();
@@ -58,16 +58,15 @@ router.get('/my-website', async (req: Request, res: Response): Promise<void> => 
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const website = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
       include: {
         template: true,
         pages: {
@@ -89,25 +88,32 @@ router.post('/my-website', async (req: Request, res: Response): Promise<void> =>
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied. Only administrators can create a website.'));
       return;
     }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
+      return;
+    }
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+    });
+
+    if (!tenant) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
     // Check if website already exists
     const existingWebsite = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
     });
 
     if (existingWebsite) {
@@ -149,18 +155,18 @@ router.post('/my-website', async (req: Request, res: Response): Promise<void> =>
 
     const website = await prisma.tenantWebsite.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         templateId,
         subdomain,
         siteName,
         siteNameLocal,
         tagline,
         description,
-        primaryColor: primaryColor || firstColorScheme?.primary || user.tenant.primaryColor,
-        secondaryColor: secondaryColor || firstColorScheme?.secondary || user.tenant.secondaryColor,
-        logoUrl: user.tenant.logoUrl,
-        faviconUrl: user.tenant.faviconUrl,
-        emAdminUrl: user.tenant.tenantUrl || `${user.tenant.slug}.electioncaffe.com`,
+        primaryColor: primaryColor || firstColorScheme?.primary || tenant.primaryColor,
+        secondaryColor: secondaryColor || firstColorScheme?.secondary || tenant.secondaryColor,
+        logoUrl: tenant.logoUrl,
+        faviconUrl: tenant.faviconUrl,
+        emAdminUrl: tenant.tenantUrl || buildTenantUrl(tenant.slug),
         enabledSections: template.defaultSections as object,
         siteConfig: template.defaultConfig as object,
       },
@@ -199,24 +205,22 @@ router.put('/my-website', async (req: Request, res: Response): Promise<void> => 
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied. Only administrators can update the website.'));
       return;
     }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const website = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
     });
 
     if (!website) {
@@ -299,24 +303,22 @@ router.patch('/my-website/status', async (req: Request, res: Response): Promise<
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const website = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
     });
 
     if (!website) {
@@ -356,16 +358,15 @@ router.get('/my-website/pages', async (req: Request, res: Response): Promise<voi
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const website = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
     });
 
     if (!website) {
@@ -391,24 +392,22 @@ router.post('/my-website/pages', async (req: Request, res: Response): Promise<vo
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const website = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
     });
 
     if (!website) {
@@ -464,24 +463,22 @@ router.put('/my-website/pages/:pageId', async (req: Request, res: Response): Pro
     const userRole = req.headers['x-user-role'] as string;
     const { pageId } = req.params;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const website = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
     });
 
     if (!website) {
@@ -541,24 +538,22 @@ router.delete('/my-website/pages/:pageId', async (req: Request, res: Response): 
     const userRole = req.headers['x-user-role'] as string;
     const { pageId } = req.params;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const website = await prisma.tenantWebsite.findFirst({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId: user.tenantId },
     });
 
     if (!website) {

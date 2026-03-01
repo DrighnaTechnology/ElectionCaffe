@@ -49,7 +49,7 @@ export function InventoryPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Inventory</h1>
-          <p className="text-gray-500">Manage campaign inventory and materials</p>
+          <p className="text-muted-foreground">Manage campaign inventory and materials</p>
         </div>
       </div>
 
@@ -57,7 +57,7 @@ export function InventoryPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Total Categories</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Categories</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{categories.length}</p>
@@ -65,7 +65,7 @@ export function InventoryPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Total Items</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Items</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{summary.totalItems || 0}</p>
@@ -73,7 +73,7 @@ export function InventoryPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Low Stock Items</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock Items</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-red-600">{summary.lowStockItems || 0}</p>
@@ -85,7 +85,7 @@ export function InventoryPage() {
       <Card>
         <CardContent className="p-4">
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search inventory items..."
               value={search}
@@ -111,8 +111,8 @@ export function InventoryPage() {
             </div>
           ) : items.length === 0 ? (
             <div className="p-8 text-center">
-              <PackageIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No inventory items found</p>
+              <PackageIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No inventory items found</p>
             </div>
           ) : (
             <Table>
@@ -157,7 +157,7 @@ export function InventoryPage() {
           >
             Previous
           </Button>
-          <span className="flex items-center px-4 text-sm text-gray-600">
+          <span className="flex items-center px-4 text-sm text-muted-foreground">
             Page {page} of {itemsData.data.meta.totalPages}
           </span>
           <Button

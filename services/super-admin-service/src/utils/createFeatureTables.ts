@@ -1,4 +1,4 @@
-import { Tenant } from '@prisma/client';
+import type { Tenant } from '@electioncaffe/database';
 
 /**
  * Creates feature-specific database tables for a tenant.

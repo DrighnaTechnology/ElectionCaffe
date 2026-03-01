@@ -132,8 +132,7 @@ router.post('/request-sync', async (req: Request, res: Response): Promise<void> 
     const userRole = req.headers['x-user-role'] as string;
 
     // Only allow admin roles to request sync
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied. Only administrators can request sync.'));
       return;
     }

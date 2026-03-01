@@ -145,10 +145,19 @@ app.use('/api/reports', authMiddleware, createServiceProxy(`http://localhost:${S
 app.use('/api/datacaffe', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.REPORTING}`, { '^/api/datacaffe': '/api/datacaffe' }));
 app.use('/api/ai-analytics', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`, { '^/api/ai-analytics': '/api/ai-analytics' }));
 
-// EC Data, News, and Actions routes for tenant users (handled by auth-service)
+// EC Data, News, Actions, Organization, and other auth-service routes for tenant users
 app.use('/api/ec-data', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/news', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/actions', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/organization', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/users', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/nb', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/website', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/funds', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/inventory', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/events', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/notifications', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/chat', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 
 // Super Admin routes - public auth routes
 app.use('/api/super-admin/auth/login', createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));

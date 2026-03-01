@@ -11,6 +11,7 @@ import { Spinner } from '../components/ui/spinner';
 import { toast } from 'sonner';
 import { detectTenant, getTenantSlug } from '../utils/tenant';
 
+
 export function LoginPage() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -24,10 +25,16 @@ export function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: () => authAPI.login(identifier, password, tenantSlug),
     onSuccess: (response) => {
-      const { user, accessToken, refreshToken } = response.data.data;
-      setAuth(user, accessToken, refreshToken);
-      toast.success('Login successful!');
-      navigate('/dashboard');
+      const { user, accessToken, refreshToken, mustChangePassword } = response.data.data;
+      setAuth(user, accessToken, refreshToken, mustChangePassword);
+      if (mustChangePassword) {
+        toast.info('You must change your temporary password before continuing.');
+        navigate('/force-reset-password');
+      } else {
+        toast.success('Login successful!');
+        const isAdmin = user?.role === 'CENTRAL_ADMIN';
+        navigate(isAdmin ? '/admin-dashboard' : '/dashboard');
+      }
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error?.message || 'Login failed');
@@ -49,7 +56,7 @@ export function LoginPage() {
         <CardTitle>Welcome Back</CardTitle>
         <CardDescription>
           {tenant ? (
-            <>Sign in to <span className="font-semibold text-orange-500">{tenant.name}</span></>
+            <>Sign in to <span className="font-semibold text-brand">{tenant.name}</span></>
           ) : (
             'Sign in to your account to continue'
           )}
@@ -85,9 +92,9 @@ export function LoginPage() {
             {loginMutation.isPending ? <Spinner size="sm" className="mr-2" /> : null}
             Sign In
           </Button>
-          <p className="text-sm text-gray-600 text-center">
+          <p className="text-sm text-muted-foreground text-center">
             Don't have an account?{' '}
-            <Link to="/register" className="text-orange-500 hover:underline">
+            <Link to="/register" className="text-brand hover:underline">
               Register
             </Link>
           </p>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { familiesAPI, votersAPI } from '../services/api';
 import { useElectionStore } from '../store/election';
@@ -32,49 +33,38 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../components/ui/dropdown-menu';
 import { Skeleton } from '../components/ui/skeleton';
 import { Spinner } from '../components/ui/spinner';
 import {
   PlusIcon,
   SearchIcon,
-  MoreVerticalIcon,
-  EditIcon,
   TrashIcon,
   Users2Icon,
   AlertTriangleIcon,
-  UserPlusIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatNumber } from '../lib/utils';
 
-// Template columns for bulk upload
+// Template columns for bulk upload — matches backend createFamilySchema
 const familiesTemplateColumns: TemplateColumn[] = [
   { key: 'familyName', label: 'Family Name', required: true, type: 'string', description: 'Name of the family', example: 'Sharma Family' },
-  { key: 'captainEpic', label: 'Captain Voter ID', type: 'string', description: 'EPIC/Voter ID of the family captain (optional)', example: 'ABC1234567' },
+  { key: 'houseNumber', label: 'House Number', type: 'string', description: 'House/door number', example: '42-A' },
   { key: 'address', label: 'Address', type: 'string', description: 'Family address', example: '123 Main Street' },
-  { key: 'contactNumber', label: 'Contact Number', type: 'string', description: '10-digit contact number', example: '9876543210' },
+  { key: 'captainEpic', label: 'Captain EPIC', type: 'string', description: 'EPIC/Voter ID of the family captain (optional)', example: 'ABC1234567' },
 ];
 
 export function FamiliesPage() {
+  const navigate = useNavigate();
   const { selectedElectionId } = useElectionStore();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
-  const [addMemberOpen, setAddMemberOpen] = useState(false);
-  const [selectedFamily, setSelectedFamily] = useState<any>(null);
   const [formData, setFormData] = useState({
     familyName: '',
-    captainId: '',
+    houseNumber: '',
     address: '',
-    contactNumber: '',
+    captainId: '',
   });
-  const [memberVoterId, setMemberVoterId] = useState('');
 
   const queryClient = useQueryClient();
 
@@ -92,44 +82,30 @@ export function FamiliesPage() {
   const { data: votersData } = useQuery({
     queryKey: ['voters-for-family', selectedElectionId],
     queryFn: () => votersAPI.getAll(selectedElectionId!, { limit: 1000 }),
-    enabled: !!selectedElectionId && (createOpen || addMemberOpen),
+    enabled: !!selectedElectionId && createOpen,
   });
 
   const createMutation = useMutation({
     mutationFn: () =>
       familiesAPI.create(selectedElectionId!, {
         familyName: formData.familyName,
-        captainId: formData.captainId || undefined,
+        houseNumber: formData.houseNumber || undefined,
         address: formData.address || undefined,
-        contactNumber: formData.contactNumber || undefined,
+        captainId: formData.captainId || undefined,
       }),
     onSuccess: () => {
       toast.success('Family created successfully');
       setCreateOpen(false);
       setFormData({
         familyName: '',
-        captainId: '',
+        houseNumber: '',
         address: '',
-        contactNumber: '',
+        captainId: '',
       });
       queryClient.invalidateQueries({ queryKey: ['families'] });
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error?.message || 'Failed to create family');
-    },
-  });
-
-  const addMemberMutation = useMutation({
-    mutationFn: () => familiesAPI.addMember(selectedFamily?.id, memberVoterId),
-    onSuccess: () => {
-      toast.success('Member added successfully');
-      setAddMemberOpen(false);
-      setMemberVoterId('');
-      setSelectedFamily(null);
-      queryClient.invalidateQueries({ queryKey: ['families'] });
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error?.message || 'Failed to add member');
     },
   });
 
@@ -159,14 +135,14 @@ export function FamiliesPage() {
         if (captainEpic) {
           captainId = epicToId.get(captainEpic);
           if (!captainId) {
-            throw new Error(`Captain Voter ID "${captainEpic}" not found`);
+            throw new Error(`Captain EPIC "${captainEpic}" not found`);
           }
         }
         return {
           familyName: String(row.familyName || ''),
-          captainId,
+          houseNumber: row.houseNumber ? String(row.houseNumber) : undefined,
           address: row.address ? String(row.address) : undefined,
-          contactNumber: row.contactNumber ? String(row.contactNumber) : undefined,
+          captainId,
         };
       });
 
@@ -187,9 +163,9 @@ export function FamiliesPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election from the sidebar to view families.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election from the sidebar to view families.</p>
       </div>
     );
   }
@@ -203,21 +179,12 @@ export function FamiliesPage() {
     createMutation.mutate();
   };
 
-  const handleAddMember = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!memberVoterId) {
-      toast.error('Please select a voter');
-      return;
-    }
-    addMemberMutation.mutate();
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Families</h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Manage voter families {pagination && `(${pagination.total} total)`}
           </p>
         </div>
@@ -268,22 +235,25 @@ export function FamiliesPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contactNumber">Contact Number</Label>
-                  <Input
-                    id="contactNumber"
-                    type="tel"
-                    value={formData.contactNumber}
-                    onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="houseNumber">House Number</Label>
+                    <Input
+                      id="houseNumber"
+                      value={formData.houseNumber}
+                      onChange={(e) => setFormData({ ...formData, houseNumber: e.target.value })}
+                      placeholder="e.g., 42-A"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address">Address</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      placeholder="Full address"
+                    />
+                  </div>
                 </div>
               </div>
               <DialogFooter>
@@ -301,51 +271,11 @@ export function FamiliesPage() {
         </div>
       </div>
 
-      {/* Add Member Dialog */}
-      <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Family Member</DialogTitle>
-            <DialogDescription>
-              Add a voter to {selectedFamily?.familyName}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleAddMember}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="memberVoterId">Select Voter</Label>
-                <Select value={memberVoterId} onValueChange={setMemberVoterId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a voter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {voters.map((voter: any) => (
-                      <SelectItem key={voter.id} value={voter.id}>
-                        {voter.name || voter.voterName || `${voter.firstName || ''} ${voter.lastName || ''}`} - {voter.epicNumber || voter.epicNo || voter.voterId || 'No ID'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setAddMemberOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={addMemberMutation.isPending}>
-                {addMemberMutation.isPending ? <Spinner size="sm" className="mr-2" /> : null}
-                Add Member
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
           <div className="relative max-w-md">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search families..."
               value={search}
@@ -372,8 +302,8 @@ export function FamiliesPage() {
             </div>
           ) : families.length === 0 ? (
             <div className="p-8 text-center">
-              <Users2Icon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No families found</p>
+              <Users2Icon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No families found</p>
             </div>
           ) : (
             <Table>
@@ -384,12 +314,16 @@ export function FamiliesPage() {
                   <TableHead>Members</TableHead>
                   <TableHead>Address</TableHead>
                   <TableHead>Contact</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {families.map((family: any) => (
-                  <TableRow key={family.id}>
+                  <TableRow
+                    key={family.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/families/${family.id}`)}
+                  >
                     <TableCell className="font-medium">{family.familyName || '-'}</TableCell>
                     <TableCell>
                       {family.headName || family.captain ? (
@@ -410,39 +344,19 @@ export function FamiliesPage() {
                     <TableCell className="max-w-[200px] truncate">{family.address || '-'}</TableCell>
                     <TableCell>{family.mobile || family.contactNumber || '-'}</TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreVerticalIcon className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setSelectedFamily(family);
-                              setAddMemberOpen(true);
-                            }}
-                          >
-                            <UserPlusIcon className="h-4 w-4 mr-2" />
-                            Add Member
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <EditIcon className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-red-600"
-                            onClick={() => {
-                              if (confirm('Are you sure you want to delete this family?')) {
-                                deleteMutation.mutate(family.id);
-                              }
-                            }}
-                          >
-                            <TrashIcon className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Are you sure you want to delete this family?')) {
+                            deleteMutation.mutate(family.id);
+                          }
+                        }}
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -463,7 +377,7 @@ export function FamiliesPage() {
           >
             Previous
           </Button>
-          <span className="flex items-center px-4 text-sm text-gray-600">
+          <span className="flex items-center px-4 text-sm text-muted-foreground">
             Page {page} of {pagination.totalPages}
           </span>
           <Button

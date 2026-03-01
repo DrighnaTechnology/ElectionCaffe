@@ -27,19 +27,17 @@ import {
 } from '../components/ui/select';
 import { Skeleton } from '../components/ui/skeleton';
 import { Spinner } from '../components/ui/spinner';
-import { Textarea } from '../components/ui/textarea';
 import {
   SearchIcon,
   UserIcon,
   ShieldIcon,
   SwordsIcon,
   CheckCircleIcon,
-  TrendingUpIcon,
-  TrendingDownIcon,
   UsersIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   EyeIcon,
+  SparklesIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -47,7 +45,7 @@ const nominationStatuses = [
   { value: 'FILED', label: 'Filed', color: 'bg-blue-500' },
   { value: 'ACCEPTED', label: 'Accepted', color: 'bg-green-500' },
   { value: 'REJECTED', label: 'Rejected', color: 'bg-red-500' },
-  { value: 'WITHDRAWN', label: 'Withdrawn', color: 'bg-gray-500' },
+  { value: 'WITHDRAWN', label: 'Withdrawn', color: 'bg-muted/500' },
 ];
 
 const socialMediaPlatforms = [
@@ -66,13 +64,6 @@ export function NominationsPage() {
   const [battleCardDialogOpen, setBattleCardDialogOpen] = useState(false);
   const [selectedOurCandidate, setSelectedOurCandidate] = useState<any>(null);
   const [selectedOpponent, setSelectedOpponent] = useState<any>(null);
-  const [battleCardForm, setBattleCardForm] = useState({
-    title: '',
-    ourStrengths: '',
-    opponentWeaknesses: '',
-    keyIssues: '',
-    talkingPoints: '',
-  });
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -95,26 +86,18 @@ export function NominationsPage() {
     enabled: !!selectedElectionId,
   });
 
-  // Create battle card mutation
-  const createBattleCardMutation = useMutation({
-    mutationFn: () => candidatesAPI.createBattleCard(selectedOurCandidate!.id, {
-      opponentId: selectedOpponent!.id,
-      title: battleCardForm.title,
-      ourStrengths: battleCardForm.ourStrengths.split('\n').filter(Boolean),
-      opponentWeaknesses: battleCardForm.opponentWeaknesses.split('\n').filter(Boolean),
-      keyIssues: battleCardForm.keyIssues.split('\n').filter(Boolean),
-      talkingPoints: battleCardForm.talkingPoints.split('\n').filter(Boolean),
-    }),
+  // AI Generate battle card mutation
+  const generateBattleCardMutation = useMutation({
+    mutationFn: () => candidatesAPI.generateBattleCard(selectedOurCandidate!.id, selectedOpponent!.id),
     onSuccess: () => {
-      toast.success('Battle card created successfully');
+      toast.success('AI Battle Card generated successfully!');
       setBattleCardDialogOpen(false);
-      setBattleCardForm({ title: '', ourStrengths: '', opponentWeaknesses: '', keyIssues: '', talkingPoints: '' });
       setSelectedOurCandidate(null);
       setSelectedOpponent(null);
       queryClient.invalidateQueries({ queryKey: ['candidate-battle-cards'] });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error?.message || 'Failed to create battle card');
+      toast.error(error.response?.data?.error?.message || 'Failed to generate battle card');
     },
   });
 
@@ -155,7 +138,7 @@ export function NominationsPage() {
   if (!selectedElectionId) {
     return (
       <div className="p-8 text-center">
-        <p className="text-gray-500">Please select an election to view nominations</p>
+        <p className="text-muted-foreground">Please select an election to view nominations</p>
         <Button className="mt-4" onClick={() => navigate('/elections')}>
           Go to Elections
         </Button>
@@ -169,132 +152,128 @@ export function NominationsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Nominations</h1>
-          <p className="text-gray-500">View all nominated candidates and manage battle cards</p>
+          <p className="text-muted-foreground">View all nominated candidates and manage battle cards</p>
         </div>
-        <Dialog open={battleCardDialogOpen} onOpenChange={setBattleCardDialogOpen}>
+        <Dialog open={battleCardDialogOpen} onOpenChange={(open) => {
+          if (!generateBattleCardMutation.isPending) setBattleCardDialogOpen(open);
+        }}>
           <DialogTrigger asChild>
-            <Button disabled={ourCandidates.length === 0}>
-              <SwordsIcon className="h-4 w-4 mr-2" />
-              Create Battle Card
+            <Button disabled={ourCandidates.length === 0} className="bg-purple-600 hover:bg-purple-700">
+              <SparklesIcon className="h-4 w-4 mr-2" />
+              EC AI Battle Card
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Create Battle Card</DialogTitle>
-              <DialogDescription>Compare our candidate against an opponent</DialogDescription>
+              <DialogTitle className="flex items-center gap-2">
+                <SparklesIcon className="h-5 w-5 text-purple-600" />
+                ElectionCaffe AI Battle Card
+              </DialogTitle>
+              <DialogDescription>
+                Select candidates and our AI will analyze their profiles, strengths, weaknesses, and generate a comprehensive battle card.
+              </DialogDescription>
             </DialogHeader>
-            <form onSubmit={(e) => { e.preventDefault(); createBattleCardMutation.mutate(); }}>
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Our Candidate *</Label>
-                    <Select
-                      value={selectedOurCandidate?.id || ''}
-                      onValueChange={(v) => setSelectedOurCandidate(ourCandidates.find((c: any) => c.id === v))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select our candidate" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ourCandidates.map((c: any) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name} ({c.party?.shortName || 'Ind'})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Opponent *</Label>
-                    <Select
-                      value={selectedOpponent?.id || ''}
-                      onValueChange={(v) => setSelectedOpponent(opponents.find((c: any) => c.id === v))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select opponent" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {opponents.map((c: any) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name} ({c.party?.shortName || 'Ind'})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="title">Battle Card Title *</Label>
-                  <Input
-                    id="title"
-                    value={battleCardForm.title}
-                    onChange={(e) => setBattleCardForm({ ...battleCardForm, title: e.target.value })}
-                    placeholder="e.g., Key Issues Comparison"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="ourStrengths">
-                      <span className="flex items-center gap-1">
-                        <TrendingUpIcon className="h-4 w-4 text-green-600" />
-                        Our Strengths
-                      </span>
-                    </Label>
-                    <Textarea
-                      id="ourStrengths"
-                      value={battleCardForm.ourStrengths}
-                      onChange={(e) => setBattleCardForm({ ...battleCardForm, ourStrengths: e.target.value })}
-                      placeholder="One per line..."
-                      rows={4}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="opponentWeaknesses">
-                      <span className="flex items-center gap-1">
-                        <TrendingDownIcon className="h-4 w-4 text-red-600" />
-                        Opponent Weaknesses
-                      </span>
-                    </Label>
-                    <Textarea
-                      id="opponentWeaknesses"
-                      value={battleCardForm.opponentWeaknesses}
-                      onChange={(e) => setBattleCardForm({ ...battleCardForm, opponentWeaknesses: e.target.value })}
-                      placeholder="One per line..."
-                      rows={4}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="keyIssues">Key Issues (one per line)</Label>
-                  <Textarea
-                    id="keyIssues"
-                    value={battleCardForm.keyIssues}
-                    onChange={(e) => setBattleCardForm({ ...battleCardForm, keyIssues: e.target.value })}
-                    placeholder="Key election issues..."
-                    rows={3}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="talkingPoints">Talking Points (one per line)</Label>
-                  <Textarea
-                    id="talkingPoints"
-                    value={battleCardForm.talkingPoints}
-                    onChange={(e) => setBattleCardForm({ ...battleCardForm, talkingPoints: e.target.value })}
-                    placeholder="Campaign talking points..."
-                    rows={3}
-                  />
-                </div>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Our Candidate *</Label>
+                <Select
+                  value={selectedOurCandidate?.id || ''}
+                  onValueChange={(v) => setSelectedOurCandidate(ourCandidates.find((c: any) => c.id === v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select our candidate" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ourCandidates.map((c: any) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name} ({c.party?.partyShortName || 'Ind'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setBattleCardDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createBattleCardMutation.isPending || !selectedOurCandidate || !selectedOpponent}>
-                  {createBattleCardMutation.isPending && <Spinner size="sm" className="mr-2" />}
-                  Create
-                </Button>
-              </DialogFooter>
-            </form>
+              <div className="space-y-2">
+                <Label>Opponent *</Label>
+                <Select
+                  value={selectedOpponent?.id || ''}
+                  onValueChange={(v) => setSelectedOpponent(opponents.find((c: any) => c.id === v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select opponent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opponents.map((c: any) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name} ({c.party?.partyShortName || 'Ind'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedOurCandidate && selectedOpponent && (
+                <div className="bg-muted/50 rounded-lg p-4 border">
+                  <div className="flex items-center justify-between">
+                    <div className="text-center flex-1">
+                      <div className="h-12 w-12 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-1">
+                        {selectedOurCandidate.photoUrl ? (
+                          <img src={selectedOurCandidate.photoUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
+                        ) : (
+                          <UserIcon className="h-6 w-6 text-green-600" />
+                        )}
+                      </div>
+                      <p className="text-sm font-medium">{selectedOurCandidate.name}</p>
+                      <p className="text-xs text-muted-foreground">{selectedOurCandidate.party?.partyShortName || 'Ind'}</p>
+                    </div>
+                    <div className="px-4">
+                      <SwordsIcon className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div className="text-center flex-1">
+                      <div className="h-12 w-12 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-1">
+                        {selectedOpponent.photoUrl ? (
+                          <img src={selectedOpponent.photoUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
+                        ) : (
+                          <UserIcon className="h-6 w-6 text-red-600" />
+                        )}
+                      </div>
+                      <p className="text-sm font-medium">{selectedOpponent.name}</p>
+                      <p className="text-xs text-muted-foreground">{selectedOpponent.party?.partyShortName || 'Ind'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {generateBattleCardMutation.isPending && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
+                  <Spinner size="lg" className="mx-auto mb-3" />
+                  <p className="font-medium text-purple-800">AI is analyzing candidates...</p>
+                  <p className="text-sm text-purple-600 mt-1">Comparing profiles, strengths, weaknesses, and generating strategy. This may take 15-30 seconds.</p>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setBattleCardDialogOpen(false)}
+                disabled={generateBattleCardMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => generateBattleCardMutation.mutate()}
+                disabled={generateBattleCardMutation.isPending || !selectedOurCandidate || !selectedOpponent}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                {generateBattleCardMutation.isPending ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon className="h-4 w-4 mr-2" />
+                    Generate Battle Card
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
@@ -309,7 +288,7 @@ export function NominationsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{candidates.length}</p>
-                <p className="text-sm text-gray-500">Total Candidates</p>
+                <p className="text-sm text-muted-foreground">Total Candidates</p>
               </div>
             </div>
           </CardContent>
@@ -324,7 +303,7 @@ export function NominationsPage() {
                 <p className="text-2xl font-bold">
                   {candidates.filter((c: any) => c.nominationStatus === 'ACCEPTED').length}
                 </p>
-                <p className="text-sm text-gray-500">Accepted</p>
+                <p className="text-sm text-muted-foreground">Accepted</p>
               </div>
             </div>
           </CardContent>
@@ -332,12 +311,12 @@ export function NominationsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-100">
-                <ShieldIcon className="h-5 w-5 text-orange-600" />
+              <div className="p-2 rounded-lg bg-brand-muted">
+                <ShieldIcon className="h-5 w-5 text-brand" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{ourCandidates.length}</p>
-                <p className="text-sm text-gray-500">Our Candidates</p>
+                <p className="text-sm text-muted-foreground">Our Candidates</p>
               </div>
             </div>
           </CardContent>
@@ -350,7 +329,7 @@ export function NominationsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{opponents.length}</p>
-                <p className="text-sm text-gray-500">Opponents</p>
+                <p className="text-sm text-muted-foreground">Opponents</p>
               </div>
             </div>
           </CardContent>
@@ -362,7 +341,7 @@ export function NominationsPage() {
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search candidates..."
                 value={search}
@@ -420,7 +399,7 @@ export function NominationsPage() {
                 </div>
               ) : filteredCandidates.length === 0 ? (
                 <div className="p-8 text-center">
-                  <p className="text-gray-500">No candidates found</p>
+                  <p className="text-muted-foreground">No candidates found</p>
                 </div>
               ) : (
                 <div className="divide-y">
@@ -449,7 +428,7 @@ export function NominationsPage() {
             <CardContent className="p-0">
               {ourCandidates.length === 0 ? (
                 <div className="p-8 text-center">
-                  <p className="text-gray-500">No candidates marked as ours</p>
+                  <p className="text-muted-foreground">No candidates marked as ours</p>
                 </div>
               ) : (
                 <div className="divide-y">
@@ -478,7 +457,7 @@ export function NominationsPage() {
             <CardContent className="p-0">
               {opponents.length === 0 ? (
                 <div className="p-8 text-center">
-                  <p className="text-gray-500">No opponent candidates found</p>
+                  <p className="text-muted-foreground">No opponent candidates found</p>
                 </div>
               ) : (
                 <div className="divide-y">
@@ -552,7 +531,7 @@ function CandidateRow({
   return (
     <div>
       <div
-        className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+        className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
         onClick={onToggle}
       >
         <div className="flex items-center gap-4">
@@ -564,8 +543,8 @@ function CandidateRow({
                 className="h-14 w-14 rounded-full object-cover"
               />
             ) : (
-              <div className="h-14 w-14 rounded-full bg-gray-200 flex items-center justify-center">
-                <UserIcon className="h-7 w-7 text-gray-500" />
+              <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center">
+                <UserIcon className="h-7 w-7 text-muted-foreground" />
               </div>
             )}
           </div>
@@ -576,7 +555,7 @@ function CandidateRow({
                 <Badge variant="success" className="shrink-0">Our</Badge>
               )}
             </div>
-            <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
               {candidate.party && (
                 <span className="flex items-center gap-1">
                   <span className="font-medium">{candidate.party.shortName || candidate.party.name}</span>
@@ -591,13 +570,13 @@ function CandidateRow({
           <div className="flex items-center gap-4">
             <div className="text-center hidden sm:block">
               <p className="text-lg font-bold">{formatNumber(getTotalSocialFollowers(candidate.socialMedia))}</p>
-              <p className="text-xs text-gray-500">Followers</p>
+              <p className="text-xs text-muted-foreground">Followers</p>
             </div>
             {getStatusBadge(candidate.nominationStatus)}
             {expanded ? (
-              <ChevronUpIcon className="h-5 w-5 text-gray-400" />
+              <ChevronUpIcon className="h-5 w-5 text-muted-foreground" />
             ) : (
-              <ChevronDownIcon className="h-5 w-5 text-gray-400" />
+              <ChevronDownIcon className="h-5 w-5 text-muted-foreground" />
             )}
           </div>
         </div>
@@ -605,27 +584,27 @@ function CandidateRow({
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="px-4 pb-4 bg-gray-50 border-t">
+        <div className="px-4 pb-4 bg-muted/50 border-t">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-4">
             {/* Background */}
             <div>
-              <h4 className="font-medium text-sm text-gray-700 mb-2">Background</h4>
+              <h4 className="font-medium text-sm text-foreground mb-2">Background</h4>
               <div className="space-y-1 text-sm">
                 {candidate.education && (
-                  <p><span className="text-gray-500">Education:</span> {candidate.education}</p>
+                  <p><span className="text-muted-foreground">Education:</span> {candidate.education}</p>
                 )}
                 {candidate.profession && (
-                  <p><span className="text-gray-500">Profession:</span> {candidate.profession}</p>
+                  <p><span className="text-muted-foreground">Profession:</span> {candidate.profession}</p>
                 )}
                 {candidate.experience && (
-                  <p className="text-gray-600 line-clamp-2">{candidate.experience}</p>
+                  <p className="text-muted-foreground line-clamp-2">{candidate.experience}</p>
                 )}
               </div>
             </div>
 
             {/* Social Media Stats */}
             <div>
-              <h4 className="font-medium text-sm text-gray-700 mb-2">Social Media</h4>
+              <h4 className="font-medium text-sm text-foreground mb-2">Social Media</h4>
               {candidate.socialMedia && candidate.socialMedia.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {candidate.socialMedia.map((sm: any) => {
@@ -633,18 +612,18 @@ function CandidateRow({
                     return (
                       <div
                         key={sm.id}
-                        className="flex items-center gap-1 px-2 py-1 bg-white rounded border text-sm"
+                        className="flex items-center gap-1 px-2 py-1 bg-card rounded border text-sm"
                       >
                         <span className={`font-medium ${platform?.color || ''}`}>
                           {platform?.label || sm.platform}
                         </span>
-                        <span className="text-gray-600">{formatNumber(sm.followers || 0)}</span>
+                        <span className="text-muted-foreground">{formatNumber(sm.followers || 0)}</span>
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No social media profiles</p>
+                <p className="text-sm text-muted-foreground">No social media profiles</p>
               )}
             </div>
 
@@ -662,10 +641,10 @@ function CandidateRow({
                 View Profile
               </Button>
               {candidate.mobile && (
-                <p className="text-sm text-gray-500">{candidate.mobile}</p>
+                <p className="text-sm text-muted-foreground">{candidate.mobile}</p>
               )}
               {candidate.email && (
-                <p className="text-sm text-gray-500 truncate">{candidate.email}</p>
+                <p className="text-sm text-muted-foreground truncate">{candidate.email}</p>
               )}
             </div>
           </div>
@@ -677,6 +656,7 @@ function CandidateRow({
 
 // Battle Cards List Component
 function BattleCardsList({ candidate, opponents }: { candidate: any; opponents: any[] }) {
+  const navigate = useNavigate();
   const { data: battleCardsData } = useQuery({
     queryKey: ['candidate-battle-cards', candidate.id],
     queryFn: () => candidatesAPI.getBattleCards(candidate.id),
@@ -685,12 +665,16 @@ function BattleCardsList({ candidate, opponents }: { candidate: any; opponents: 
 
   const battleCards = battleCardsData?.data?.data || [];
 
+  // Handle both old format (string[]) and new format (object[])
+  const getLabel = (item: any): string =>
+    typeof item === 'string' ? item : item?.strength || item?.weakness || item?.detail || '';
+
   if (battleCards.length === 0) {
     return (
       <Card className="border-dashed">
         <CardContent className="p-4 text-center">
-          <p className="text-sm text-gray-500">{candidate.name}</p>
-          <p className="text-xs text-gray-400 mt-1">No battle cards yet</p>
+          <p className="text-sm text-muted-foreground">{candidate.name}</p>
+          <p className="text-xs text-muted-foreground mt-1">No battle cards yet</p>
         </CardContent>
       </Card>
     );
@@ -702,7 +686,11 @@ function BattleCardsList({ candidate, opponents }: { candidate: any; opponents: 
       {battleCards.map((bc: any) => {
         const opponent = opponents.find((o: any) => o.id === bc.opponentId);
         return (
-          <Card key={bc.id} className="overflow-hidden">
+          <Card
+            key={bc.id}
+            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => navigate(`/battle-cards/${candidate.id}/${bc.id}`)}
+          >
             <div className="h-1 bg-gradient-to-r from-green-500 to-red-500" />
             <CardContent className="p-3">
               <div className="flex items-center justify-between mb-2">
@@ -711,24 +699,26 @@ function BattleCardsList({ candidate, opponents }: { candidate: any; opponents: 
                   vs {opponent?.name || 'Opponent'}
                 </Badge>
               </div>
+              <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{bc.summary}</p>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <p className="text-green-600 font-medium mb-1">Our Strengths</p>
                   <ul className="space-y-0.5">
-                    {(bc.ourStrengths || []).slice(0, 2).map((s: string, i: number) => (
-                      <li key={i} className="text-gray-600 truncate">+ {s}</li>
+                    {(bc.ourStrengths || []).slice(0, 2).map((s: any, i: number) => (
+                      <li key={i} className="text-muted-foreground truncate">+ {getLabel(s)}</li>
                     ))}
                   </ul>
                 </div>
                 <div>
                   <p className="text-red-600 font-medium mb-1">Their Weaknesses</p>
                   <ul className="space-y-0.5">
-                    {(bc.opponentWeaknesses || []).slice(0, 2).map((w: string, i: number) => (
-                      <li key={i} className="text-gray-600 truncate">- {w}</li>
+                    {(bc.opponentWeaknesses || []).slice(0, 2).map((w: any, i: number) => (
+                      <li key={i} className="text-muted-foreground truncate">- {getLabel(w)}</li>
                     ))}
                   </ul>
                 </div>
               </div>
+              <p className="text-xs text-brand font-medium mt-2 text-right">View Full Analysis →</p>
             </CardContent>
           </Card>
         );

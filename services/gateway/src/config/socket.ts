@@ -5,10 +5,13 @@ import { WS_EVENTS, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('gateway');
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  return secret;
 }
-const JWT_SECRET: string = process.env.JWT_SECRET;
 
 interface AuthenticatedSocket extends Socket {
   user?: UserPayload;
@@ -24,7 +27,7 @@ export function setupSocketIO(io: SocketIOServer): void {
     }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as unknown as UserPayload;
+      const decoded = jwt.verify(token, getJwtSecret()) as unknown as UserPayload;
       socket.user = decoded;
       next();
     } catch (error) {

@@ -15,7 +15,18 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  // Client disconnected before we could respond — swallow silently
+  if (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET' || (err as any).type === 'request.aborted') {
+    logger.warn({ code: err.code, message: err.message }, 'Client disconnected, skipping response');
+    return;
+  }
+
   logger.error({ err }, 'Unhandled error');
+
+  // Headers already sent (e.g. streaming response that errored mid-flight)
+  if (res.headersSent) {
+    return;
+  }
 
   const statusCode = err.statusCode || 500;
   const code = err.code || 'E5001';

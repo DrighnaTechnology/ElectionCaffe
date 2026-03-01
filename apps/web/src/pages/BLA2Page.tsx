@@ -53,12 +53,11 @@ import { getInitials, cn } from '../lib/utils';
 
 interface Part {
   id: string;
-  partNo?: number;
-  partNumber?: number;
-  partNameEn?: string;
+  partNumber: number;
+  boothName: string;
   partName?: string;
   partNameLocal?: string;
-  boothAddress?: string;
+  address: string;
   totalVoters?: number;
   bla2?: BLA2Agent;
 }
@@ -68,10 +67,14 @@ interface BLA2Agent {
   cadreId: string;
   cadre?: {
     id: string;
-    firstName?: string;
-    lastName?: string;
-    voterName?: string;
-    mobile?: string;
+    cadreType?: string;
+    designation?: string;
+    user?: {
+      id: string;
+      firstName?: string;
+      lastName?: string;
+      mobile?: string;
+    };
   };
   status: string;
   trainingCompleted: boolean;
@@ -81,11 +84,14 @@ interface BLA2Agent {
 
 interface Cadre {
   id: string;
-  firstName?: string;
-  lastName?: string;
-  voterName?: string;
-  mobile?: string;
+  cadreType?: string;
   designation?: string;
+  user?: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    mobile?: string;
+  };
 }
 
 const BLA2_STATUSES = [
@@ -93,7 +99,7 @@ const BLA2_STATUSES = [
   { value: 'CONFIRMED', label: 'Confirmed', color: 'bg-green-500' },
   { value: 'TRAINING_PENDING', label: 'Training Pending', color: 'bg-amber-500' },
   { value: 'TRAINED', label: 'Trained', color: 'bg-emerald-500' },
-  { value: 'INACTIVE', label: 'Inactive', color: 'bg-gray-500' },
+  { value: 'INACTIVE', label: 'Inactive', color: 'bg-muted/500' },
 ];
 
 export function BLA2Page() {
@@ -103,6 +109,7 @@ export function BLA2Page() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedPart, setSelectedPart] = useState<Part | null>(null);
+  const [cadreSearch, setCadreSearch] = useState('');
   const [formData, setFormData] = useState({
     cadreId: '',
     status: 'ASSIGNED',
@@ -152,10 +159,11 @@ export function BLA2Page() {
     return parts.filter((part) => {
       const matchesSearch =
         !search ||
-        part.partNameEn?.toLowerCase().includes(search.toLowerCase()) ||
-        part.partNo?.toString().includes(search) ||
-        part.bla2?.cadre?.firstName?.toLowerCase().includes(search.toLowerCase()) ||
-        part.bla2?.cadre?.mobile?.includes(search);
+        part.boothName?.toLowerCase().includes(search.toLowerCase()) ||
+        part.partNumber?.toString().includes(search) ||
+        part.bla2?.cadre?.user?.firstName?.toLowerCase().includes(search.toLowerCase()) ||
+        part.bla2?.cadre?.user?.lastName?.toLowerCase().includes(search.toLowerCase()) ||
+        part.bla2?.cadre?.user?.mobile?.includes(search);
 
       const matchesStatus =
         filterStatus === 'all' ||
@@ -173,6 +181,17 @@ export function BLA2Page() {
     return cadres.filter((c) => !assignedIds.has(c.id));
   }, [cadres, parts]);
 
+  // Filter available cadres by search
+  const filteredCadres = useMemo(() => {
+    if (!cadreSearch) return availableCadres;
+    const q = cadreSearch.toLowerCase();
+    return availableCadres.filter((c) => {
+      const name = `${c.user?.firstName || ''} ${c.user?.lastName || ''}`.toLowerCase();
+      const mobile = c.user?.mobile || '';
+      return name.includes(q) || mobile.includes(q);
+    });
+  }, [availableCadres, cadreSearch]);
+
   const assignMutation = useMutation({
     mutationFn: (data: { partId: string; cadreId: string; status: string; notes?: string }) =>
       partsAPI.assignBLA2(data.partId, data.cadreId, { status: data.status, notes: data.notes }),
@@ -181,6 +200,7 @@ export function BLA2Page() {
       setAssignOpen(false);
       setSelectedPart(null);
       setFormData({ cadreId: '', status: 'ASSIGNED', trainingCompleted: false, notes: '' });
+      setCadreSearch('');
       queryClient.invalidateQueries({ queryKey: ['parts-bla2'] });
     },
     onError: (error: any) => {
@@ -269,10 +289,10 @@ export function BLA2Page() {
       ['Part No', 'Part Name', 'BLA-2 Name', 'Mobile', 'Status', 'Training'].join(','),
       ...parts.map((part) =>
         [
-          part.partNumber || part.partNo,
-          `"${part.partName || part.partNameEn || ''}"`,
-          part.bla2 ? `"${part.bla2.cadre?.voterName || `${part.bla2.cadre?.firstName || ''} ${part.bla2.cadre?.lastName || ''}`.trim()}"` : '',
-          part.bla2?.cadre?.mobile || '',
+          part.partNumber,
+          `"${part.boothName || ''}"`,
+          part.bla2 ? `"${`${part.bla2.cadre?.user?.firstName || ''} ${part.bla2.cadre?.user?.lastName || ''}`.trim() || '-'}"` : '',
+          part.bla2?.cadre?.user?.mobile || '',
           part.bla2?.status || 'UNASSIGNED',
           part.bla2?.trainingCompleted ? 'Yes' : 'No',
         ].join(',')
@@ -292,9 +312,9 @@ export function BLA2Page() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election to manage BLA-2 assignments.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election to manage BLA-2 assignments.</p>
       </div>
     );
   }
@@ -308,7 +328,7 @@ export function BLA2Page() {
             <UserIcon className="h-6 w-6" />
             BLA-2 Management
           </h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Booth Level Agent (Type 2) assignments for poll day operations
           </p>
         </div>
@@ -329,7 +349,7 @@ export function BLA2Page() {
                 <MapPinIcon className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Booths</p>
+                <p className="text-sm text-muted-foreground">Total Booths</p>
                 <p className="text-2xl font-bold">{stats.total}</p>
               </div>
             </div>
@@ -343,7 +363,7 @@ export function BLA2Page() {
                 <CheckCircle2Icon className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Assigned</p>
+                <p className="text-sm text-muted-foreground">Assigned</p>
                 <p className="text-2xl font-bold text-green-600">{stats.assigned}</p>
               </div>
             </div>
@@ -357,7 +377,7 @@ export function BLA2Page() {
                 <ClipboardListIcon className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Trained</p>
+                <p className="text-sm text-muted-foreground">Trained</p>
                 <p className="text-2xl font-bold text-emerald-600">{stats.trained}</p>
               </div>
             </div>
@@ -371,7 +391,7 @@ export function BLA2Page() {
                 <AlertTriangleIcon className="h-5 w-5 text-amber-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Training Pending</p>
+                <p className="text-sm text-muted-foreground">Training Pending</p>
                 <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
               </div>
             </div>
@@ -385,7 +405,7 @@ export function BLA2Page() {
                 <UserIcon className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Coverage</p>
+                <p className="text-sm text-muted-foreground">Coverage</p>
                 <p className="text-2xl font-bold text-purple-600">{stats.coverage}%</p>
               </div>
             </div>
@@ -411,7 +431,7 @@ export function BLA2Page() {
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by part, agent name, or mobile..."
                 value={search}
@@ -450,8 +470,8 @@ export function BLA2Page() {
             </div>
           ) : filteredParts.length === 0 ? (
             <div className="p-8 text-center">
-              <UserIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No parts found</p>
+              <UserIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No parts found</p>
             </div>
           ) : (
             <Table>
@@ -469,40 +489,40 @@ export function BLA2Page() {
                 {filteredParts.map((part) => (
                   <TableRow
                     key={part.id}
-                    className={cn(!part.bla2 && 'bg-gray-50')}
+                    className={cn(!part.bla2 && 'bg-muted/50')}
                   >
                     <TableCell>
-                      <div className="font-medium">Part {part.partNumber || part.partNo}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-[200px]">
-                        {part.partName || part.partNameEn || '-'}
+                      <div className="font-medium">Part {part.partNumber}</div>
+                      <div className="text-sm text-muted-foreground truncate max-w-[200px]">
+                        {part.boothName || '-'}
                       </div>
                     </TableCell>
                     <TableCell>
                       {part.bla2 ? (
                         <div className="flex items-center gap-2">
                           <Avatar className="h-8 w-8">
-                            <AvatarFallback className="bg-orange-100 text-orange-600 text-xs">
+                            <AvatarFallback className="bg-brand-muted text-brand text-xs">
                               {getInitials(
-                                part.bla2.cadre?.voterName || `${part.bla2.cadre?.firstName || ''} ${part.bla2.cadre?.lastName || ''}`
+                                `${part.bla2.cadre?.user?.firstName || ''} ${part.bla2.cadre?.user?.lastName || ''}`
                               )}
                             </AvatarFallback>
                           </Avatar>
                           <span>
-                            {part.bla2.cadre?.voterName || `${part.bla2.cadre?.firstName || ''} ${part.bla2.cadre?.lastName || ''}`.trim() || '-'}
+                            {`${part.bla2.cadre?.user?.firstName || ''} ${part.bla2.cadre?.user?.lastName || ''}`.trim() || '-'}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-gray-400">Not Assigned</span>
+                        <span className="text-muted-foreground">Not Assigned</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      {part.bla2?.cadre?.mobile ? (
+                      {part.bla2?.cadre?.user?.mobile ? (
                         <a
-                          href={`tel:${part.bla2.cadre.mobile}`}
+                          href={`tel:${part.bla2.cadre.user.mobile}`}
                           className="flex items-center gap-1 text-blue-600 hover:underline"
                         >
                           <PhoneIcon className="h-3 w-3" />
-                          {part.bla2.cadre.mobile}
+                          {part.bla2.cadre.user.mobile}
                         </a>
                       ) : (
                         '-'
@@ -575,37 +595,76 @@ export function BLA2Page() {
       </Card>
 
       {/* Assign Dialog */}
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+      <Dialog open={assignOpen} onOpenChange={(open) => { setAssignOpen(open); if (!open) setCadreSearch(''); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Assign BLA-2</DialogTitle>
             <DialogDescription>
-              Assign a Booth Level Agent for Part {selectedPart?.partNo}
+              Assign a Booth Level Agent for Part {selectedPart?.partNumber}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Select Cadre</Label>
-              <Select
-                value={formData.cadreId}
-                onValueChange={(v) => setFormData({ ...formData, cadreId: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select cadre" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableCadres.length === 0 ? (
-                    <div className="p-2 text-sm text-gray-500">No available cadres</div>
+              <div className="relative">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Type name or mobile to search..."
+                  value={cadreSearch}
+                  onChange={(e) => {
+                    setCadreSearch(e.target.value);
+                    if (formData.cadreId) setFormData({ ...formData, cadreId: '' });
+                  }}
+                  className="pl-9"
+                />
+                {formData.cadreId && (
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
+                    onClick={() => { setCadreSearch(''); setFormData({ ...formData, cadreId: '' }); }}
+                  >
+                    <XCircleIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {!formData.cadreId && cadreSearch.length > 0 && (
+                <div className="border rounded-md max-h-[180px] overflow-y-auto bg-card shadow-sm">
+                  {filteredCadres.length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground text-center">No cadres found</div>
                   ) : (
-                    availableCadres.map((cadre) => (
-                      <SelectItem key={cadre.id} value={cadre.id}>
-                        {cadre.voterName || `${cadre.firstName || ''} ${cadre.lastName || ''}`.trim() || '-'} ({cadre.mobile || '-'})
-                      </SelectItem>
-                    ))
+                    filteredCadres.slice(0, 50).map((cadre) => {
+                      const name = `${cadre.user?.firstName || ''} ${cadre.user?.lastName || ''}`.trim() || 'Unknown';
+                      return (
+                        <div
+                          key={cadre.id}
+                          className="flex items-center justify-between px-3 py-2 hover:bg-brand-muted cursor-pointer transition-colors"
+                          onClick={() => {
+                            setFormData({ ...formData, cadreId: cadre.id });
+                            setCadreSearch(name);
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-7 w-7">
+                              <AvatarFallback className="bg-muted text-muted-foreground text-xs">
+                                {getInitials(name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium">{name}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{cadre.user?.mobile || '-'}</span>
+                        </div>
+                      );
+                    })
                   )}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
+              {formData.cadreId && (
+                <div className="flex items-center gap-2 p-2 bg-brand-muted rounded-md border border-brand/30">
+                  <CheckCircle2Icon className="h-4 w-4 text-brand" />
+                  <span className="text-sm text-orange-700 font-medium">{cadreSearch}</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -655,7 +714,7 @@ export function BLA2Page() {
           <DialogHeader>
             <DialogTitle>Update BLA-2</DialogTitle>
             <DialogDescription>
-              Update status for Part {selectedPart?.partNo}'s BLA-2
+              Update status for Part {selectedPart?.partNumber}'s BLA-2
             </DialogDescription>
           </DialogHeader>
 
@@ -687,7 +746,7 @@ export function BLA2Page() {
                 onChange={(e) =>
                   setFormData({ ...formData, trainingCompleted: e.target.checked })
                 }
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-border"
               />
               <Label htmlFor="trainingCompleted">Training Completed</Label>
             </div>

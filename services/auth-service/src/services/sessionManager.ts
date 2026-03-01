@@ -1,8 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { coreDb as prisma } from '@electioncaffe/database';
 import crypto from 'crypto';
 import { createLogger } from '@electioncaffe/shared';
 
-const prisma = new PrismaClient();
 const logger = createLogger('auth-service');
 
 export interface SessionInfo {

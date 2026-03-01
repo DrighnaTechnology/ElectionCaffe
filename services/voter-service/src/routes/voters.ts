@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { resolve, dirname, extname } from 'path';
+import { fileURLToPath } from 'url';
 import { getTenantDb } from '../utils/tenantDb.js';
 import {
   createVoterSchema,
@@ -13,7 +16,26 @@ import {
   createLogger,
 } from '@electioncaffe/shared';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const UPLOADS_DIR = resolve(__dirname, '../../../../uploads/photos');
+
+// Ensure uploads directory exists
+if (!existsSync(UPLOADS_DIR)) {
+  mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+    const ext = extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error('Only JPG, PNG, and WebP images are allowed'));
+  },
+});
 
 const logger = createLogger('voter-service');
 
@@ -397,6 +419,43 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Upload voter photo
+router.post('/:id/photo', photoUpload.single('photo'), async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const { id } = req.params;
+
+    const existingVoter = await (tenantDb as any).voter.findUnique({ where: { id } });
+    if (!existingVoter) {
+      res.status(404).json(errorResponse('E3001', 'Voter not found'));
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json(errorResponse('E2001', 'No photo file provided'));
+      return;
+    }
+
+    const ext = extname(req.file.originalname).toLowerCase();
+    const filename = `${id}${ext}`;
+    const filepath = resolve(UPLOADS_DIR, filename);
+
+    writeFileSync(filepath, req.file.buffer);
+
+    const photoUrl = `/uploads/photos/${filename}`;
+
+    await (tenantDb as any).voter.update({
+      where: { id },
+      data: { photoUrl },
+    });
+
+    res.json(successResponse({ photoUrl }));
+  } catch (error) {
+    logger.error({ err: error }, 'Upload voter photo error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
 // Delete voter (soft delete)
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
@@ -430,7 +489,7 @@ router.get('/:id/schemes', async (req: Request, res: Response) => {
     const tenantDb = await getTenantDb(req);
     const { id } = req.params;
 
-    const schemes = await (tenantDb as any).voterScheme.findMany({
+    const schemes = await (tenantDb as any).voterSchemeEnrollment.findMany({
       where: { voterId: id },
       include: { scheme: true },
     });
@@ -455,7 +514,7 @@ router.post('/:id/schemes', async (req: Request, res: Response) => {
     }
 
     const voterScheme = await (tenantDb as any).$transaction(async (tx: any) => {
-      const created = await tx.voterScheme.create({
+      const created = await tx.voterSchemeEnrollment.create({
         data: {
           voterId: id,
           schemeId,
@@ -487,7 +546,7 @@ router.delete('/:id/schemes/:schemeId', async (req: Request, res: Response) => {
     const { id, schemeId } = req.params;
 
     await (tenantDb as any).$transaction(async (tx: any) => {
-      await tx.voterScheme.delete({
+      await tx.voterSchemeEnrollment.delete({
         where: {
           voterId_schemeId: { voterId: id, schemeId },
         },

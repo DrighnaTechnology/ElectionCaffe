@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');
@@ -13,19 +13,18 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { status, eventType, startDate, endDate, search, page = '1', limit = '20' } = req.query;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    const where: any = { tenantId: user.tenant.id };
+    const where: any = { tenantId: user.tenantId };
     if (status) where.status = status;
     if (eventType) where.eventType = eventType;
     if (startDate) where.startDate = { gte: new Date(startDate as string) };
@@ -38,7 +37,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     }
 
     const [events, total] = await Promise.all([
-      prisma.partyEvent.findMany({
+      (await getTenantDb(req)).partyEvent.findMany({
         where,
         include: {
           election: { select: { id: true, name: true } },
@@ -48,7 +47,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
         skip,
         take: parseInt(limit as string),
       }),
-      prisma.partyEvent.count({ where }),
+      (await getTenantDb(req)).partyEvent.count({ where }),
     ]);
 
     res.json(successResponse({ events, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
@@ -64,19 +63,18 @@ router.get('/upcoming', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { limit = '10' } = req.query;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const events = await prisma.partyEvent.findMany({
+    const events = await (await getTenantDb(req)).partyEvent.findMany({
       where: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         startDate: { gte: new Date() },
         status: { in: ['SCHEDULED', 'ONGOING'] },
       },
@@ -100,18 +98,17 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id, tenantId: user.tenantId },
       include: {
         election: { select: { id: true, name: true } },
         attendees: {
@@ -140,13 +137,12 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.headers['x-user-id'] as string;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
@@ -164,9 +160,9 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const event = await prisma.partyEvent.create({
+    const event = await (await getTenantDb(req)).partyEvent.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         title,
         titleLocal,
         description,
@@ -216,18 +212,17 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -244,7 +239,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
       estimatedBudget, actualBudget, status,
     } = req.body;
 
-    const updatedEvent = await prisma.partyEvent.update({
+    const updatedEvent = await (await getTenantDb(req)).partyEvent.update({
       where: { id },
       data: {
         ...(title !== undefined && { title }),
@@ -299,18 +294,17 @@ router.patch('/:id/status', async (req: Request, res: Response): Promise<void> =
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -326,7 +320,7 @@ router.patch('/:id/status', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const updatedEvent = await prisma.partyEvent.update({
+    const updatedEvent = await (await getTenantDb(req)).partyEvent.update({
       where: { id },
       data: {
         status,
@@ -349,24 +343,22 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
     const userRole = req.headers['x-user-role'] as string;
     const { id } = req.params;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -375,9 +367,9 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Delete related data first
-    await prisma.eventTask.deleteMany({ where: { eventId: id } });
-    await prisma.eventAttendee.deleteMany({ where: { eventId: id } });
-    await prisma.partyEvent.delete({ where: { id } });
+    await (await getTenantDb(req)).eventTask.deleteMany({ where: { eventId: id } });
+    await (await getTenantDb(req)).eventAttendee.deleteMany({ where: { eventId: id } });
+    await (await getTenantDb(req)).partyEvent.delete({ where: { id } });
 
     res.json(successResponse({ message: 'Event deleted successfully' }));
   } catch (error) {
@@ -394,18 +386,17 @@ router.post('/:id/attendees', async (req: Request, res: Response): Promise<void>
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -422,7 +413,7 @@ router.post('/:id/attendees', async (req: Request, res: Response): Promise<void>
 
     // Check if already registered by phone
     if (phone) {
-      const existingAttendee = await prisma.eventAttendee.findFirst({
+      const existingAttendee = await (await getTenantDb(req)).eventAttendee.findFirst({
         where: { eventId: id, phone },
       });
 
@@ -432,7 +423,7 @@ router.post('/:id/attendees', async (req: Request, res: Response): Promise<void>
       }
     }
 
-    const attendee = await prisma.eventAttendee.create({
+    const attendee = await (await getTenantDb(req)).eventAttendee.create({
       data: {
         event: { connect: { id } },
         userId: attendeeUserId,
@@ -457,18 +448,17 @@ router.patch('/:eventId/attendees/:attendeeId', async (req: Request, res: Respon
     const userId = req.headers['x-user-id'] as string;
     const { eventId, attendeeId } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id: eventId, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id: eventId, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -478,7 +468,7 @@ router.patch('/:eventId/attendees/:attendeeId', async (req: Request, res: Respon
 
     const { status, checkedInAt, checkedOutAt, confirmedAt, role, rating, feedback } = req.body;
 
-    const updatedAttendee = await prisma.eventAttendee.update({
+    const updatedAttendee = await (await getTenantDb(req)).eventAttendee.update({
       where: { id: attendeeId },
       data: {
         ...(status !== undefined && { status }),
@@ -504,18 +494,17 @@ router.delete('/:eventId/attendees/:attendeeId', async (req: Request, res: Respo
     const userId = req.headers['x-user-id'] as string;
     const { eventId, attendeeId } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id: eventId, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id: eventId, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -523,7 +512,7 @@ router.delete('/:eventId/attendees/:attendeeId', async (req: Request, res: Respo
       return;
     }
 
-    await prisma.eventAttendee.delete({ where: { id: attendeeId } });
+    await (await getTenantDb(req)).eventAttendee.delete({ where: { id: attendeeId } });
 
     res.json(successResponse({ message: 'Attendee removed' }));
   } catch (error) {
@@ -540,18 +529,17 @@ router.post('/:id/tasks', async (req: Request, res: Response): Promise<void> => 
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -566,7 +554,7 @@ router.post('/:id/tasks', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const task = await prisma.eventTask.create({
+    const task = await (await getTenantDb(req)).eventTask.create({
       data: {
         event: { connect: { id } },
         title,
@@ -592,18 +580,17 @@ router.put('/:eventId/tasks/:taskId', async (req: Request, res: Response): Promi
     const userId = req.headers['x-user-id'] as string;
     const { eventId, taskId } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id: eventId, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id: eventId, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -613,7 +600,7 @@ router.put('/:eventId/tasks/:taskId', async (req: Request, res: Response): Promi
 
     const { title, description, assignedTo, assignedToName, dueDate, priority, status } = req.body;
 
-    const updatedTask = await prisma.eventTask.update({
+    const updatedTask = await (await getTenantDb(req)).eventTask.update({
       where: { id: taskId },
       data: {
         ...(title !== undefined && { title }),
@@ -640,18 +627,17 @@ router.delete('/:eventId/tasks/:taskId', async (req: Request, res: Response): Pr
     const userId = req.headers['x-user-id'] as string;
     const { eventId, taskId } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const event = await prisma.partyEvent.findFirst({
-      where: { id: eventId, tenantId: user.tenant.id },
+    const event = await (await getTenantDb(req)).partyEvent.findFirst({
+      where: { id: eventId, tenantId: user.tenantId },
     });
 
     if (!event) {
@@ -659,7 +645,7 @@ router.delete('/:eventId/tasks/:taskId', async (req: Request, res: Response): Pr
       return;
     }
 
-    await prisma.eventTask.delete({ where: { id: taskId } });
+    await (await getTenantDb(req)).eventTask.delete({ where: { id: taskId } });
 
     res.json(successResponse({ message: 'Task deleted' }));
   } catch (error) {
@@ -676,13 +662,12 @@ router.get('/calendar/month', async (req: Request, res: Response): Promise<void>
     const userId = req.headers['x-user-id'] as string;
     const { year, month } = req.query;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
@@ -692,9 +677,9 @@ router.get('/calendar/month', async (req: Request, res: Response): Promise<void>
     const startOfMonth = new Date(y, m - 1, 1);
     const endOfMonth = new Date(y, m, 0, 23, 59, 59);
 
-    const events = await prisma.partyEvent.findMany({
+    const events = await (await getTenantDb(req)).partyEvent.findMany({
       where: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         startDate: { gte: startOfMonth, lte: endOfMonth },
         status: { notIn: ['CANCELLED'] },
       },

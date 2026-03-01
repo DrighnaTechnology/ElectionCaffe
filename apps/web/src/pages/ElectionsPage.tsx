@@ -55,9 +55,9 @@ import { toast } from 'sonner';
 import { formatDate } from '../lib/utils';
 
 const electionTypes = [
-  { value: 'GENERAL', label: 'General Election' },
-  { value: 'STATE', label: 'State Assembly' },
-  { value: 'LOCAL', label: 'Local Body' },
+  { value: 'PARLIAMENT', label: 'General Election (Lok Sabha)' },
+  { value: 'ASSEMBLY', label: 'State Assembly (Vidhan Sabha)' },
+  { value: 'LOCAL_BODY', label: 'Local Body' },
   { value: 'MUNICIPAL', label: 'Municipal' },
   { value: 'PANCHAYAT', label: 'Panchayat' },
   { value: 'BY_ELECTION', label: 'By-Election' },
@@ -68,12 +68,12 @@ export function ElectionsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [createOpen, setCreateOpen] = useState(false);
   const [formData, setFormData] = useState({
-    electionName: '',
-    electionType: 'GENERAL',
-    constituencyName: '',
+    name: '',
+    electionType: 'ASSEMBLY',
+    constituency: '',
     state: '',
     district: '',
-    electionDate: '',
+    pollDate: '',
   });
 
   const queryClient = useQueryClient();
@@ -94,12 +94,12 @@ export function ElectionsPage() {
       toast.success('Election created successfully');
       setCreateOpen(false);
       setFormData({
-        electionName: '',
-        electionType: 'GENERAL',
-        constituencyName: '',
+        name: '',
+        electionType: 'ASSEMBLY',
+        constituency: '',
         state: '',
         district: '',
-        electionDate: '',
+        pollDate: '',
       });
       queryClient.invalidateQueries({ queryKey: ['elections'] });
     },
@@ -139,7 +139,7 @@ export function ElectionsPage() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.electionName || !formData.constituencyName) {
+    if (!formData.name || !formData.constituency || !formData.state) {
       toast.error('Please fill in required fields');
       return;
     }
@@ -171,7 +171,7 @@ export function ElectionsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Elections</h1>
-          <p className="text-gray-500">Manage your elections</p>
+          <p className="text-muted-foreground">Manage your elections</p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
@@ -188,11 +188,11 @@ export function ElectionsPage() {
             <form onSubmit={handleCreate}>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="electionName">Election Name *</Label>
+                  <Label htmlFor="name">Election Name *</Label>
                   <Input
-                    id="electionName"
-                    value={formData.electionName}
-                    onChange={(e) => setFormData({ ...formData, electionName: e.target.value })}
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="e.g., Lok Sabha 2024"
                   />
                 </div>
@@ -215,17 +215,17 @@ export function ElectionsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="constituencyName">Constituency Name *</Label>
+                  <Label htmlFor="constituency">Constituency Name *</Label>
                   <Input
-                    id="constituencyName"
-                    value={formData.constituencyName}
-                    onChange={(e) => setFormData({ ...formData, constituencyName: e.target.value })}
+                    id="constituency"
+                    value={formData.constituency}
+                    onChange={(e) => setFormData({ ...formData, constituency: e.target.value })}
                     placeholder="e.g., Mumbai North"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="state">State</Label>
+                    <Label htmlFor="state">State *</Label>
                     <Input
                       id="state"
                       value={formData.state}
@@ -244,12 +244,12 @@ export function ElectionsPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="electionDate">Election Date</Label>
+                  <Label htmlFor="pollDate">Election Date</Label>
                   <Input
-                    id="electionDate"
+                    id="pollDate"
                     type="date"
-                    value={formData.electionDate}
-                    onChange={(e) => setFormData({ ...formData, electionDate: e.target.value })}
+                    value={formData.pollDate}
+                    onChange={(e) => setFormData({ ...formData, pollDate: e.target.value })}
                   />
                 </div>
               </div>
@@ -272,7 +272,7 @@ export function ElectionsPage() {
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search elections..."
                 value={search}
@@ -309,7 +309,7 @@ export function ElectionsPage() {
             </div>
           ) : elections.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-500">No elections found</p>
+              <p className="text-muted-foreground">No elections found</p>
             </div>
           ) : (
             <Table>
@@ -339,19 +339,19 @@ export function ElectionsPage() {
                               className="h-8 w-8 rounded-full object-cover"
                             />
                           ) : (
-                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                              <UserIcon className="h-4 w-4 text-gray-500" />
+                            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                              <UserIcon className="h-4 w-4 text-muted-foreground" />
                             </div>
                           )}
                           <div>
                             <p className="font-medium text-sm">{election.candidateName}</p>
                             {election.candidateParty && (
-                              <p className="text-xs text-gray-500">{election.candidateParty.name || election.candidateParty.shortName}</p>
+                              <p className="text-xs text-muted-foreground">{election.candidateParty.name || election.candidateParty.shortName}</p>
                             )}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
                     <TableCell>{election.electionType || '-'}</TableCell>

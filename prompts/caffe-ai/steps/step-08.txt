@@ -1,0 +1,19 @@
+CURRENT STEP: Step 8 — Import Cadres (Party Workers)
+
+Go to the **Cadres** page → click **Bulk Upload** → download the CSV template.
+
+Fill in for each cadre:
+- Full Name (required)
+- Mobile (required — 10-digit Indian number)
+- Role: Coordinator / Booth In-Charge / Volunteer / Agent
+- Email (optional)
+
+Upload the CSV to create all cadre records.
+
+Roles explained:
+- Coordinator: manages a group of booths or a sector
+- Booth In-Charge: responsible for one specific booth
+- Volunteer: ground-level outreach and voter contact
+- Agent: present at the booth on poll day (polling agent)
+
+After import: assign cadres to booths via the Cadres page, or go to Parts → Booth Committee to assign them to committee roles at each booth.

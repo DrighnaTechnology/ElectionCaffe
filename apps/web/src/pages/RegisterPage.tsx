@@ -138,9 +138,9 @@ export function RegisterPage() {
             {registerMutation.isPending ? <Spinner size="sm" className="mr-2" /> : null}
             Create Account
           </Button>
-          <p className="text-sm text-gray-600 text-center">
+          <p className="text-sm text-muted-foreground text-center">
             Already have an account?{' '}
-            <Link to="/login" className="text-orange-500 hover:underline">
+            <Link to="/login" className="text-brand hover:underline">
               Sign In
             </Link>
           </p>

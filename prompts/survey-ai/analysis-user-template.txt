@@ -1,0 +1,19 @@
+Analyze the following survey response data:
+
+Survey: {{surveyTitle}}
+Description: {{surveyDescription}}
+Total Responses: {{totalResponses}}
+Date Range: {{dateRange}}
+
+Election: {{electionName}} ({{electionType}})
+State: {{state}}, Constituency: {{constituency}}
+
+--- AGGREGATED RESPONSE DATA ---
+
+{{aggregatedData}}
+
+---
+
+Provide a comprehensive analysis with actionable insights for the campaign team.
+
+Respond with valid JSON only.

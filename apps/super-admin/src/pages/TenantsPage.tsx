@@ -10,6 +10,7 @@ import {
   BuildingIcon,
   UsersIcon,
   VoteIcon,
+  UserCheckIcon,
   ChevronRightIcon,
   CheckCircleIcon,
   XCircleIcon,
@@ -102,64 +103,83 @@ export function TenantsPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tenant</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Users</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Elections</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Voters</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Users</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Elections</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {tenants.map((tenant: any) => (
-                <tr key={tenant.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="font-medium text-gray-900">{tenant.name}</p>
-                      <p className="text-sm text-gray-500">{tenant.slug}</p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 text-xs font-medium rounded ${getTenantTypeColor(tenant.tenantType)}`}>
-                      {getTenantTypeLabel(tenant.tenantType)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {tenant.isActive ? (
-                      <span className="flex items-center gap-1 text-green-600">
-                        <CheckCircleIcon className="h-4 w-4" />
-                        Active
+              {tenants.map((tenant: any) => {
+                const voterPct = tenant.maxVoters > 0
+                  ? Math.round(((tenant.currentVoterCount || 0) / tenant.maxVoters) * 100)
+                  : 0;
+                return (
+                  <tr key={tenant.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-medium text-gray-900">{tenant.name}</p>
+                        <p className="text-sm text-gray-500">{tenant.slug}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 text-xs font-medium rounded ${getTenantTypeColor(tenant.tenantType)}`}>
+                        {getTenantTypeLabel(tenant.tenantType)}
                       </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-red-600">
-                        <XCircleIcon className="h-4 w-4" />
-                        Inactive
+                    </td>
+                    <td className="px-6 py-4">
+                      {tenant.isActive ? (
+                        <span className="flex items-center gap-1 text-green-600">
+                          <CheckCircleIcon className="h-4 w-4" />
+                          Active
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-red-600">
+                          <XCircleIcon className="h-4 w-4" />
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <UserCheckIcon className="h-4 w-4 text-orange-500" />
+                        <span className="font-medium">{formatNumber(tenant.currentVoterCount || 0)}</span>
+                        <span className="text-xs text-gray-400">/ {formatNumber(tenant.maxVoters || 0)}</span>
+                      </div>
+                      <div className="w-20 bg-gray-200 rounded-full h-1.5 mt-1 ml-auto">
+                        <div
+                          className={`h-1.5 rounded-full ${voterPct > 90 ? 'bg-red-500' : voterPct > 70 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                          style={{ width: `${Math.min(voterPct, 100)}%` }}
+                        ></div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="flex items-center justify-end gap-1 text-gray-600">
+                        <UsersIcon className="h-4 w-4" />
+                        {formatNumber(tenant.currentUserCount || 0)}
                       </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="flex items-center gap-1 text-gray-600">
-                      <UsersIcon className="h-4 w-4" />
-                      {formatNumber(tenant._count?.users || 0)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="flex items-center gap-1 text-gray-600">
-                      <VoteIcon className="h-4 w-4" />
-                      {formatNumber(tenant._count?.elections || 0)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {formatDateTime(tenant.createdAt)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <Link
-                      to={`/tenants/${tenant.id}`}
-                      className="text-orange-500 hover:text-orange-600"
-                    >
-                      <ChevronRightIcon className="h-5 w-5" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="flex items-center justify-end gap-1 text-gray-600">
+                        <VoteIcon className="h-4 w-4" />
+                        {formatNumber(tenant.currentElectionCount || 0)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {formatDateTime(tenant.createdAt)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <Link
+                        to={`/tenants/${tenant.id}`}
+                        className="text-orange-500 hover:text-orange-600"
+                      >
+                        <ChevronRightIcon className="h-5 w-5" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -202,8 +222,8 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
     name: '',
     slug: '',
     tenantType: 'POLITICAL_PARTY' as const,
-    databaseType: 'NONE' as DatabaseType,
-    // Database config for DEDICATED_MANAGED
+    databaseType: 'SHARED' as DatabaseType,
+    // Database config for DEDICATED_EXTERNAL
     databaseHost: '',
     databaseName: '',
     databaseUser: '',
@@ -226,8 +246,8 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
         slug: formData.slug,
         tenantType: formData.tenantType,
         databaseType: formData.databaseType,
-        // Only include database config for DEDICATED_MANAGED
-        ...(formData.databaseType === 'DEDICATED_MANAGED' && {
+        // Only include database config for DEDICATED_EXTERNAL
+        ...(formData.databaseType === 'DEDICATED_EXTERNAL' && {
           databaseHost: formData.databaseHost || undefined,
           databaseName: formData.databaseName || undefined,
           databaseUser: formData.databaseUser || undefined,
@@ -260,14 +280,12 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
 
   const getDatabaseTypeDescription = (type: DatabaseType) => {
     switch (type) {
-      case 'NONE':
-        return 'No database configured. Tenant admin will set up database from their settings.';
       case 'SHARED':
-        return 'Use the shared ElectionCaffe platform database with tenant data isolation.';
-      case 'DEDICATED_MANAGED':
-        return 'You (Super Admin) will create and manage a dedicated database for this tenant.';
-      case 'DEDICATED_SELF':
-        return 'Tenant admin will provide their own database connection details.';
+        return 'Use the shared ElectionCaffe platform database with tenant data isolation. No new database is created.';
+      case 'DEDICATED_PLATFORM':
+        return 'A dedicated database will be created on the platform server, managed by the Super Admin.';
+      case 'DEDICATED_EXTERNAL':
+        return 'A dedicated database will be created on the tenant\'s external server using provided credentials.';
       default:
         return '';
     }
@@ -333,16 +351,15 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
                   onChange={(e) => setFormData({ ...formData, databaseType: e.target.value as DatabaseType })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
-                  <option value="NONE">No Database (Tenant sets up later)</option>
-                  <option value="SHARED">Shared Database</option>
-                  <option value="DEDICATED_MANAGED">Dedicated Database (Super Admin Managed)</option>
-                  <option value="DEDICATED_SELF">Dedicated Database (Tenant Managed)</option>
+                  <option value="SHARED">Shared Platform Database</option>
+                  <option value="DEDICATED_PLATFORM">Dedicated Database (Platform Server)</option>
+                  <option value="DEDICATED_EXTERNAL">Dedicated Database (External Server)</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">{getDatabaseTypeDescription(formData.databaseType)}</p>
               </div>
 
-              {/* Show database config fields for DEDICATED_MANAGED */}
-              {formData.databaseType === 'DEDICATED_MANAGED' && (
+              {/* Show database config fields for DEDICATED_EXTERNAL */}
+              {formData.databaseType === 'DEDICATED_EXTERNAL' && (
                 <div className="p-4 bg-gray-50 rounded-lg space-y-4">
                   <p className="text-sm text-gray-600 font-medium">Database Connection Details</p>
 

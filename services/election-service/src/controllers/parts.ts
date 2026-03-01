@@ -59,6 +59,39 @@ export class PartController {
                 sections: true,
               },
             },
+            boothCommittee: {
+              where: { isActive: true },
+              include: {
+                cadre: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        mobile: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            bla2: {
+              include: {
+                cadre: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        mobile: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         }),
         (tenantDb as any).part.count({ where }),
@@ -95,6 +128,9 @@ export class PartController {
           latitude: true,
           longitude: true,
           totalVoters: true,
+          maleVoters: true,
+          femaleVoters: true,
+          otherVoters: true,
           isVulnerable: true,
           vulnerability: true,
           address: true,
@@ -130,7 +166,7 @@ export class PartController {
             select: {
               voters: true,
               sections: true,
-              cadres: true,
+              booths: true,
             },
           },
         },
@@ -384,7 +420,7 @@ export class PartController {
       const { id } = req.params;
       const { vulnerability, vulnerabilityNotes } = req.body;
 
-      const validTypes = ['NOT_ASSIGNED', 'CRITICAL', 'COMMUNAL', 'POLITICAL', 'NAXAL', 'BORDER', 'REMOTE'];
+      const validTypes = ['NOT_ASSIGNED', 'NORMAL', 'LOW', 'MEDIUM', 'HIGH'];
 
       if (vulnerability && !validTypes.includes(vulnerability)) {
         res.status(400).json(errorResponse('E2001', 'Invalid vulnerability type'));
@@ -440,6 +476,252 @@ export class PartController {
       res.send(csv);
     } catch (error) {
       logger.error({ err: error }, 'Download template error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  // ==================== BOOTH COMMITTEE ====================
+
+  async getCommittee(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantDb = await getTenantDb(req);
+      const { id } = req.params;
+
+      const members = await (tenantDb as any).boothCommitteeMember.findMany({
+        where: { partId: id, isActive: true },
+        include: {
+          cadre: {
+            include: {
+              user: {
+                select: { id: true, firstName: true, lastName: true, mobile: true },
+              },
+            },
+          },
+        },
+        orderBy: { assignedAt: 'asc' },
+      });
+
+      res.json(successResponse(members));
+    } catch (error) {
+      logger.error({ err: error }, 'Get committee error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  async addCommitteeMember(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantDb = await getTenantDb(req);
+      const { id } = req.params;
+      const { cadreId, role } = req.body;
+
+      if (!cadreId || !role) {
+        res.status(400).json(errorResponse('E2001', 'cadreId and role are required'));
+        return;
+      }
+
+      const part = await (tenantDb as any).part.findUnique({ where: { id } });
+      if (!part) {
+        res.status(404).json(errorResponse('E3001', 'Part not found'));
+        return;
+      }
+
+      const cadre = await (tenantDb as any).cadre.findUnique({ where: { id: cadreId } });
+      if (!cadre) {
+        res.status(404).json(errorResponse('E3001', 'Cadre not found'));
+        return;
+      }
+
+      // Check if already assigned
+      const existing = await (tenantDb as any).boothCommitteeMember.findUnique({
+        where: { partId_cadreId: { partId: id, cadreId } },
+      });
+
+      if (existing) {
+        res.status(400).json(errorResponse('E4004', 'Cadre already assigned to this part'));
+        return;
+      }
+
+      const member = await (tenantDb as any).boothCommitteeMember.create({
+        data: {
+          electionId: part.electionId,
+          partId: id,
+          cadreId,
+          role,
+        },
+        include: {
+          cadre: {
+            include: {
+              user: {
+                select: { id: true, firstName: true, lastName: true, mobile: true },
+              },
+            },
+          },
+        },
+      });
+
+      res.json(successResponse(member));
+    } catch (error) {
+      logger.error({ err: error }, 'Add committee member error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  async removeCommitteeMember(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantDb = await getTenantDb(req);
+      const { id, memberId } = req.params;
+
+      const member = await (tenantDb as any).boothCommitteeMember.findFirst({
+        where: { partId: id, cadreId: memberId },
+      });
+
+      if (!member) {
+        res.status(404).json(errorResponse('E3001', 'Committee member not found'));
+        return;
+      }
+
+      await (tenantDb as any).boothCommitteeMember.delete({
+        where: { id: member.id },
+      });
+
+      res.json(successResponse({ message: 'Member removed successfully' }));
+    } catch (error) {
+      logger.error({ err: error }, 'Remove committee member error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  // ==================== BLA-2 ASSIGNMENTS ====================
+
+  async getBla2(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantDb = await getTenantDb(req);
+      const { id } = req.params;
+
+      const assignment = await (tenantDb as any).bla2Assignment.findUnique({
+        where: { partId: id },
+        include: {
+          cadre: {
+            include: {
+              user: {
+                select: { id: true, firstName: true, lastName: true, mobile: true },
+              },
+            },
+          },
+        },
+      });
+
+      res.json(successResponse(assignment));
+    } catch (error) {
+      logger.error({ err: error }, 'Get BLA-2 error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  async assignBla2(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantDb = await getTenantDb(req);
+      const { id } = req.params;
+      const { cadreId, status, notes } = req.body;
+
+      if (!cadreId) {
+        res.status(400).json(errorResponse('E2001', 'cadreId is required'));
+        return;
+      }
+
+      const part = await (tenantDb as any).part.findUnique({ where: { id } });
+      if (!part) {
+        res.status(404).json(errorResponse('E3001', 'Part not found'));
+        return;
+      }
+
+      // Check if already assigned
+      const existing = await (tenantDb as any).bla2Assignment.findUnique({ where: { partId: id } });
+      if (existing) {
+        res.status(400).json(errorResponse('E4004', 'BLA-2 already assigned to this part. Use PUT to update.'));
+        return;
+      }
+
+      const assignment = await (tenantDb as any).bla2Assignment.create({
+        data: {
+          electionId: part.electionId,
+          partId: id,
+          cadreId,
+          status: status || 'ASSIGNED',
+          notes: notes || null,
+        },
+        include: {
+          cadre: {
+            include: {
+              user: {
+                select: { id: true, firstName: true, lastName: true, mobile: true },
+              },
+            },
+          },
+        },
+      });
+
+      res.json(successResponse(assignment));
+    } catch (error) {
+      logger.error({ err: error }, 'Assign BLA-2 error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  async updateBla2(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantDb = await getTenantDb(req);
+      const { id } = req.params;
+      const { status, trainingCompleted, notes } = req.body;
+
+      const existing = await (tenantDb as any).bla2Assignment.findUnique({ where: { partId: id } });
+      if (!existing) {
+        res.status(404).json(errorResponse('E3001', 'No BLA-2 assignment found for this part'));
+        return;
+      }
+
+      const data: any = {};
+      if (status !== undefined) data.status = status;
+      if (trainingCompleted !== undefined) data.trainingCompleted = trainingCompleted;
+      if (notes !== undefined) data.notes = notes;
+
+      const assignment = await (tenantDb as any).bla2Assignment.update({
+        where: { partId: id },
+        data,
+        include: {
+          cadre: {
+            include: {
+              user: {
+                select: { id: true, firstName: true, lastName: true, mobile: true },
+              },
+            },
+          },
+        },
+      });
+
+      res.json(successResponse(assignment));
+    } catch (error) {
+      logger.error({ err: error }, 'Update BLA-2 error');
+      res.status(500).json(errorResponse('E5001', 'Internal server error'));
+    }
+  }
+
+  async removeBla2(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantDb = await getTenantDb(req);
+      const { id } = req.params;
+
+      const existing = await (tenantDb as any).bla2Assignment.findUnique({ where: { partId: id } });
+      if (!existing) {
+        res.status(404).json(errorResponse('E3001', 'No BLA-2 assignment found'));
+        return;
+      }
+
+      await (tenantDb as any).bla2Assignment.delete({ where: { partId: id } });
+
+      res.json(successResponse({ message: 'BLA-2 removed successfully' }));
+    } catch (error) {
+      logger.error({ err: error }, 'Remove BLA-2 error');
       res.status(500).json(errorResponse('E5001', 'Internal server error'));
     }
   }

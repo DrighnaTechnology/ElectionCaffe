@@ -1,0 +1,42 @@
+## Cadres (Party Workers) Context
+
+Cadres are party workers on the ground — coordinators, agents, volunteers, booth in-charges.
+
+**Bulk Import Cadres** — Cadres page → Bulk Upload → Download CSV template
+
+CSV columns:
+```
+Full Name (required)
+Mobile (required — 10-digit Indian mobile number)
+Role (Coordinator / Booth In-Charge / Volunteer / Agent)
+Email (optional)
+```
+
+**Assign Cadres to Booths**
+- On Cadres page: select a cadre → assign to a specific booth/part
+- Or via Parts > Booth Committee (assign to committee roles per booth)
+
+**Booth Committee Roles** (Parts > Booth Committee)
+Each booth can have multiple committee members across these roles:
+- Booth President
+- Booth Agent (BLA — Booth Level Agent)
+- Relief Agent
+- Polling Agent
+- Transport In-charge
+- Social Media In-charge
+- Volunteer
+
+**BLA-2 Assignment** (Parts > BLA-2)
+- Assign primary Booth Level Agent to each booth
+- BLA-2 page shows coverage — which booths have an assigned BLA and which don't
+
+**Cadre Roles Explained**
+- **Coordinator**: manages a group of booths / a sector
+- **Booth In-Charge**: responsible for one booth's operations
+- **Volunteer**: ground-level outreach, voter contact
+- **Agent**: present at booth on poll day (polling agent)
+
+**Key Rules**
+- Mobile number is required — used for identification and communication
+- Assign booth committees early to ensure every booth has coverage
+- Track BLA-2 coverage to find uncovered booths

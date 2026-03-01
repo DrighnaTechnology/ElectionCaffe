@@ -343,6 +343,24 @@ export function isEmpty(obj: object): boolean {
 }
 
 /**
+ * Build the full tenant URL from slug.
+ * Uses APP_DOMAIN env var in production, falls back to localhost in dev.
+ *
+ * APP_DOMAIN should be set to the base domain (e.g. "electioncaffe.com").
+ * Result: https://{slug}.electioncaffe.com  (production)
+ *         http://{slug}.localhost:{port}     (development)
+ */
+export function buildTenantUrl(slug: string): string {
+  const appDomain = process.env.APP_DOMAIN; // e.g. "electioncaffe.com"
+  if (appDomain) {
+    return `https://${slug}.${appDomain}`;
+  }
+  // Development fallback — tenant web app runs on port 5000
+  const port = process.env.TENANT_APP_PORT || '5000';
+  return `http://${slug}.localhost:${port}`;
+}
+
+/**
  * Capitalize first letter
  */
 export function capitalize(str: string): string {

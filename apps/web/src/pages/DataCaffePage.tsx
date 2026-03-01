@@ -149,10 +149,10 @@ export function DataCaffePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <DatabaseIcon className="h-7 w-7 text-orange-600" />
+            <DatabaseIcon className="h-7 w-7 text-brand" />
             DataCaffe.ai
           </h1>
-          <p className="text-gray-500">Embed advanced analytics dashboards and reports</p>
+          <p className="text-muted-foreground">Embed advanced analytics dashboards and reports</p>
         </div>
         <div className="flex gap-2">
           {selectedElectionId && (
@@ -194,7 +194,7 @@ export function DataCaffePage() {
                       onChange={(e) => setFormData({ ...formData, embedUrl: e.target.value })}
                       placeholder="https://app.datacaffe.ai/embed/..."
                     />
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       Get the embed URL from your DataCaffe.ai dashboard
                     </p>
                   </div>
@@ -275,11 +275,11 @@ export function DataCaffePage() {
               {templates.map((template: any) => (
                 <div
                   key={template.id}
-                  className="p-4 border rounded-lg hover:border-orange-300 hover:bg-orange-50 cursor-pointer transition-colors"
+                  className="p-4 border rounded-lg hover:border-brand/30 hover:bg-brand-muted cursor-pointer transition-colors"
                   onClick={() => useTemplate(template)}
                 >
                   <h4 className="font-medium">{template.name}</h4>
-                  <p className="text-sm text-gray-500 mt-1">{template.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                   <Badge variant="outline" className="mt-2">
                     {template.type}
                   </Badge>
@@ -306,9 +306,9 @@ export function DataCaffePage() {
       ) : embeds.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
-            <DatabaseIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-700">No Embeds Yet</h3>
-            <p className="text-gray-500 mt-2 mb-4">
+            <DatabaseIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground">No Embeds Yet</h3>
+            <p className="text-muted-foreground mt-2 mb-4">
               Add DataCaffe.ai embeds to visualize your election data with advanced analytics
             </p>
             <Button onClick={() => setCreateOpen(true)}>
@@ -321,7 +321,7 @@ export function DataCaffePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {embeds.map((embed: any) => (
             <Card key={embed.id} className="overflow-hidden">
-              <div className="relative h-48 bg-gray-100 flex items-center justify-center">
+              <div className="relative h-48 bg-muted flex items-center justify-center">
                 {embed.isActive ? (
                   <iframe
                     src={embed.embedUrl}
@@ -329,7 +329,7 @@ export function DataCaffePage() {
                     title={embed.embedName}
                   />
                 ) : (
-                  <div className="text-center text-gray-500">
+                  <div className="text-center text-muted-foreground">
                     <EyeOffIcon className="h-8 w-8 mx-auto mb-2" />
                     <p className="text-sm">Hidden</p>
                   </div>
@@ -383,13 +383,13 @@ export function DataCaffePage() {
                   <div>
                     <h3 className="font-medium">{embed.embedName}</h3>
                     {embed.description && (
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{embed.description}</p>
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{embed.description}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center justify-between mt-3">
                   <Badge variant="outline">{embed.embedType}</Badge>
-                  <span className="text-xs text-gray-400">{formatDate(embed.createdAt)}</span>
+                  <span className="text-xs text-muted-foreground">{formatDate(embed.createdAt)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -398,15 +398,15 @@ export function DataCaffePage() {
       )}
 
       {/* Info Section */}
-      <Card className="bg-gradient-to-r from-orange-50 to-blue-50">
+      <Card className="bg-gradient-to-r from-brand-muted to-blue-50">
         <CardContent className="p-6">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-white rounded-lg shadow-sm">
-              <DatabaseIcon className="h-8 w-8 text-orange-600" />
+            <div className="p-3 bg-card rounded-lg shadow-sm">
+              <DatabaseIcon className="h-8 w-8 text-brand" />
             </div>
             <div>
               <h3 className="font-semibold text-lg">About DataCaffe.ai Integration</h3>
-              <p className="text-gray-600 mt-1">
+              <p className="text-muted-foreground mt-1">
                 DataCaffe.ai provides advanced analytics and visualization capabilities for your election data.
                 Embed interactive dashboards, charts, and reports directly in ElectionCaffe for deeper insights.
               </p>
@@ -415,7 +415,7 @@ export function DataCaffePage() {
                   href="https://datacaffe.ai"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-orange-600 hover:underline flex items-center gap-1"
+                  className="text-sm text-brand hover:underline flex items-center gap-1"
                 >
                   Visit DataCaffe.ai
                   <ExternalLinkIcon className="h-3 w-3" />

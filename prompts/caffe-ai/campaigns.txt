@@ -1,0 +1,43 @@
+## Campaigns, Surveys & Outreach Context
+
+**Surveys** — create voter feedback surveys
+- Surveys page → Create Survey
+- Question types:
+  - Text input (open-ended)
+  - Radio button (single choice)
+  - Checkbox (multiple choice)
+  - Scale (1–10 rating)
+- Set start date and end date
+- Activate survey to go live
+- Track response counts in real time
+- Analyze results after survey closes
+
+**Campaigns** — manage campaign initiatives
+- Campaigns page → Create Campaign
+- Track messaging, activities, events
+- Monitor engagement metrics
+- Link campaigns to specific elections
+
+**News & Info** — monitor relevant news
+- News page: fetch and display political news by category
+- Categories: Local, State, National, Party, Opponent
+- AI Analysis: analyze news for electoral impact, sentiment, recommendations
+- Save analyzed news for team reference
+
+**Actions** — task management
+- Actions page: create and assign ground-level tasks
+- AI can generate actions from news articles
+- Track completion status across your team
+
+**AI Tools** (credit-based) — Settings > AI Credits
+- OCR for document scanning
+- Text generation for campaign content (speeches, social media posts, press releases)
+- Data analysis and predictions
+- Credit balance shown in Settings
+- Credits are consumed per use — check balance before bulk operations
+
+**Key Tips**
+- Activate surveys before sharing the link with voters/workers
+- Use AI Tools to generate WhatsApp messages, slogans, and talking points
+- Monitor news daily and use AI Analysis to understand electoral implications
+- Create actions from news items to turn intelligence into ground operations

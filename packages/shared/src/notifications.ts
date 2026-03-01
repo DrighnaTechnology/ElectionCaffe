@@ -1,48 +1,67 @@
+export interface MessageResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  provider: string;
+}
+
 export interface NotificationProvider {
-  sendSMS(to: string, message: string): Promise<{ success: boolean; messageId?: string }>;
-  sendEmail(to: string, subject: string, body: string): Promise<{ success: boolean; messageId?: string }>;
+  sendSMS(to: string, message: string, opts?: Record<string, any>): Promise<MessageResult>;
+  sendEmail(to: string, subject: string, body: string, opts?: Record<string, any>): Promise<MessageResult>;
+  sendWhatsApp(to: string, message: string, mediaUrl?: string, opts?: Record<string, any>): Promise<MessageResult>;
+  sendVoice(to: string, message: string, opts?: Record<string, any>): Promise<MessageResult>;
 }
 
 /**
- * Console-based notification provider for development.
+ * Console-based notification provider for development/testing.
  * Logs notifications to stdout instead of sending them.
  */
 export class ConsoleNotificationProvider implements NotificationProvider {
-  async sendSMS(to: string, message: string) {
+  async sendSMS(to: string, message: string): Promise<MessageResult> {
     if (process.env.NODE_ENV !== 'test') {
       process.stdout.write(
-        `[NotificationProvider] SMS to ${to}: ${message}\n`
+        `[MockProvider] SMS to ${to}: ${message}\n`
       );
     }
-    return { success: true, messageId: `dev-sms-${Date.now()}` };
+    return { success: true, messageId: `mock-sms-${Date.now()}`, provider: 'console' };
   }
 
-  async sendEmail(to: string, subject: string, body: string) {
+  async sendEmail(to: string, subject: string, _body: string): Promise<MessageResult> {
     if (process.env.NODE_ENV !== 'test') {
       process.stdout.write(
-        `[NotificationProvider] Email to ${to}: ${subject}\n${body}\n`
+        `[MockProvider] Email to ${to}: ${subject}\n`
       );
     }
-    return { success: true, messageId: `dev-email-${Date.now()}` };
+    return { success: true, messageId: `mock-email-${Date.now()}`, provider: 'console' };
+  }
+
+  async sendWhatsApp(to: string, message: string, mediaUrl?: string): Promise<MessageResult> {
+    if (process.env.NODE_ENV !== 'test') {
+      process.stdout.write(
+        `[MockProvider] WhatsApp to ${to}: ${message}${mediaUrl ? ` [media: ${mediaUrl}]` : ''}\n`
+      );
+    }
+    return { success: true, messageId: `mock-wa-${Date.now()}`, provider: 'console' };
+  }
+
+  async sendVoice(to: string, message: string): Promise<MessageResult> {
+    if (process.env.NODE_ENV !== 'test') {
+      process.stdout.write(
+        `[MockProvider] Voice to ${to}: ${message}\n`
+      );
+    }
+    return { success: true, messageId: `mock-voice-${Date.now()}`, provider: 'console' };
   }
 }
 
 let _provider: NotificationProvider | null = null;
 
-/**
- * Returns the configured notification provider.
- * In production, set NOTIFICATION_PROVIDER env var to use a real provider.
- * Falls back to ConsoleNotificationProvider for development.
- */
 export function getNotificationProvider(): NotificationProvider {
   if (_provider) return _provider;
   _provider = new ConsoleNotificationProvider();
   return _provider;
 }
 
-/**
- * Override the notification provider (useful for testing or custom integrations).
- */
 export function setNotificationProvider(provider: NotificationProvider): void {
   _provider = provider;
 }

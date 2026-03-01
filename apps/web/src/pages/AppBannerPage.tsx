@@ -220,9 +220,9 @@ export function AppBannerPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election to manage app banners.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election to manage app banners.</p>
       </div>
     );
   }
@@ -236,7 +236,7 @@ export function AppBannerPage() {
             <ImageIcon className="h-6 w-6" />
             App Banners
           </h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Manage promotional banners displayed in the mobile app
           </p>
         </div>
@@ -278,7 +278,7 @@ export function AppBannerPage() {
                 <ImageIcon className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Banners</p>
+                <p className="text-sm text-muted-foreground">Total Banners</p>
                 <p className="text-2xl font-bold">{banners.length}</p>
               </div>
             </div>
@@ -291,7 +291,7 @@ export function AppBannerPage() {
                 <EyeIcon className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Active</p>
+                <p className="text-sm text-muted-foreground">Active</p>
                 <p className="text-2xl font-bold text-green-600">
                   {banners.filter((b) => b.isActive).length}
                 </p>
@@ -302,12 +302,12 @@ export function AppBannerPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-full bg-gray-100">
-                <EyeOffIcon className="h-5 w-5 text-gray-600" />
+              <div className="p-2 rounded-full bg-muted">
+                <EyeOffIcon className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Inactive</p>
-                <p className="text-2xl font-bold text-gray-600">
+                <p className="text-sm text-muted-foreground">Inactive</p>
+                <p className="text-2xl font-bold text-muted-foreground">
                   {banners.filter((b) => !b.isActive).length}
                 </p>
               </div>
@@ -321,7 +321,7 @@ export function AppBannerPage() {
                 <LinkIcon className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">With Links</p>
+                <p className="text-sm text-muted-foreground">With Links</p>
                 <p className="text-2xl font-bold text-purple-600">
                   {banners.filter((b) => b.linkUrl).length}
                 </p>
@@ -348,8 +348,8 @@ export function AppBannerPage() {
             </div>
           ) : banners.length === 0 ? (
             <div className="p-8 text-center">
-              <ImageIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No banners yet</p>
+              <ImageIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No banners yet</p>
               <Button
                 variant="outline"
                 className="mt-4"
@@ -366,13 +366,13 @@ export function AppBannerPage() {
                   key={banner.id}
                   className={cn(
                     'flex items-center gap-4 p-4',
-                    !banner.isActive && 'opacity-60 bg-gray-50'
+                    !banner.isActive && 'opacity-60 bg-muted/50'
                   )}
                 >
-                  <div className="cursor-move text-gray-400 hover:text-gray-600">
+                  <div className="cursor-move text-muted-foreground hover:text-muted-foreground">
                     <GripVerticalIcon className="h-5 w-5" />
                   </div>
-                  <div className="flex-shrink-0 w-32 h-20 rounded-lg overflow-hidden bg-gray-100">
+                  <div className="flex-shrink-0 w-32 h-20 rounded-lg overflow-hidden bg-muted">
                     {banner.imageUrl ? (
                       <img
                         src={banner.imageUrl}
@@ -384,7 +384,7 @@ export function AppBannerPage() {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <ImageIcon className="h-8 w-8 text-gray-400" />
+                        <ImageIcon className="h-8 w-8 text-muted-foreground" />
                       </div>
                     )}
                   </div>
@@ -402,11 +402,11 @@ export function AppBannerPage() {
                       )}
                     </div>
                     {banner.description && (
-                      <p className="text-sm text-gray-500 truncate mt-1">
+                      <p className="text-sm text-muted-foreground truncate mt-1">
                         {banner.description}
                       </p>
                     )}
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                       <span>Position: {index + 1}</span>
                       {banner.startDate && (
                         <span>
@@ -488,7 +488,7 @@ export function AppBannerPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="bg-gray-900 rounded-xl p-2 mx-auto" style={{ width: 280 }}>
-            <div className="bg-white rounded-lg overflow-hidden">
+            <div className="bg-card rounded-lg overflow-hidden">
               {previewBanner?.imageUrl && (
                 <img
                   src={previewBanner.imageUrl}
@@ -502,7 +502,7 @@ export function AppBannerPage() {
               <div className="p-3">
                 <h4 className="font-semibold text-sm">{previewBanner?.title}</h4>
                 {previewBanner?.description && (
-                  <p className="text-xs text-gray-500 mt-1">{previewBanner.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{previewBanner.description}</p>
                 )}
                 {previewBanner?.linkUrl && (
                   <div className="mt-2 flex items-center gap-1 text-xs text-blue-600">

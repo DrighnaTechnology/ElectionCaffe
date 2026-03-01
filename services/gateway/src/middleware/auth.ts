@@ -11,13 +11,17 @@ declare global {
   }
 }
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  return secret;
 }
-const JWT_SECRET = process.env.JWT_SECRET;
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   try {
+    const JWT_SECRET = getJwtSecret();
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {

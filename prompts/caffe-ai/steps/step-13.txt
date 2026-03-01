@@ -1,0 +1,17 @@
+CURRENT STEP: Step 13 — Lock Election & Poll Day Preparation
+
+Before poll day, go to **Elections** page → select your election → click **Lock Election**.
+
+Locking freezes all election data to prevent accidental edits. Do this the evening before or morning of poll day.
+
+Then print Voter Slips:
+- Go to **Poll Day → Voter Slips**
+- Configure slip options: show/hide photo, include QR code, show address, paper size (A4)
+- Batch print booth-wise and distribute through booth committees before poll day
+
+On poll day, use the **Poll Day** dashboard to:
+- Monitor booth-level status in real time
+- Track turnout as it comes in
+- Coordinate with booth committees through the app
+
+If corrections are needed after locking, a Tenant Admin can unlock the election.

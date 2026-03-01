@@ -9,6 +9,7 @@ interface User {
   email?: string;
   mobile: string;
   role: string;
+  customRoleId?: string;
   permissions?: string[];
 }
 
@@ -17,9 +18,11 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  mustChangePassword: boolean;
   _hasHydrated: boolean;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
+  setAuth: (user: User, accessToken: string, refreshToken: string, mustChangePassword?: boolean) => void;
   updateUser: (user: Partial<User>) => void;
+  clearMustChangePassword: () => void;
   logout: () => void;
   setHasHydrated: (state: boolean) => void;
 }
@@ -31,14 +34,16 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      mustChangePassword: false,
       _hasHydrated: false,
 
-      setAuth: (user, accessToken, refreshToken) =>
+      setAuth: (user, accessToken, refreshToken, mustChangePassword) =>
         set({
           user,
           accessToken,
           refreshToken,
           isAuthenticated: true,
+          mustChangePassword: mustChangePassword || false,
         }),
 
       updateUser: (userData) =>
@@ -46,12 +51,15 @@ export const useAuthStore = create<AuthState>()(
           user: state.user ? { ...state.user, ...userData } : null,
         })),
 
+      clearMustChangePassword: () => set({ mustChangePassword: false }),
+
       logout: () =>
         set({
           user: null,
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+          mustChangePassword: false,
         }),
 
       setHasHydrated: (state) => set({ _hasHydrated: state }),

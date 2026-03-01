@@ -44,13 +44,14 @@ import { organizationRoutes } from './routes/organization.js';
 import { ecDataRoutes } from './routes/ec-data.js';
 import { tenantNewsRoutes } from './routes/tenant-news.js';
 import { tenantActionsRoutes } from './routes/tenant-actions.js';
-import { nbBroadcastRoutes } from './routes/nb-broadcast.js';
 import { websiteBuilderRoutes } from './routes/website-builder.js';
 import { fundManagementRoutes } from './routes/fund-management.js';
 import { inventoryManagementRoutes } from './routes/inventory-management.js';
 import { eventManagementRoutes } from './routes/event-management.js';
 import { internalNotificationsRoutes } from './routes/internal-notifications.js';
 import { internalChatRoutes } from './routes/internal-chat.js';
+import { messagingSettingsRoutes } from './routes/messaging-settings.js';
+import { internalRoutes } from './routes/internal.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireFeature } from './middleware/requireFeature.js';
 import { SERVICE_PORTS } from '@electioncaffe/shared';
@@ -92,13 +93,16 @@ app.use('/api/organization', organizationRoutes);
 app.use('/api/ec-data', ecDataRoutes);
 app.use('/api/news', tenantNewsRoutes);
 app.use('/api/actions', tenantActionsRoutes);
-app.use('/api/nb', nbBroadcastRoutes);
 app.use('/api/website', websiteBuilderRoutes);
-app.use('/api/funds', requireFeature('fund_management'), fundManagementRoutes);
+app.use('/api/funds', fundManagementRoutes);
 app.use('/api/inventory', requireFeature('inventory_management'), inventoryManagementRoutes);
 app.use('/api/events', eventManagementRoutes);
 app.use('/api/notifications', internalNotificationsRoutes);
 app.use('/api/chat', internalChatRoutes);
+app.use('/api/messaging-settings', messagingSettingsRoutes);
+
+// Internal service-to-service routes (guarded by x-internal-key)
+app.use('/api/internal', internalRoutes);
 
 // Error handler
 app.use(errorHandler);
@@ -125,12 +129,24 @@ function gracefulShutdown(signal: string) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', (reason: unknown) => {
+  const err = reason as any;
+  // Client disconnects (ECONNABORTED/ECONNRESET) are expected — don't crash
+  if (err?.code === 'ECONNABORTED' || err?.code === 'ECONNRESET' || err?.type === 'request.aborted') {
+    logger.warn({ code: err.code, message: err.message }, 'Client disconnected (unhandled rejection)');
+    return;
+  }
   logger.fatal({ reason }, 'Unhandled rejection');
   process.exit(1);
 });
 
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', (err: unknown) => {
+  const e = err as any;
+  // Client disconnects (ECONNABORTED/ECONNRESET) are expected — don't crash
+  if (e?.code === 'ECONNABORTED' || e?.code === 'ECONNRESET' || e?.type === 'request.aborted') {
+    logger.warn({ code: e.code, message: e.message }, 'Client disconnected (uncaught exception)');
+    return;
+  }
   logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);
 });

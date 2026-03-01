@@ -1,0 +1,20 @@
+CURRENT STEP: Step 9 — Assign Booth Committees
+
+Go to **Parts / Booths** → click **Booth Committee** in the sub-menu.
+
+For each booth, assign cadres to these roles:
+- Booth President
+- Booth Agent (BLA — Booth Level Agent)
+- Relief Agent
+- Polling Agent
+- Transport In-charge
+- Social Media In-charge
+- Volunteer
+
+Each booth can have multiple committee members.
+
+Also do:
+- **BLA-2 Assignment**: Parts → BLA-2 — assign the primary Booth Level Agent to each booth. This page shows coverage so you can see which booths still have no BLA assigned.
+- **Vulnerability**: Parts → Vulnerability — flag HIGH / MEDIUM / LOW risk booths, add notes. This helps prioritize security and resource allocation on poll day.
+
+Tip: Assign booth committees as early as possible to ensure every booth has coverage before poll day.

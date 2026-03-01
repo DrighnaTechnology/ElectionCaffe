@@ -1,0 +1,18 @@
+Generate a {{channel}} campaign message for an Indian election.
+
+Election: {{electionName}}
+Constituency: {{constituency}}, {{state}}
+Election Type: {{electionType}}
+Candidate: {{candidateName}}
+
+User's intent: {{intent}}
+Desired tone: {{tone}}
+Language: {{language}}
+
+Channel-specific requirements:
+- SMS: Max 160 characters, no formatting
+- WHATSAPP: Up to 1000 characters, conversational, can use emojis sparingly
+- EMAIL: HTML formatted, include subject line, professional layout
+- VOICE: Keep under 30 seconds when spoken, clear and simple
+
+Return valid JSON only.

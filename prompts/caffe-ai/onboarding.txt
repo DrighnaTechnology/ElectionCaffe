@@ -1,0 +1,63 @@
+## Step-by-Step Guide (Phase 2 onwards — user is already logged in and org is set up)
+
+STEP 3 — Create Election
+- Elections page → Create Election
+- Fields: Election Name, Type (Assembly/Parliament/Municipal/Panchayat/By-Election), Constituency, State, District, Poll Date
+- Election starts in Draft status
+- After creating: click it from the list OR use the header dropdown to SELECT it (required before any other page works)
+
+STEP 4 — Configure Master Data (BEFORE importing booths or voters)
+- Master Data page → add all reference data:
+  Religions | Caste Categories | Castes & Sub-castes | Languages | Parties | Voter Categories | Schemes
+- Example: Religions: Hindu, Muslim, Christian | Castes: Yadav, Rajput, Paswan
+- This MUST be done before voter import so voters can be linked to caste/religion/scheme
+
+STEP 5 — Import Booths/Parts (BEFORE importing voters)
+- Parts/Booths page → Bulk Upload → Download CSV template
+- CSV columns: Part Number (unique, from EC data), Booth Name, Booth Name Local, Address, Landmark, Pincode, Type (URBAN/RURAL)
+- Or add one-by-one via Add Part
+
+STEP 6 — Import Voters
+- Voters page → Bulk Upload → Download CSV template
+- CSV columns: Full Name, Name Local, Gender (MALE/FEMALE/TRANSGENDER), Age, EPIC Number, Mobile, Serial Number, Part Number (must match existing booth)
+- Voter counts auto-populate on booth pages after upload
+
+STEP 7 — Create Families
+- Families page → Bulk Upload or create manually
+- CSV columns: Family Name, House Number, Address, captainEpic (voter ID of head)
+- captainEpic auto-links the family head by their EPIC number
+
+STEP 8 — Import Cadres (party workers)
+- Cadres page → Bulk Upload
+- CSV columns: Full Name, Mobile (required, 10-digit), Role (Coordinator/Booth In-Charge/Volunteer/Agent), Email
+- After import: assign cadres to booths via Cadres page or Parts > Booth Committee
+
+STEP 9 — Assign Booth Committees
+- Parts/Booths → Booth Committee
+- For each booth assign: Booth President, Booth Agent (BLA), Relief Agent, Polling Agent, Transport In-charge, Social Media In-charge, Volunteer
+- Also assign BLA-2 (primary booth agent) via Parts → BLA-2
+
+STEP 10 — Add Candidates
+- Candidates page → Create Candidate
+- Fields: Name, Party, Contact, Photo, Documents, Social media profiles
+- Add your candidate AND opponent candidates for battle card generation
+
+STEP 11 — Create Surveys (optional but recommended)
+- Surveys page → Create Survey → add questions → set dates → Activate
+
+STEP 12 — Review Dashboard & Analytics
+- Dashboard shows real-time KPIs: voters, booths, cadres, families, days to poll, demographics
+- Analytics page: age groups, political leaning, data quality
+- AI Analytics: turnout prediction, swing voters, booth risk — run after major data imports
+
+STEP 13 — Generate Reports
+- Reports page → select type → export PDF or Excel
+
+STEP 14 — Lock Election (before poll day)
+- Elections page → Lock election → freezes all data
+
+STEP 15 — Print Voter Slips
+- Poll Day → Voter Slips → configure (photo, QR, address) → batch print by booth
+
+STEP 16 — Poll Day Operations
+- Poll Day dashboard → monitor booth status → coordinate with committees

@@ -34,25 +34,6 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Get report by ID
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
-    const tenantDb = await getTenantDb(req);
-    const report = await (tenantDb as any).report.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!report) {
-      res.status(404).json(errorResponse('E3001', 'Report not found'));
-      return;
-    }
-
-    res.json(successResponse(report));
-  } catch (error) {
-    res.status(500).json(errorResponse('E5001', 'Internal server error'));
-  }
-});
-
 // Create report
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -159,7 +140,7 @@ router.get('/generate/scheme-beneficiaries/:electionId', async (req: Request, re
     const where: any = { voter: { electionId, deletedAt: null } };
     if (schemeId) where.schemeId = schemeId;
 
-    const beneficiaries = await (tenantDb as any).voterScheme.findMany({
+    const beneficiaries = await (tenantDb as any).voterSchemeEnrollment.findMany({
       where,
       include: {
         voter: {
@@ -263,6 +244,25 @@ router.get('/generate/feedback-summary/:electionId', async (req: Request, res: R
   }
 });
 
+// Get report by ID — MUST be defined after all /generate/... routes to avoid Express matching "generate" as :id
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const report = await (tenantDb as any).report.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!report) {
+      res.status(404).json(errorResponse('E3001', 'Report not found'));
+      return;
+    }
+
+    res.json(successResponse(report));
+  } catch (error) {
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
 // Delete report
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
@@ -296,11 +296,19 @@ async function generateReport(req: Request, reportId: string, electionId: string
     await (tenantDb as any).report.update({
       where: { id: reportId },
       data: {
+        status: 'COMPLETED',
         generatedAt: new Date(),
       },
     });
   } catch (error) {
     logger.error({ err: error, reportId }, 'Report generation failed');
+    try {
+      const tenantDb = await getTenantDb(req);
+      await (tenantDb as any).report.update({
+        where: { id: reportId },
+        data: { status: 'FAILED' },
+      });
+    } catch (_) { /* ignore secondary failure */ }
   }
 }
 

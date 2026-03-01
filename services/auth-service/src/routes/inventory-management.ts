@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');
@@ -12,18 +12,17 @@ router.get('/categories', async (req: Request, res: Response): Promise<void> => 
   try {
     const userId = req.headers['x-user-id'] as string;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const categories = await prisma.inventoryCategory.findMany({
-      where: { tenantId: user.tenant.id },
+    const categories = await (await getTenantDb(req)).inventoryCategory.findMany({
+      where: { tenantId: user.tenantId },
       include: {
         parent: { select: { id: true, name: true } },
         _count: { select: { items: true, children: true } },
@@ -44,19 +43,17 @@ router.post('/categories', async (req: Request, res: Response): Promise<void> =>
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
@@ -67,9 +64,9 @@ router.post('/categories', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const category = await prisma.inventoryCategory.create({
+    const category = await (await getTenantDb(req)).inventoryCategory.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         name,
         nameLocal,
         parentId,
@@ -94,19 +91,18 @@ router.get('/items', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { categoryId, status, search, page = '1', limit = '20' } = req.query;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    const where: any = { tenantId: user.tenant.id };
+    const where: any = { tenantId: user.tenantId };
     if (categoryId) where.categoryId = categoryId;
     if (status) where.status = status;
     if (search) {
@@ -117,7 +113,7 @@ router.get('/items', async (req: Request, res: Response): Promise<void> => {
     }
 
     const [items, total] = await Promise.all([
-      prisma.inventoryItem.findMany({
+      (await getTenantDb(req)).inventoryItem.findMany({
         where,
         include: {
           category: { select: { id: true, name: true } },
@@ -127,7 +123,7 @@ router.get('/items', async (req: Request, res: Response): Promise<void> => {
         skip,
         take: parseInt(limit as string),
       }),
-      prisma.inventoryItem.count({ where }),
+      (await getTenantDb(req)).inventoryItem.count({ where }),
     ]);
 
     res.json(successResponse({ items, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
@@ -143,18 +139,17 @@ router.get('/items/:id', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const item = await prisma.inventoryItem.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const item = await (await getTenantDb(req)).inventoryItem.findFirst({
+      where: { id, tenantId: user.tenantId },
       include: {
         category: true,
         stockMovements: {
@@ -187,13 +182,12 @@ router.post('/items', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.headers['x-user-id'] as string;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
@@ -209,11 +203,11 @@ router.post('/items', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Generate item code if not provided
-    const code = itemCode || `INV-${user.tenant.slug.toUpperCase()}-${Date.now()}`;
+    const code = itemCode || `INV-${user.tenantId.substring(0, 8).toUpperCase()}-${Date.now()}`;
 
-    const item = await prisma.inventoryItem.create({
+    const item = await (await getTenantDb(req)).inventoryItem.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         categoryId,
         name,
         nameLocal,
@@ -239,9 +233,9 @@ router.post('/items', async (req: Request, res: Response): Promise<void> => {
 
     // Create initial stock movement if initial quantity provided
     if (quantity && quantity > 0) {
-      await prisma.inventoryMovement.create({
+      await (await getTenantDb(req)).inventoryMovement.create({
         data: {
-          tenantId: user.tenant.id,
+          tenantId: user.tenantId,
           itemId: item.id,
           movementType: 'in',
           quantity,
@@ -266,18 +260,17 @@ router.put('/items/:id', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const item = await prisma.inventoryItem.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const item = await (await getTenantDb(req)).inventoryItem.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!item) {
@@ -290,7 +283,7 @@ router.put('/items/:id', async (req: Request, res: Response): Promise<void> => {
       reorderLevel, unitCost, location, warehouseId, imageUrl, images, notes, status,
     } = req.body;
 
-    const updatedItem = await prisma.inventoryItem.update({
+    const updatedItem = await (await getTenantDb(req)).inventoryItem.update({
       where: { id },
       data: {
         ...(categoryId !== undefined && { categoryId }),
@@ -327,18 +320,17 @@ router.post('/items/:id/stock-in', async (req: Request, res: Response): Promise<
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const item = await prisma.inventoryItem.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const item = await (await getTenantDb(req)).inventoryItem.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!item) {
@@ -356,15 +348,15 @@ router.post('/items/:id/stock-in', async (req: Request, res: Response): Promise<
     const newQuantity = item.quantity + quantity;
 
     // Update item stock
-    await prisma.inventoryItem.update({
+    await (await getTenantDb(req)).inventoryItem.update({
       where: { id },
       data: { quantity: newQuantity },
     });
 
     // Create movement record
-    const movement = await prisma.inventoryMovement.create({
+    const movement = await (await getTenantDb(req)).inventoryMovement.create({
       data: {
-        tenant: { connect: { id: user.tenant.id } },
+        tenant: { connect: { id: user.tenantId } },
         item: { connect: { id } },
         movementType: 'in',
         quantity,
@@ -391,18 +383,17 @@ router.post('/items/:id/stock-out', async (req: Request, res: Response): Promise
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const item = await prisma.inventoryItem.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const item = await (await getTenantDb(req)).inventoryItem.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!item) {
@@ -425,15 +416,15 @@ router.post('/items/:id/stock-out', async (req: Request, res: Response): Promise
     const newQuantity = item.quantity - quantity;
 
     // Update item stock
-    await prisma.inventoryItem.update({
+    await (await getTenantDb(req)).inventoryItem.update({
       where: { id },
       data: { quantity: newQuantity },
     });
 
     // Create movement record
-    const movement = await prisma.inventoryMovement.create({
+    const movement = await (await getTenantDb(req)).inventoryMovement.create({
       data: {
-        tenant: { connect: { id: user.tenant.id } },
+        tenant: { connect: { id: user.tenantId } },
         item: { connect: { id } },
         movementType: 'out',
         quantity,
@@ -461,24 +452,22 @@ router.post('/items/:id/adjust', async (req: Request, res: Response): Promise<vo
     const userRole = req.headers['x-user-role'] as string;
     const { id } = req.params;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Only admins can adjust stock'));
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const item = await prisma.inventoryItem.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const item = await (await getTenantDb(req)).inventoryItem.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!item) {
@@ -496,15 +485,15 @@ router.post('/items/:id/adjust', async (req: Request, res: Response): Promise<vo
     const difference = Math.abs(newQuantity - item.quantity);
 
     // Update item stock
-    await prisma.inventoryItem.update({
+    await (await getTenantDb(req)).inventoryItem.update({
       where: { id },
       data: { quantity: newQuantity },
     });
 
     // Create adjustment movement
-    const movement = await prisma.inventoryMovement.create({
+    const movement = await (await getTenantDb(req)).inventoryMovement.create({
       data: {
-        tenant: { connect: { id: user.tenant.id } },
+        tenant: { connect: { id: user.tenantId } },
         item: { connect: { id } },
         movementType: 'adjustment',
         quantity: difference,
@@ -530,13 +519,12 @@ router.post('/allocations', async (req: Request, res: Response): Promise<void> =
   try {
     const userId = req.headers['x-user-id'] as string;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
@@ -548,8 +536,8 @@ router.post('/allocations', async (req: Request, res: Response): Promise<void> =
     }
 
     // Verify item
-    const item = await prisma.inventoryItem.findFirst({
-      where: { id: itemId, tenantId: user.tenant.id },
+    const item = await (await getTenantDb(req)).inventoryItem.findFirst({
+      where: { id: itemId, tenantId: user.tenantId },
     });
 
     if (!item) {
@@ -563,9 +551,9 @@ router.post('/allocations', async (req: Request, res: Response): Promise<void> =
     }
 
     // Create allocation
-    const allocation = await prisma.inventoryAllocation.create({
+    const allocation = await (await getTenantDb(req)).inventoryAllocation.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         itemId,
         quantity,
         eventId,
@@ -587,14 +575,14 @@ router.post('/allocations', async (req: Request, res: Response): Promise<void> =
 
     // Update stock and create movement
     const newQuantity = item.quantity - quantity;
-    await prisma.inventoryItem.update({
+    await (await getTenantDb(req)).inventoryItem.update({
       where: { id: itemId },
       data: { quantity: newQuantity },
     });
 
-    await prisma.inventoryMovement.create({
+    await (await getTenantDb(req)).inventoryMovement.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         itemId,
         movementType: 'out',
         quantity,
@@ -620,18 +608,17 @@ router.post('/allocations/:id/return', async (req: Request, res: Response): Prom
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const allocation = await prisma.inventoryAllocation.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const allocation = await (await getTenantDb(req)).inventoryAllocation.findFirst({
+      where: { id, tenantId: user.tenantId },
       include: { item: true },
     });
 
@@ -650,7 +637,7 @@ router.post('/allocations/:id/return', async (req: Request, res: Response): Prom
     const qtyToReturn = returnedQuantity || allocation.quantity;
 
     // Update allocation
-    await prisma.inventoryAllocation.update({
+    await (await getTenantDb(req)).inventoryAllocation.update({
       where: { id },
       data: {
         status: 'returned',
@@ -663,15 +650,15 @@ router.post('/allocations/:id/return', async (req: Request, res: Response): Prom
 
     // Return stock
     const newQuantity = allocation.item.quantity + qtyToReturn;
-    await prisma.inventoryItem.update({
+    await (await getTenantDb(req)).inventoryItem.update({
       where: { id: allocation.itemId },
       data: { quantity: newQuantity },
     });
 
     // Create return movement
-    await prisma.inventoryMovement.create({
+    await (await getTenantDb(req)).inventoryMovement.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         itemId: allocation.itemId,
         movementType: 'in',
         quantity: qtyToReturn,
@@ -697,25 +684,24 @@ router.get('/allocations', async (req: Request, res: Response): Promise<void> =>
     const userId = req.headers['x-user-id'] as string;
     const { itemId, eventId, status, page = '1', limit = '20' } = req.query;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    const where: any = { tenantId: user.tenant.id };
+    const where: any = { tenantId: user.tenantId };
     if (itemId) where.itemId = itemId;
     if (eventId) where.eventId = eventId;
     if (status) where.status = status;
 
     const [allocations, total] = await Promise.all([
-      prisma.inventoryAllocation.findMany({
+      (await getTenantDb(req)).inventoryAllocation.findMany({
         where,
         include: {
           item: { select: { id: true, name: true, itemCode: true } },
@@ -725,7 +711,7 @@ router.get('/allocations', async (req: Request, res: Response): Promise<void> =>
         skip,
         take: parseInt(limit as string),
       }),
-      prisma.inventoryAllocation.count({ where }),
+      (await getTenantDb(req)).inventoryAllocation.count({ where }),
     ]);
 
     res.json(successResponse({ allocations, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
@@ -742,27 +728,26 @@ router.get('/summary', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.headers['x-user-id'] as string;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const tenantId = user.tenant.id;
+    const tenantId = user.tenantId;
 
     // Total items and value
-    const itemStats = await prisma.inventoryItem.aggregate({
+    const itemStats = await (await getTenantDb(req)).inventoryItem.aggregate({
       where: { tenantId, status: 'AVAILABLE' },
       _count: true,
       _sum: { quantity: true },
     });
 
     // Low stock items (where quantity <= minStockLevel)
-    const lowStockItems = await prisma.inventoryItem.findMany({
+    const lowStockItems = await (await getTenantDb(req)).inventoryItem.findMany({
       where: {
         tenantId,
         status: 'AVAILABLE',
@@ -775,12 +760,12 @@ router.get('/summary', async (req: Request, res: Response): Promise<void> => {
     const lowStock = lowStockItems.filter(item => item.quantity <= item.minStockLevel);
 
     // Active allocations
-    const activeAllocations = await prisma.inventoryAllocation.count({
+    const activeAllocations = await (await getTenantDb(req)).inventoryAllocation.count({
       where: { tenantId, status: { in: ['allocated', 'in_use'] } },
     });
 
     // Overdue returns
-    const overdueReturns = await prisma.inventoryAllocation.findMany({
+    const overdueReturns = await (await getTenantDb(req)).inventoryAllocation.findMany({
       where: {
         tenantId,
         status: { in: ['allocated', 'in_use'] },
@@ -793,7 +778,7 @@ router.get('/summary', async (req: Request, res: Response): Promise<void> => {
     });
 
     // Categories with item counts
-    const categoryCounts = await prisma.inventoryCategory.findMany({
+    const categoryCounts = await (await getTenantDb(req)).inventoryCategory.findMany({
       where: { tenantId },
       select: {
         id: true,
@@ -803,7 +788,7 @@ router.get('/summary', async (req: Request, res: Response): Promise<void> => {
     });
 
     // Recent movements
-    const recentMovements = await prisma.inventoryMovement.findMany({
+    const recentMovements = await (await getTenantDb(req)).inventoryMovement.findMany({
       where: { tenantId },
       include: {
         item: { select: { name: true } },

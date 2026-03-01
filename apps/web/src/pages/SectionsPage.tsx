@@ -166,33 +166,78 @@ export function SectionsPage() {
   const overseasCount = filteredSections.filter(s => s.isOverseas).length;
 
   const handleBulkUpload = async (data: Record<string, unknown>[]) => {
-    try {
-      // Map part numbers to part IDs
-      const partNoToId = new Map(parts.map((p: any) => [p.partNo || p.partNumber, p.id]));
+    // Map part numbers to part IDs
+    const partNoToId = new Map(parts.map((p: any) => [p.partNumber, p.id]));
 
-      const sectionsToCreate = data.map(row => {
-        const partNo = Number(row.partNo);
-        const partId = partNoToId.get(partNo);
-        if (!partId) {
-          throw new Error(`Part number ${partNo} not found`);
-        }
-        return {
-          partId,
-          sectionNumber: Number(row.sectionNumber),
-          sectionName: String(row.sectionName || ''),
-          sectionNameLocal: row.sectionNameLocal ? String(row.sectionNameLocal) : undefined,
-          isOverseas: row.isOverseas === true || row.isOverseas === 'Yes' || row.isOverseas === 'yes',
-        };
+    const sectionsToCreate: any[] = [];
+    const rowMapping: number[] = []; // maps sectionsToCreate index → original data index
+    const localErrors: Array<{ row: number; field: string; error: string }> = [];
+
+    data.forEach((row, index) => {
+      const partNo = Number(row.partNo);
+      const partId = partNoToId.get(partNo);
+
+      if (!partId) {
+        localErrors.push({
+          row: index + 1,
+          field: 'partNo',
+          error: `Part number ${partNo} not found in system`,
+        });
+        return;
+      }
+
+      const sectionNumber = Number(row.sectionNumber);
+      if (!sectionNumber || sectionNumber < 1) {
+        localErrors.push({
+          row: index + 1,
+          field: 'sectionNumber',
+          error: 'Section number must be a positive integer',
+        });
+        return;
+      }
+
+      const sectionName = String(row.sectionName || '').trim();
+      if (!sectionName) {
+        localErrors.push({
+          row: index + 1,
+          field: 'sectionName',
+          error: 'Section name is required',
+        });
+        return;
+      }
+
+      sectionsToCreate.push({
+        partId,
+        sectionNumber,
+        sectionName,
+        sectionNameLocal: row.sectionNameLocal ? String(row.sectionNameLocal) : undefined,
+        isOverseas: row.isOverseas === true || row.isOverseas === 'Yes' || row.isOverseas === 'yes',
       });
+      rowMapping.push(index);
+    });
 
+    // If no valid rows to send, return local errors only
+    if (sectionsToCreate.length === 0) {
+      return { success: 0, failed: localErrors.length, errors: localErrors };
+    }
+
+    try {
       const response = await api.post('/sections/bulk', { sections: sectionsToCreate }, { params: { electionId: selectedElectionId } });
       queryClient.invalidateQueries({ queryKey: ['sections'] });
 
       const result = response.data?.data || { created: sectionsToCreate.length };
+
+      // Map backend errors back to original row indices
+      const backendErrors = (result.errors || []).map((err: any) => ({
+        row: rowMapping[err.row - 1] !== undefined ? rowMapping[err.row - 1] + 1 : err.row,
+        field: err.field || 'unknown',
+        error: err.error || 'Unknown server error',
+      }));
+
       return {
-        success: result.created || sectionsToCreate.length,
-        failed: result.failed || 0,
-        errors: result.errors || [],
+        success: result.created || 0,
+        failed: (result.failed || 0) + localErrors.length,
+        errors: [...localErrors, ...backendErrors],
       };
     } catch (error: any) {
       throw new Error(error.response?.data?.error?.message || error.message || 'Bulk upload failed');
@@ -203,9 +248,9 @@ export function SectionsPage() {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16">
-          <AlertCircleIcon className="h-12 w-12 text-orange-500 mb-4" />
+          <AlertCircleIcon className="h-12 w-12 text-brand mb-4" />
           <h2 className="text-xl font-semibold mb-2">No Election Selected</h2>
-          <p className="text-gray-500">Please select an election from the sidebar to manage sections.</p>
+          <p className="text-muted-foreground">Please select an election from the sidebar to manage sections.</p>
         </CardContent>
       </Card>
     );
@@ -217,7 +262,7 @@ export function SectionsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Sections</h1>
-          <p className="text-gray-500">Manage sections within parts/booths</p>
+          <p className="text-muted-foreground">Manage sections within parts/booths</p>
         </div>
         <div className="flex gap-2">
           <BulkUpload
@@ -244,7 +289,7 @@ export function SectionsPage() {
                   <SelectContent>
                     {parts.map((part: any) => (
                       <SelectItem key={part.id} value={part.id}>
-                        Part {part.partNumber || part.partNo || '-'} - {part.partName || part.boothName || '-'}
+                        Part {part.partNumber || '-'} - {part.boothName || '-'}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -315,7 +360,7 @@ export function SectionsPage() {
                 <LayoutGridIcon className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Sections</p>
+                <p className="text-sm text-muted-foreground">Total Sections</p>
                 <p className="text-2xl font-bold">{filteredSections.length}</p>
               </div>
             </div>
@@ -328,7 +373,7 @@ export function SectionsPage() {
                 <UsersIcon className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Voters</p>
+                <p className="text-sm text-muted-foreground">Total Voters</p>
                 <p className="text-2xl font-bold">{totalVoters.toLocaleString()}</p>
               </div>
             </div>
@@ -341,7 +386,7 @@ export function SectionsPage() {
                 <MapPinIcon className="h-6 w-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Parts</p>
+                <p className="text-sm text-muted-foreground">Total Parts</p>
                 <p className="text-2xl font-bold">{parts.length}</p>
               </div>
             </div>
@@ -350,11 +395,11 @@ export function SectionsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <GlobeIcon className="h-6 w-6 text-orange-600" />
+              <div className="p-3 bg-brand-muted rounded-lg">
+                <GlobeIcon className="h-6 w-6 text-brand" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Overseas Sections</p>
+                <p className="text-sm text-muted-foreground">Overseas Sections</p>
                 <p className="text-2xl font-bold">{overseasCount}</p>
               </div>
             </div>
@@ -367,7 +412,7 @@ export function SectionsPage() {
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search sections..."
                 className="pl-10"
@@ -424,7 +469,7 @@ export function SectionsPage() {
                     </TableCell>
                     <TableCell>
                       {section.isOverseas ? (
-                        <Badge className="bg-orange-100 text-orange-700">
+                        <Badge className="bg-brand-muted text-orange-700">
                           <GlobeIcon className="h-3 w-3 mr-1" />
                           Overseas
                         </Badge>
@@ -454,7 +499,7 @@ export function SectionsPage() {
                 ))}
                 {filteredSections.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       {searchTerm || selectedPartId !== 'all'
                         ? 'No sections found matching your criteria.'
                         : 'No sections found. Add your first section.'}

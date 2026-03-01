@@ -79,3 +79,23 @@ export type {
   AIAdminAlert,
   ECIntegrationConfig,
 } from '../../node_modules/.prisma/core-client/index.js';
+
+// Export core schema enums (only those used by a model — Prisma skips unused enums)
+export {
+  TenantType,
+  TenantStatus,
+  DatabaseType,
+  DatabaseStatus,
+  LicensePlanType,
+  LicenseBillingCycle,
+  UsageAlertLevel,
+  AIProviderType,
+  AIProviderStatus,
+  AIFeatureStatus,
+  InvitationStatus,
+  InvitationType,
+  WebsiteTemplateType,
+} from '../../node_modules/.prisma/core-client/index.js';
+
+// LicenseStatus enum exists in schema but is unused by any model, so Prisma doesn't generate it
+export type LicenseStatus = 'ACTIVE' | 'TRIAL' | 'SUSPENDED' | 'EXPIRED' | 'CANCELLED';

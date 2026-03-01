@@ -1,8 +1,18 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient, LicenseStatus, LicensePlanType, LicenseBillingCycle, UsageAlertLevel } from '@prisma/client';
+import { coreDb as prisma } from '@electioncaffe/database';
+import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
-const prisma = new PrismaClient();
+
+// All license routes require super admin authentication
+router.use(superAdminAuthMiddleware);
+
+// Type aliases for backward compatibility with route code
+type LicenseStatus = string;
+type LicensePlanType = string;
+type LicenseBillingCycle = string;
+type UsageAlertLevel = string;
 
 // ==================== LICENSE PLANS ====================
 
@@ -166,6 +176,8 @@ router.post('/plans', async (req: Request, res: Response, next: NextFunction) =>
       },
     });
 
+    auditLog(req, 'CREATE_LICENSE_PLAN', 'license_plan', plan.id, null, { planName, planType });
+
     res.status(201).json({
       success: true,
       data: plan,
@@ -195,7 +207,7 @@ router.put('/plans/:id', async (req: Request, res: Response, next: NextFunction)
     // Don't allow changing planName if other tenants are using it
     if (updateData.planName && updateData.planName !== existing.planName) {
       const inUse = await prisma.tenantLicense.count({
-        where: { licensePlanId: id },
+        where: { planId: id },
       });
       if (inUse > 0) {
         return res.status(400).json({
@@ -209,6 +221,8 @@ router.put('/plans/:id', async (req: Request, res: Response, next: NextFunction)
       where: { id },
       data: updateData,
     });
+
+    auditLog(req, 'UPDATE_LICENSE_PLAN', 'license_plan', id, null, { fields: Object.keys(updateData) });
 
     res.json({
       success: true,
@@ -248,6 +262,8 @@ router.delete('/plans/:id', async (req: Request, res: Response, next: NextFuncti
     await prisma.licensePlan.delete({
       where: { id },
     });
+
+    auditLog(req, 'DELETE_LICENSE_PLAN', 'license_plan', id, null, { planName: existing.planName });
 
     res.json({
       success: true,
@@ -375,6 +391,8 @@ router.post('/plans/seed', async (_req: Request, res: Response, next: NextFuncti
       }
     }
 
+    auditLog(_req, 'SEED_LICENSE_PLANS', 'license_plan', null, null, { created: createdPlans.length });
+
     res.json({
       success: true,
       message: `Created ${createdPlans.length} license plans`,
@@ -397,7 +415,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 
     const where: any = {};
     if (status) where.status = status as LicenseStatus;
-    if (planId) where.licensePlanId = planId as string;
+    if (planId) where.planId = planId as string;
 
     const [licenses, total] = await Promise.all([
       prisma.tenantLicense.findMany({
@@ -409,13 +427,13 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
           tenant: {
             select: { id: true, name: true, slug: true, tenantType: true, status: true },
           },
-          licensePlan: {
-            select: { id: true, planName: true, planType: true },
+          plan: {
+            select: { id: true, planName: true, planType: true, maxConcurrentSessions: true },
           },
           _count: {
-            select: { sessions: { where: { isActive: true } } },
+            select: { sessions: true },
           },
-        } as any,
+        },
       }),
       prisma.tenantLicense.count({ where }),
     ]);
@@ -444,7 +462,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       where: { id },
       include: {
         tenant: true,
-        licensePlan: true,
+        plan: true,
         sessions: {
           where: { isActive: true },
           orderBy: { lastActivityAt: 'desc' },
@@ -480,11 +498,11 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       },
     });
 
-    // Count active users
-    const activeUsers = await prisma.user.count({
+    // Count active sessions for this license
+    const activeSessions = await prisma.tenantSession.count({
       where: {
-        tenantId: license.tenantId,
-        status: 'ACTIVE',
+        tenantLicenseId: id,
+        isActive: true,
       },
     });
 
@@ -493,8 +511,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       data: {
         ...license,
         currentUsage: {
-          activeUsers,
-          activeSessions: license.sessions.length,
+          activeSessions,
           todayMetrics: todayUsage,
         },
       },
@@ -513,7 +530,7 @@ router.get('/tenant/:tenantId', async (req: Request, res: Response, next: NextFu
       where: { tenantId },
       include: {
         tenant: true,
-        licensePlan: true,
+        plan: true,
         sessions: {
           where: { isActive: true },
         },
@@ -546,6 +563,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const {
       tenantId,
+      planId: rawPlanId,
       licensePlanId,
       status,
       customMaxUsers,
@@ -571,7 +589,10 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       adminNotes,
     } = req.body;
 
-    if (!tenantId || !licensePlanId) {
+    // Accept both planId and licensePlanId from frontend
+    const planId = rawPlanId || licensePlanId;
+
+    if (!tenantId || !planId) {
       return res.status(400).json({
         success: false,
         error: { message: 'Tenant ID and License Plan ID are required' },
@@ -604,7 +625,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
     // Check if plan exists
     const plan = await prisma.licensePlan.findUnique({
-      where: { id: licensePlanId },
+      where: { id: planId },
     });
 
     if (!plan) {
@@ -626,7 +647,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     const license = await prisma.tenantLicense.create({
       data: {
         tenantId,
-        licensePlanId,
+        planId,
         status: (status as LicenseStatus) || 'TRIAL',
         customMaxUsers,
         customMaxSessions,
@@ -654,23 +675,24 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       },
       include: {
         tenant: true,
-        licensePlan: true,
+        plan: true,
       },
     });
 
-    // Update tenant limits based on license
-    const effectiveLimits = {
-      maxUsers: customMaxUsers || plan.maxUsers,
-      maxVoters: customMaxVoters || plan.maxVoters,
-      maxElections: customMaxElections || plan.maxElections,
-      maxConstituencies: customMaxConstituencies || plan.maxConstituencies,
-      storageQuotaMB: customMaxStorageMB || plan.maxStorageMB,
-    };
-
+    // Update tenant limits and subscription plan based on license
     await prisma.tenant.update({
       where: { id: tenantId },
-      data: effectiveLimits,
+      data: {
+        subscriptionPlan: plan.planName,
+        maxUsers: customMaxUsers || plan.maxUsers,
+        maxVoters: customMaxVoters || plan.maxVoters,
+        maxElections: customMaxElections || plan.maxElections,
+        maxConstituencies: customMaxConstituencies || plan.maxConstituencies,
+        storageQuotaMB: customMaxStorageMB || plan.maxStorageMB,
+      },
     });
+
+    auditLog(req, 'ASSIGN_LICENSE', 'tenant_license', license.id, tenantId, { planId, status: license.status });
 
     res.status(201).json({
       success: true,
@@ -689,7 +711,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
     const existing = await prisma.tenantLicense.findUnique({
       where: { id },
-      include: { licensePlan: true },
+      include: { plan: true },
     });
 
     if (!existing) {
@@ -700,10 +722,10 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     }
 
     // If changing plan, get new plan details
-    let plan = existing.licensePlan;
-    if (updateData.licensePlanId && updateData.licensePlanId !== existing.licensePlanId) {
+    let plan = existing.plan;
+    if (updateData.planId && updateData.planId !== existing.planId) {
       const newPlan = await prisma.licensePlan.findUnique({
-        where: { id: updateData.licensePlanId },
+        where: { id: updateData.planId },
       });
       if (!newPlan) {
         return res.status(404).json({
@@ -732,23 +754,24 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
       data: updateData,
       include: {
         tenant: true,
-        licensePlan: true,
+        plan: true,
       },
     });
 
-    // Update tenant limits if license or custom limits changed
-    const effectiveLimits = {
-      maxUsers: license.customMaxUsers || plan.maxUsers,
-      maxVoters: license.customMaxVoters || plan.maxVoters,
-      maxElections: license.customMaxElections || plan.maxElections,
-      maxConstituencies: license.customMaxConstituencies || plan.maxConstituencies,
-      storageQuotaMB: license.customMaxStorageMB || plan.maxStorageMB,
-    };
-
+    // Update tenant limits and subscription plan
     await prisma.tenant.update({
       where: { id: license.tenantId },
-      data: effectiveLimits,
+      data: {
+        subscriptionPlan: plan.planName,
+        maxUsers: license.customMaxUsers || plan.maxUsers,
+        maxVoters: license.customMaxVoters || plan.maxVoters,
+        maxElections: license.customMaxElections || plan.maxElections,
+        maxConstituencies: license.customMaxConstituencies || plan.maxConstituencies,
+        storageQuotaMB: license.customMaxStorageMB || plan.maxStorageMB,
+      },
     });
+
+    auditLog(req, 'UPDATE_LICENSE', 'tenant_license', id, license.tenantId, { fields: Object.keys(updateData) });
 
     res.json({
       success: true,
@@ -774,7 +797,7 @@ router.post('/:id/suspend', async (req: Request, res: Response, next: NextFuncti
       },
       include: {
         tenant: true,
-        licensePlan: true,
+        plan: true,
       },
     });
 
@@ -796,6 +819,8 @@ router.post('/:id/suspend', async (req: Request, res: Response, next: NextFuncti
       where: { id: license.tenantId },
       data: { status: 'SUSPENDED', suspendedAt: new Date(), suspendedReason: reason },
     });
+
+    auditLog(req, 'SUSPEND_LICENSE', 'tenant_license', id, license.tenantId, { reason });
 
     res.json({
       success: true,
@@ -834,7 +859,7 @@ router.post('/:id/activate', async (req: Request, res: Response, next: NextFunct
       },
       include: {
         tenant: true,
-        licensePlan: true,
+        plan: true,
       },
     });
 
@@ -843,6 +868,8 @@ router.post('/:id/activate', async (req: Request, res: Response, next: NextFunct
       where: { id: license.tenantId },
       data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null },
     });
+
+    auditLog(req, 'ACTIVATE_LICENSE', 'tenant_license', id, license.tenantId);
 
     res.json({
       success: true,
@@ -895,6 +922,8 @@ router.post('/sessions/:sessionId/terminate', async (req: Request, res: Response
       },
     });
 
+    auditLog(req, 'TERMINATE_SESSION', 'tenant_session', sessionId);
+
     res.json({
       success: true,
       data: session,
@@ -921,6 +950,8 @@ router.post('/:id/sessions/terminate-all', async (req: Request, res: Response, n
         terminationReason: reason || 'admin_terminated_all',
       },
     });
+
+    auditLog(req, 'TERMINATE_ALL_SESSIONS', 'tenant_license', id, null, { terminated: result.count });
 
     res.json({
       success: true,
@@ -1029,6 +1060,8 @@ router.patch('/alerts/:alertId', async (req: Request, res: Response, next: NextF
       data: updateData,
     });
 
+    auditLog(req, 'UPDATE_ALERT', 'usage_alert', alertId);
+
     res.json({
       success: true,
       data: alert,
@@ -1116,8 +1149,10 @@ router.post('/:id/billing', async (req: Request, res: Response, next: NextFuncti
         totalAmount,
         usageSummary: usageSummary || {},
         notes,
-      } as any,
+      },
     });
+
+    auditLog(req, 'CREATE_BILLING', 'billing_history', billing.id, null, { invoiceNumber, totalAmount });
 
     res.status(201).json({
       success: true,
@@ -1145,6 +1180,8 @@ router.patch('/billing/:billingId', async (req: Request, res: Response, next: Ne
       where: { id: billingId },
       data: updateData,
     });
+
+    auditLog(req, 'UPDATE_BILLING', 'billing_history', billingId, null, { paymentStatus });
 
     res.json({
       success: true,

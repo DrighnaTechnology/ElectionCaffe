@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { prisma } from '@electioncaffe/database';
+import { coreDb } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, getNotificationProvider, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');
@@ -31,7 +32,7 @@ export class InvitationController {
       }
 
       // Get inviter info
-      const inviter = await prisma.user.findUnique({
+      const inviter = await (await getTenantDb(req)).user.findUnique({
         where: { id: userId },
         select: { firstName: true, lastName: true, role: true }
       });
@@ -42,7 +43,7 @@ export class InvitationController {
       }
 
       // Check if user already exists in this tenant
-      const existingUser = await prisma.user.findFirst({
+      const existingUser = await (await getTenantDb(req)).user.findFirst({
         where: { tenantId, mobile }
       });
 
@@ -52,7 +53,7 @@ export class InvitationController {
       }
 
       // Check for existing pending invitation
-      const existingInvitation = await prisma.invitation.findFirst({
+      const existingInvitation = await coreDb.invitation.findFirst({
         where: {
           invitedByTenantId: tenantId,
           mobile,
@@ -69,7 +70,7 @@ export class InvitationController {
       const token = crypto.randomBytes(32).toString('hex');
 
       // Create invitation
-      const invitation = await prisma.invitation.create({
+      const invitation = await coreDb.invitation.create({
         data: {
           invitationType: 'TENANT_USER',
           invitedByTenantId: tenantId,
@@ -128,7 +129,7 @@ export class InvitationController {
       }
 
       const [invitations, total] = await Promise.all([
-        prisma.invitation.findMany({
+        coreDb.invitation.findMany({
           where,
           orderBy: { createdAt: 'desc' },
           skip: (Number(page) - 1) * Number(limit),
@@ -148,7 +149,7 @@ export class InvitationController {
             createdAt: true,
           }
         }),
-        prisma.invitation.count({ where })
+        coreDb.invitation.count({ where })
       ]);
 
       res.json(successResponse({
@@ -172,7 +173,7 @@ export class InvitationController {
       const tenantId = req.headers['x-tenant-id'] as string;
       const { id } = req.params;
 
-      const invitation = await prisma.invitation.findFirst({
+      const invitation = await coreDb.invitation.findFirst({
         where: { id, invitedByTenantId: tenantId }
       });
 
@@ -194,7 +195,7 @@ export class InvitationController {
       const tenantId = req.headers['x-tenant-id'] as string;
       const { id } = req.params;
 
-      const invitation = await prisma.invitation.findFirst({
+      const invitation = await coreDb.invitation.findFirst({
         where: { id, invitedByTenantId: tenantId }
       });
 
@@ -211,7 +212,7 @@ export class InvitationController {
       // Generate new token and extend expiry
       const token = crypto.randomBytes(32).toString('hex');
 
-      const updated = await prisma.invitation.update({
+      const updated = await coreDb.invitation.update({
         where: { id },
         data: {
           token,
@@ -223,7 +224,7 @@ export class InvitationController {
       });
 
       // Reset status back to PENDING after recording resent
-      await prisma.invitation.update({
+      await coreDb.invitation.update({
         where: { id },
         data: { status: 'PENDING' }
       });
@@ -255,7 +256,7 @@ export class InvitationController {
       const tenantId = req.headers['x-tenant-id'] as string;
       const { id } = req.params;
 
-      const invitation = await prisma.invitation.findFirst({
+      const invitation = await coreDb.invitation.findFirst({
         where: { id, invitedByTenantId: tenantId }
       });
 
@@ -269,7 +270,7 @@ export class InvitationController {
         return;
       }
 
-      await prisma.invitation.update({
+      await coreDb.invitation.update({
         where: { id },
         data: {
           status: 'CANCELLED',
@@ -295,7 +296,7 @@ export class InvitationController {
       }
 
       // Find invitation by token
-      const invitation = await prisma.invitation.findUnique({
+      const invitation = await coreDb.invitation.findUnique({
         where: { token },
         include: {
           invitedByTenant: true,
@@ -314,7 +315,7 @@ export class InvitationController {
       }
 
       if (invitation.expiresAt < new Date()) {
-        await prisma.invitation.update({
+        await coreDb.invitation.update({
           where: { id: invitation.id },
           data: { status: 'EXPIRED' }
         });
@@ -333,7 +334,7 @@ export class InvitationController {
       }
 
       // Check if user already exists
-      const existingUser = await prisma.user.findFirst({
+      const existingUser = await (await getTenantDb(req)).user.findFirst({
         where: { tenantId: targetTenantId, mobile: invitation.mobile }
       });
 
@@ -346,7 +347,7 @@ export class InvitationController {
       const passwordHash = await bcrypt.hash(password, 10);
 
       // Create user
-      const user = await prisma.user.create({
+      const user = await (await getTenantDb(req)).user.create({
         data: {
           tenantId: targetTenantId,
           firstName: invitation.firstName,
@@ -360,7 +361,7 @@ export class InvitationController {
       });
 
       // Update invitation
-      await prisma.invitation.update({
+      await coreDb.invitation.update({
         where: { id: invitation.id },
         data: {
           status: 'ACCEPTED',
@@ -391,7 +392,7 @@ export class InvitationController {
     try {
       const { token } = req.params;
 
-      const invitation = await prisma.invitation.findUnique({
+      const invitation = await coreDb.invitation.findUnique({
         where: { token },
         include: {
           invitedByTenant: {

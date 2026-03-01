@@ -35,7 +35,7 @@ export const JWT_CONFIG = {
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
   DEFAULT_LIMIT: 10,
-  MAX_LIMIT: 100,
+  MAX_LIMIT: 500,
 } as const;
 
 // Role Permissions
@@ -210,6 +210,24 @@ export const WS_EVENTS = {
   VOTE_MARKED: 'vote_marked',
   TURNOUT_UPDATE: 'turnout_update',
   BOOTH_UPDATE: 'booth_update',
+  BOOTH_PULSE: 'booth_pulse',
+
+  // War Room Events
+  INCIDENT_CREATED: 'incident_created',
+  INCIDENT_UPDATED: 'incident_updated',
+  INCIDENT_ESCALATED: 'incident_escalated',
+  BATTLE_ORDER_ISSUED: 'battle_order_issued',
+  GOTV_WAVE_TRIGGERED: 'gotv_wave_triggered',
+  VICTORY_CALC_UPDATE: 'victory_calc_update',
+  ANOMALY_DETECTED: 'anomaly_detected',
+  SNAPSHOT_COMPLETE: 'snapshot_complete',
+
+  // Agent Events
+  AGENT_CHECK_IN: 'agent_check_in',
+  AGENT_CHECK_OUT: 'agent_check_out',
+  AGENT_MOOD: 'agent_mood',
+  AGENT_SILENT_ALERT: 'agent_silent_alert',
+  PANNA_ALERT: 'panna_alert',
 
   // Cadre Events
   CADRE_LOCATION: 'cadre_location',

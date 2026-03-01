@@ -62,8 +62,8 @@ router.get('/features', async (req: Request, res: Response): Promise<void> => {
 // Get role-feature access matrix for the tenant
 router.get('/role-features', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
+    const tenantId = req.headers['x-tenant-id'] as string;
 
     // Only allow admin roles
     const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
@@ -72,19 +72,14 @@ router.get('/role-features', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { tenant: true },
-    });
-
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!tenantId) {
+      res.status(400).json(errorResponse('E2003', 'Tenant ID is required'));
       return;
     }
 
     // Get all role-feature access records for this tenant
     const roleFeatureAccess = await prisma.roleFeatureAccess.findMany({
-      where: { tenantId: user.tenant.id },
+      where: { tenantId },
     });
 
     // Build a matrix of role -> feature -> isEnabled
@@ -106,7 +101,7 @@ router.get('/role-features', async (req: Request, res: Response): Promise<void> 
     }
 
     res.json(successResponse({
-      tenantId: user.tenant.id,
+      tenantId,
       matrix,
       features: AVAILABLE_FEATURES,
       roles: CONFIGURABLE_ROLES,
@@ -122,6 +117,7 @@ router.put('/role-features', async (req: Request, res: Response): Promise<void> 
   try {
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
+    const tenantId = req.headers['x-tenant-id'] as string;
 
     // Only allow admin roles
     const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
@@ -130,13 +126,8 @@ router.put('/role-features', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { tenant: true },
-    });
-
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!tenantId) {
+      res.status(400).json(errorResponse('E2003', 'Tenant ID is required'));
       return;
     }
 
@@ -163,13 +154,13 @@ router.put('/role-features', async (req: Request, res: Response): Promise<void> 
     const access = await prisma.roleFeatureAccess.upsert({
       where: {
         tenantId_role_featureKey: {
-          tenantId: user.tenant.id,
+          tenantId,
           role: role as UserRole,
           featureKey,
         },
       },
       create: {
-        tenantId: user.tenant.id,
+        tenantId,
         role: role as UserRole,
         featureKey,
         isEnabled,
@@ -195,6 +186,7 @@ router.put('/role-features/bulk', async (req: Request, res: Response): Promise<v
   try {
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
+    const tenantId = req.headers['x-tenant-id'] as string;
 
     // Only allow admin roles
     const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
@@ -203,13 +195,8 @@ router.put('/role-features/bulk', async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { tenant: true },
-    });
-
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!tenantId) {
+      res.status(400).json(errorResponse('E2003', 'Tenant ID is required'));
       return;
     }
 
@@ -226,13 +213,13 @@ router.put('/role-features/bulk', async (req: Request, res: Response): Promise<v
         prisma.roleFeatureAccess.upsert({
           where: {
             tenantId_role_featureKey: {
-              tenantId: user.tenant!.id,
+              tenantId,
               role: update.role,
               featureKey: update.featureKey,
             },
           },
           create: {
-            tenantId: user.tenant!.id,
+            tenantId,
             role: update.role,
             featureKey: update.featureKey,
             isEnabled: update.isEnabled,
@@ -258,8 +245,8 @@ router.put('/role-features/bulk', async (req: Request, res: Response): Promise<v
 // Get users with their roles (for user management tab)
 router.get('/users', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
+    const tenantId = req.headers['x-tenant-id'] as string;
 
     // Only allow admin roles
     const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
@@ -268,13 +255,8 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { tenant: true },
-    });
-
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!tenantId) {
+      res.status(400).json(errorResponse('E2003', 'Tenant ID is required'));
       return;
     }
 
@@ -284,7 +266,7 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {
-      tenantId: user.tenant.id,
+      tenantId,
     };
 
     if (search) {

@@ -75,8 +75,9 @@ export function AIToolsPage() {
     queryFn: () => aiAPI.getUsageHistory({ limit: 20 }),
   });
 
-  const features = featuresResponse?.data?.data || [];
-  const credits = creditsResponse?.data?.data;
+  const featuresData = featuresResponse?.data?.data;
+  const features = featuresData?.features || featuresData || [];
+  const credits = creditsResponse?.data?.data || featuresData?.credits;
   const usageHistory: UsageRecord[] = usageResponse?.data?.data || [];
 
   const isLoading = featuresLoading || creditsLoading;
@@ -102,11 +103,11 @@ export function AIToolsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">AI Tools</h1>
-          <p className="text-gray-500">Use AI-powered features to enhance your workflow</p>
+          <p className="text-muted-foreground">Use AI-powered features to enhance your workflow</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 rounded-lg">
-            <CoinsIcon className="h-5 w-5 text-orange-500" />
+          <div className="flex items-center gap-2 px-4 py-2 bg-brand-muted rounded-lg">
+            <CoinsIcon className="h-5 w-5 text-brand" />
             <span className="font-medium text-orange-700">
               {credits?.balance?.toLocaleString() || 0} Credits
             </span>
@@ -147,9 +148,9 @@ export function AIToolsPage() {
           {features.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
-                <BrainIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">No AI features available</p>
-                <p className="text-sm text-gray-400 mt-1">
+                <BrainIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No AI features available</p>
+                <p className="text-sm text-muted-foreground mt-1">
                   Contact your administrator to enable AI features.
                 </p>
               </CardContent>
@@ -163,8 +164,8 @@ export function AIToolsPage() {
                     <Card
                       key={feature.id}
                       className={cn(
-                        'cursor-pointer hover:border-orange-300 transition-colors',
-                        selectedFeature?.id === feature.id && 'border-orange-500 ring-1 ring-orange-500'
+                        'cursor-pointer hover:border-brand/30 transition-colors',
+                        selectedFeature?.id === feature.id && 'border-brand ring-1 ring-brand'
                       )}
                       onClick={() => setSelectedFeature(feature)}
                     >
@@ -172,11 +173,11 @@ export function AIToolsPage() {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <h4 className="font-medium">{feature.name}</h4>
-                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                               {feature.description || 'No description'}
                             </p>
                           </div>
-                          <Wand2Icon className="h-5 w-5 text-orange-500 flex-shrink-0" />
+                          <Wand2Icon className="h-5 w-5 text-brand flex-shrink-0" />
                         </div>
                         <div className="flex items-center justify-between mt-4">
                           <Badge variant="outline" className="text-xs">
@@ -228,9 +229,9 @@ export function AIToolsPage() {
             <CardContent>
               {usageHistory.length === 0 ? (
                 <div className="text-center py-8">
-                  <HistoryIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">No usage history yet</p>
-                  <p className="text-sm text-gray-400 mt-1">
+                  <HistoryIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No usage history yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">
                     Your AI feature usage will appear here.
                   </p>
                 </div>
@@ -249,7 +250,7 @@ export function AIToolsPage() {
                               ? 'bg-green-100'
                               : record.status === 'FAILED'
                                 ? 'bg-red-100'
-                                : 'bg-gray-100'
+                                : 'bg-muted'
                           )}
                         >
                           {record.status === 'SUCCESS' ? (
@@ -262,7 +263,7 @@ export function AIToolsPage() {
                         </div>
                         <div>
                           <div className="font-medium">{record.featureName}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-muted-foreground">
                             {new Date(record.createdAt).toLocaleString()}
                           </div>
                         </div>
@@ -322,10 +323,10 @@ function FeatureExecutionModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-card rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b">
           <h2 className="text-xl font-bold">{feature.name}</h2>
-          <p className="text-gray-500 text-sm mt-1">{feature.description}</p>
+          <p className="text-muted-foreground text-sm mt-1">{feature.description}</p>
           <div className="flex items-center gap-2 mt-2">
             <Badge variant="outline">
               <CoinsIcon className="h-3 w-3 mr-1" />
@@ -345,7 +346,7 @@ function FeatureExecutionModal({
                   <CheckCircleIcon className="h-5 w-5" />
                   <span className="font-medium">Result</span>
                 </div>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                <div className="text-sm text-foreground whitespace-pre-wrap">
                   {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
                 </div>
               </div>
@@ -366,7 +367,7 @@ function FeatureExecutionModal({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Enter your input here..."
-                  className="w-full h-32 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full h-32 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
 
@@ -480,7 +481,7 @@ function OCRTool({ credits }: { credits: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <CoinsIcon className="h-4 w-4" />
             <span>{ocrCredits} credits per document</span>
             {insufficientCredits && (
@@ -494,7 +495,7 @@ function OCRTool({ credits }: { credits: number }) {
           <div
             className={cn(
               'border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer',
-              selectedFile ? 'border-orange-300 bg-orange-50' : 'border-gray-300 hover:border-orange-300'
+              selectedFile ? 'border-orange-300 bg-brand-muted' : 'border-border hover:border-brand/30'
             )}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -507,9 +508,9 @@ function OCRTool({ credits }: { credits: number }) {
             />
             {selectedFile ? (
               <div className="space-y-2">
-                <FileTextIcon className="h-12 w-12 text-orange-500 mx-auto" />
+                <FileTextIcon className="h-12 w-12 text-brand mx-auto" />
                 <p className="font-medium">{selectedFile.name}</p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                 </p>
                 <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleReset(); }}>
@@ -518,9 +519,9 @@ function OCRTool({ credits }: { credits: number }) {
               </div>
             ) : (
               <div className="space-y-2">
-                <UploadIcon className="h-12 w-12 text-gray-400 mx-auto" />
+                <UploadIcon className="h-12 w-12 text-muted-foreground mx-auto" />
                 <p className="font-medium">Drop PDF here or click to upload</p>
-                <p className="text-sm text-gray-500">Maximum file size: 10MB</p>
+                <p className="text-sm text-muted-foreground">Maximum file size: 10MB</p>
               </div>
             )}
           </div>
@@ -608,7 +609,7 @@ function OCRTool({ credits }: { credits: number }) {
 
               {result.preview && (
                 <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-2 border-b">
+                  <div className="bg-muted/50 px-4 py-2 border-b">
                     <span className="text-sm font-medium">Data Preview</span>
                   </div>
                   <div className="p-4 overflow-x-auto">
@@ -634,9 +635,9 @@ function OCRTool({ credits }: { credits: number }) {
             </div>
           ) : (
             <div className="text-center py-12">
-              <ImageIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">Upload a PDF to get started</p>
-              <p className="text-sm text-gray-400 mt-1">
+              <ImageIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">Upload a PDF to get started</p>
+              <p className="text-sm text-muted-foreground mt-1">
                 The extracted data will appear here
               </p>
             </div>

@@ -1,0 +1,39 @@
+## Voter Management Context
+
+**Bulk Import Voters** — Voters page → Bulk Upload → Download CSV template
+
+Required CSV columns:
+```
+Full Name (required)
+Name in Local Language
+Gender (MALE / FEMALE / TRANSGENDER)
+Age
+EPIC Number (Voter ID — unique)
+Mobile Number (10 digits)
+Serial Number (SL No from voter list)
+Part Number (required — must match an existing booth/part)
+```
+
+- Part Number must match a booth already imported — import booths FIRST
+- After upload: voter counts auto-reflect on booth/part pages
+- Upload voter photos individually via voter profile page
+
+**Voter Profile** — click any voter row to:
+- View full profile (name, age, gender, EPIC, mobile, address)
+- Link to religion, caste, language, schemes via Edit form
+- Upload voter photo
+- View family membership
+
+**Search & Filter Voters**
+- Filter by booth/part, gender, age range, religion, caste, party affiliation, voter category
+- Export filtered list
+
+**Data Quality**
+- Dashboard shows gender split, age distribution, data completeness score
+- Analytics page shows how many voters have mobile, religion, caste filled in
+- Run analytics after import to verify data distribution looks realistic
+
+**Key Rules**
+- EPIC Number must be unique per election
+- Part Number is mandatory — voter must belong to a valid booth
+- Mobile number is optional but needed for outreach/slips

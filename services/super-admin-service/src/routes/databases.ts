@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
-  prisma,
+  coreDb as prisma,
   provisionTenantDatabase,
   checkTenantDatabaseHealth,
   testDatabaseConnection,
@@ -9,11 +9,44 @@ import {
   dropTenantDatabase,
 } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 
 // All database routes require super admin authentication
 router.use(superAdminAuthMiddleware);
+
+// Root endpoint - database overview
+router.get('/', async (_req, res, next) => {
+  try {
+    const tenants = await prisma.tenant.findMany({
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        databaseType: true,
+        databaseStatus: true,
+        databaseName: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const summary = {
+      total: tenants.length,
+      ready: tenants.filter(t => t.databaseStatus === 'READY').length,
+      notConfigured: tenants.filter(t => t.databaseStatus === 'NOT_CONFIGURED').length,
+      failed: tenants.filter(t => t.databaseStatus === 'CONNECTION_FAILED').length,
+    };
+
+    res.json({
+      success: true,
+      data: tenants,
+      summary,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Get all tenant database statuses
 router.get('/status', async (_req, res, next) => {
@@ -120,6 +153,8 @@ router.post('/:tenantId/provision', async (req, res, next) => {
       });
     }
 
+    auditLog(req, 'PROVISION_DATABASE', 'tenant', tenantId, tenantId, { databaseName: result.databaseName });
+
     res.json({
       success: true,
       data: {
@@ -223,7 +258,7 @@ router.put('/:tenantId/config', async (req, res, next) => {
     const { tenantId } = req.params;
 
     const updateSchema = z.object({
-      databaseType: z.enum(['SHARED', 'DEDICATED_MANAGED', 'DEDICATED_SELF', 'NONE']).optional(),
+      databaseType: z.enum(['SHARED', 'DEDICATED_PLATFORM', 'DEDICATED_EXTERNAL']).optional(),
       databaseHost: z.string().optional(),
       databaseName: z.string().optional(),
       databaseUser: z.string().optional(),
@@ -256,6 +291,8 @@ router.put('/:tenantId/config', async (req, res, next) => {
         canTenantEditDb: true,
       },
     });
+
+    auditLog(req, 'UPDATE_DATABASE_CONFIG', 'tenant', tenantId, tenantId);
 
     res.json({
       success: true,
@@ -323,6 +360,8 @@ router.post('/provision-all', async (_req, res, next) => {
 
     const provisioned = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success).length;
+
+    auditLog(_req, 'PROVISION_ALL_DATABASES', 'tenant', null, null, { provisioned, failed });
 
     res.json({
       success: true,
@@ -422,7 +461,7 @@ router.delete('/:tenantId', async (req, res, next) => {
     await prisma.tenant.update({
       where: { id: tenantId },
       data: {
-        databaseType: 'NONE',
+        databaseType: 'SHARED',
         databaseStatus: 'NOT_CONFIGURED',
         databaseName: null,
         databaseHost: null,
@@ -435,6 +474,8 @@ router.delete('/:tenantId', async (req, res, next) => {
         databaseLastError: null,
       },
     });
+
+    auditLog(req, 'DROP_DATABASE', 'tenant', tenantId, tenantId, { databaseName: tenant.databaseName });
 
     res.json({
       success: true,

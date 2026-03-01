@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');
@@ -20,7 +20,7 @@ router.get('/conversations', async (req: Request, res: Response): Promise<void> 
     };
     if (type) where.conversationType = type;
 
-    const conversations = await prisma.chatConversation.findMany({
+    const conversations = await (await getTenantDb(req)).chatConversation.findMany({
       where,
       include: {
         participants: {
@@ -48,7 +48,7 @@ router.get('/conversations', async (req: Request, res: Response): Promise<void> 
       conversations.map(async (conv) => {
         const participant = conv.participants.find(p => p.userId === userId);
         const unreadCount = participant
-          ? await prisma.chatMessage.count({
+          ? await (await getTenantDb(req)).chatMessage.count({
               where: {
                 conversationId: conv.id,
                 createdAt: { gt: participant.lastReadAt || new Date(0) },
@@ -60,7 +60,7 @@ router.get('/conversations', async (req: Request, res: Response): Promise<void> 
       })
     );
 
-    const total = await prisma.chatConversation.count({ where });
+    const total = await (await getTenantDb(req)).chatConversation.count({ where });
 
     res.json(successResponse({
       conversations: conversationsWithUnread,
@@ -82,7 +82,7 @@ router.get('/conversations/:id', async (req: Request, res: Response): Promise<vo
     const { before, limit = '50' } = req.query;
 
     // Verify user is participant
-    const participant = await prisma.chatParticipant.findFirst({
+    const participant = await (await getTenantDb(req)).chatParticipant.findFirst({
       where: { conversationId: id, userId, leftAt: null },
     });
 
@@ -91,7 +91,7 @@ router.get('/conversations/:id', async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const conversation = await prisma.chatConversation.findUnique({
+    const conversation = await (await getTenantDb(req)).chatConversation.findUnique({
       where: { id },
       include: {
         participants: {
@@ -111,7 +111,7 @@ router.get('/conversations/:id', async (req: Request, res: Response): Promise<vo
       messageWhere.createdAt = { lt: new Date(before as string) };
     }
 
-    const messages = await prisma.chatMessage.findMany({
+    const messages = await (await getTenantDb(req)).chatMessage.findMany({
       where: messageWhere,
       include: {
         replyTo: {
@@ -129,7 +129,7 @@ router.get('/conversations/:id', async (req: Request, res: Response): Promise<vo
     });
 
     // Update last read
-    await prisma.chatParticipant.update({
+    await (await getTenantDb(req)).chatParticipant.update({
       where: { id: participant.id },
       data: { lastReadAt: new Date(), unreadCount: 0 },
     });
@@ -155,21 +155,20 @@ router.post('/conversations/direct', async (req: Request, res: Response): Promis
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
+    if (!user) {
       res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     // Check if conversation already exists
-    const existingConversation = await prisma.chatConversation.findFirst({
+    const existingConversation = await (await getTenantDb(req)).chatConversation.findFirst({
       where: {
         conversationType: 'DIRECT',
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         AND: [
           { participants: { some: { userId } } },
           { participants: { some: { userId: recipientId } } },
@@ -186,9 +185,9 @@ router.post('/conversations/direct', async (req: Request, res: Response): Promis
     }
 
     // Create new conversation
-    const conversation = await prisma.chatConversation.create({
+    const conversation = await (await getTenantDb(req)).chatConversation.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         conversationType: 'DIRECT',
         createdBy: userId,
         participants: {
@@ -221,12 +220,11 @@ router.post('/conversations/group', async (req: Request, res: Response): Promise
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
+    if (!user) {
       res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
@@ -234,9 +232,9 @@ router.post('/conversations/group', async (req: Request, res: Response): Promise
     // Include creator in participants
     const allParticipantIds = [...new Set([userId, ...participantIds])];
 
-    const conversation = await prisma.chatConversation.create({
+    const conversation = await (await getTenantDb(req)).chatConversation.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         conversationType: 'GROUP',
         name,
         description,
@@ -268,7 +266,7 @@ router.put('/conversations/:id', async (req: Request, res: Response): Promise<vo
     const { id } = req.params;
 
     // Check if user is admin
-    const participant = await prisma.chatParticipant.findFirst({
+    const participant = await (await getTenantDb(req)).chatParticipant.findFirst({
       where: { conversationId: id, userId, role: 'admin', leftAt: null },
     });
 
@@ -279,7 +277,7 @@ router.put('/conversations/:id', async (req: Request, res: Response): Promise<vo
 
     const { name, nameLocal, description, avatarUrl } = req.body;
 
-    const conversation = await prisma.chatConversation.update({
+    const conversation = await (await getTenantDb(req)).chatConversation.update({
       where: { id },
       data: {
         ...(name !== undefined && { name }),
@@ -304,7 +302,7 @@ router.post('/conversations/:id/participants', async (req: Request, res: Respons
     const { participantIds } = req.body;
 
     // Check if user is admin
-    const participant = await prisma.chatParticipant.findFirst({
+    const participant = await (await getTenantDb(req)).chatParticipant.findFirst({
       where: { conversationId: id, userId, role: 'admin', leftAt: null },
     });
 
@@ -314,7 +312,7 @@ router.post('/conversations/:id/participants', async (req: Request, res: Respons
     }
 
     // Add new participants
-    await prisma.chatParticipant.createMany({
+    await (await getTenantDb(req)).chatParticipant.createMany({
       data: participantIds.map((pId: string) => ({
         conversationId: id,
         userId: pId,
@@ -336,7 +334,7 @@ router.post('/conversations/:id/leave', async (req: Request, res: Response): Pro
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const participant = await prisma.chatParticipant.findFirst({
+    const participant = await (await getTenantDb(req)).chatParticipant.findFirst({
       where: { conversationId: id, userId, leftAt: null },
     });
 
@@ -345,7 +343,7 @@ router.post('/conversations/:id/leave', async (req: Request, res: Response): Pro
       return;
     }
 
-    await prisma.chatParticipant.update({
+    await (await getTenantDb(req)).chatParticipant.update({
       where: { id: participant.id },
       data: { leftAt: new Date(), isActive: false },
     });
@@ -366,7 +364,7 @@ router.post('/conversations/:id/messages', async (req: Request, res: Response): 
     const { id } = req.params;
 
     // Verify user is participant
-    const participant = await prisma.chatParticipant.findFirst({
+    const participant = await (await getTenantDb(req)).chatParticipant.findFirst({
       where: { conversationId: id, userId, leftAt: null },
     });
 
@@ -382,7 +380,7 @@ router.post('/conversations/:id/messages', async (req: Request, res: Response): 
       return;
     }
 
-    const message = await prisma.chatMessage.create({
+    const message = await (await getTenantDb(req)).chatMessage.create({
       data: {
         conversation: { connect: { id } },
         senderId: userId,
@@ -405,19 +403,19 @@ router.post('/conversations/:id/messages', async (req: Request, res: Response): 
     });
 
     // Update conversation's last message time
-    await prisma.chatConversation.update({
+    await (await getTenantDb(req)).chatConversation.update({
       where: { id },
       data: { lastMessageAt: new Date() },
     });
 
     // Update sender's last read
-    await prisma.chatParticipant.update({
+    await (await getTenantDb(req)).chatParticipant.update({
       where: { id: participant.id },
       data: { lastReadAt: new Date(), unreadCount: 0 },
     });
 
     // Increment unread count for other participants
-    await prisma.chatParticipant.updateMany({
+    await (await getTenantDb(req)).chatParticipant.updateMany({
       where: { conversationId: id, userId: { not: userId }, leftAt: null },
       data: { unreadCount: { increment: 1 } },
     });
@@ -435,7 +433,7 @@ router.put('/messages/:messageId', async (req: Request, res: Response): Promise<
     const userId = req.headers['x-user-id'] as string;
     const { messageId } = req.params;
 
-    const message = await prisma.chatMessage.findFirst({
+    const message = await (await getTenantDb(req)).chatMessage.findFirst({
       where: { id: messageId, senderId: userId, isDeleted: false },
     });
 
@@ -446,7 +444,7 @@ router.put('/messages/:messageId', async (req: Request, res: Response): Promise<
 
     const { content } = req.body;
 
-    const updatedMessage = await prisma.chatMessage.update({
+    const updatedMessage = await (await getTenantDb(req)).chatMessage.update({
       where: { id: messageId },
       data: {
         content,
@@ -468,7 +466,7 @@ router.delete('/messages/:messageId', async (req: Request, res: Response): Promi
     const userId = req.headers['x-user-id'] as string;
     const { messageId } = req.params;
 
-    const message = await prisma.chatMessage.findFirst({
+    const message = await (await getTenantDb(req)).chatMessage.findFirst({
       where: { id: messageId, senderId: userId },
     });
 
@@ -477,7 +475,7 @@ router.delete('/messages/:messageId', async (req: Request, res: Response): Promi
       return;
     }
 
-    await prisma.chatMessage.update({
+    await (await getTenantDb(req)).chatMessage.update({
       where: { id: messageId },
       data: { isDeleted: true, deletedAt: new Date(), content: null },
     });
@@ -502,18 +500,18 @@ router.post('/messages/:messageId/reactions', async (req: Request, res: Response
     }
 
     // Check if reaction already exists
-    const existingReaction = await prisma.messageReaction.findFirst({
+    const existingReaction = await (await getTenantDb(req)).messageReaction.findFirst({
       where: { messageId, userId, emoji },
     });
 
     if (existingReaction) {
       // Remove reaction (toggle)
-      await prisma.messageReaction.delete({ where: { id: existingReaction.id } });
+      await (await getTenantDb(req)).messageReaction.delete({ where: { id: existingReaction.id } });
       res.json(successResponse({ message: 'Reaction removed' }));
       return;
     }
 
-    const reaction = await prisma.messageReaction.create({
+    const reaction = await (await getTenantDb(req)).messageReaction.create({
       data: {
         message: { connect: { id: messageId } },
         userId,
@@ -535,7 +533,7 @@ router.post('/conversations/:id/read', async (req: Request, res: Response): Prom
     const { id } = req.params;
     const { lastMessageId } = req.body;
 
-    const participant = await prisma.chatParticipant.findFirst({
+    const participant = await (await getTenantDb(req)).chatParticipant.findFirst({
       where: { conversationId: id, userId, leftAt: null },
     });
 
@@ -544,7 +542,7 @@ router.post('/conversations/:id/read', async (req: Request, res: Response): Prom
       return;
     }
 
-    await prisma.chatParticipant.update({
+    await (await getTenantDb(req)).chatParticipant.update({
       where: { id: participant.id },
       data: {
         lastReadAt: new Date(),
@@ -555,7 +553,7 @@ router.post('/conversations/:id/read', async (req: Request, res: Response): Prom
 
     // Create read receipt if lastMessageId provided
     if (lastMessageId) {
-      await prisma.messageReadReceipt.upsert({
+      await (await getTenantDb(req)).messageReadReceipt.upsert({
         where: {
           messageId_userId: { messageId: lastMessageId, userId },
         },
@@ -579,12 +577,11 @@ router.post('/support/ticket', async (req: Request, res: Response): Promise<void
     const userId = req.headers['x-user-id'] as string;
     const { subject, message, priority } = req.body;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
+    if (!user) {
       res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
@@ -595,12 +592,12 @@ router.post('/support/ticket', async (req: Request, res: Response): Promise<void
     }
 
     // Generate ticket number
-    const ticketNumber = `TKT-${user.tenant.slug.toUpperCase()}-${Date.now()}`;
+    const ticketNumber = `TKT-${user.tenantId.substring(0, 8).toUpperCase()}-${Date.now()}`;
 
     // Create support ticket conversation
-    const conversation = await prisma.chatConversation.create({
+    const conversation = await (await getTenantDb(req)).chatConversation.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         conversationType: 'SUPPORT',
         subject,
         ticketNumber,
@@ -614,7 +611,7 @@ router.post('/support/ticket', async (req: Request, res: Response): Promise<void
     });
 
     // Add initial message
-    await prisma.chatMessage.create({
+    await (await getTenantDb(req)).chatMessage.create({
       data: {
         conversationId: conversation.id,
         senderId: userId,
@@ -623,7 +620,7 @@ router.post('/support/ticket', async (req: Request, res: Response): Promise<void
       },
     });
 
-    await prisma.chatConversation.update({
+    await (await getTenantDb(req)).chatConversation.update({
       where: { id: conversation.id },
       data: { lastMessageAt: new Date() },
     });
@@ -642,26 +639,24 @@ router.get('/support/tickets', async (req: Request, res: Response): Promise<void
     const userRole = req.headers['x-user-role'] as string;
     const { status, page = '1', limit = '20' } = req.query;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
     const where: any = {
-      tenantId: user.tenant.id,
+      tenantId: user.tenantId,
       conversationType: 'SUPPORT',
     };
 
@@ -670,7 +665,7 @@ router.get('/support/tickets', async (req: Request, res: Response): Promise<void
     }
 
     const [tickets, total] = await Promise.all([
-      prisma.chatConversation.findMany({
+      (await getTenantDb(req)).chatConversation.findMany({
         where,
         include: {
           messages: {
@@ -682,7 +677,7 @@ router.get('/support/tickets', async (req: Request, res: Response): Promise<void
         skip,
         take: parseInt(limit as string),
       }),
-      prisma.chatConversation.count({ where }),
+      (await getTenantDb(req)).chatConversation.count({ where }),
     ]);
 
     res.json(successResponse({
@@ -704,7 +699,7 @@ router.get('/unread-count', async (req: Request, res: Response): Promise<void> =
   try {
     const userId = req.headers['x-user-id'] as string;
 
-    const totalUnread = await prisma.chatParticipant.aggregate({
+    const totalUnread = await (await getTenantDb(req)).chatParticipant.aggregate({
       where: { userId, leftAt: null },
       _sum: { unreadCount: true },
     });

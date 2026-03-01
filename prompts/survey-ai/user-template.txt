@@ -1,0 +1,12 @@
+Create a survey for the following election campaign:
+
+Election: {{electionName}}
+Type: {{electionType}}
+State: {{state}}
+Constituency: {{constituency}}
+
+User's request: {{userPrompt}}
+
+Generate a well-structured survey with appropriate question types. The survey should be practical for field cadres to administer face-to-face with voters in {{state}}.
+
+Respond with valid JSON only.

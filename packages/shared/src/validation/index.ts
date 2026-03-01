@@ -9,7 +9,7 @@ export const passwordSchema = z.string().min(8, 'Password must be at least 8 cha
 // Pagination Schema
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(10),
+  limit: z.coerce.number().int().positive().max(500).default(10),
   search: z.string().optional(),
   sort: z.string().optional(),
   order: z.enum(['asc', 'desc']).optional().default('asc'),
@@ -128,6 +128,12 @@ export const createVoterSchema = z.object({
   influenceLevel: z.enum(['HIGH', 'MEDIUM', 'LOW', 'NONE']).default('NONE'),
   profession: z.string().max(100).optional(),
   education: z.string().max(100).optional(),
+  photoUrl: z.string().max(500).optional(),
+  isDead: z.boolean().optional(),
+  isShifted: z.boolean().optional(),
+  isDoubleEntry: z.boolean().optional(),
+  isFamilyCaptain: z.boolean().optional(),
+  notes: z.string().max(1000).optional(),
 });
 
 export const updateVoterSchema = createVoterSchema.partial();

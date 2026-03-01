@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { coreDb as prisma, prisma as legacyDb } from '@electioncaffe/database';
+import { coreDb as prisma, syncTenantCounts } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 
@@ -73,6 +74,8 @@ router.put('/config/:key', async (req, res, next) => {
       },
     });
 
+    auditLog(req, 'UPDATE_CONFIG', 'system_config', req.params.key, null, { configValue });
+
     res.json({
       success: true,
       data: config,
@@ -88,15 +91,13 @@ router.get('/dashboard', async (_req, res, next) => {
     const [
       totalTenants,
       activeTenants,
-      totalUsers,
-      totalElections,
       tenantsByType,
       recentTenants,
+      aggregates,
+      tenantsByStatus,
     ] = await Promise.all([
       prisma.tenant.count(),
       prisma.tenant.count({ where: { status: 'ACTIVE' } }),
-      legacyDb.user.count().catch(() => 0),
-      legacyDb.election.count().catch(() => 0),
       prisma.tenant.groupBy({
         by: ['tenantType'],
         _count: { id: true },
@@ -110,13 +111,37 @@ router.get('/dashboard', async (_req, res, next) => {
           slug: true,
           tenantType: true,
           status: true,
+          subscriptionPlan: true,
+          maxVoters: true,
+          currentVoterCount: true,
+          currentUserCount: true,
+          currentElectionCount: true,
+          currentCadreCount: true,
+          countsLastSyncedAt: true,
           createdAt: true,
         },
       }),
+      // Aggregate cached counts across all tenants
+      prisma.tenant.aggregate({
+        _sum: {
+          currentVoterCount: true,
+          currentUserCount: true,
+          currentElectionCount: true,
+          currentCadreCount: true,
+          maxVoters: true,
+        },
+      }),
+      prisma.tenant.groupBy({
+        by: ['status'],
+        _count: { id: true },
+      }),
     ]);
 
-    // Get total voters across all elections
-    const voterCount = await legacyDb.voter.count().catch(() => 0);
+    const totalVoters = aggregates._sum.currentVoterCount || 0;
+    const totalUsers = aggregates._sum.currentUserCount || 0;
+    const totalElections = aggregates._sum.currentElectionCount || 0;
+    const totalCadres = aggregates._sum.currentCadreCount || 0;
+    const totalMaxVoters = aggregates._sum.maxVoters || 0;
 
     res.json({
       success: true,
@@ -127,13 +152,59 @@ router.get('/dashboard', async (_req, res, next) => {
           inactiveTenants: totalTenants - activeTenants,
           totalUsers,
           totalElections,
-          totalVoters: voterCount,
+          totalVoters,
+          totalCadres,
+          totalMaxVoters,
+          voterUtilization: totalMaxVoters > 0
+            ? Math.round((totalVoters / totalMaxVoters) * 100)
+            : 0,
         },
         tenantsByType: tenantsByType.reduce((acc: any, item: any) => {
           acc[item.tenantType] = item._count.id;
           return acc;
         }, {} as Record<string, number>),
+        tenantsByStatus: tenantsByStatus.reduce((acc: any, item: any) => {
+          acc[item.status] = item._count.id;
+          return acc;
+        }, {} as Record<string, number>),
         recentTenants,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Sync tenant usage counts from tenant databases
+router.post('/sync-counts', async (req, res, next) => {
+  try {
+    const tenantId = req.body?.tenantId as string | undefined;
+    const results = await syncTenantCounts(tenantId);
+
+    const succeeded = results.filter((r: any) => r.success);
+    const failed = results.filter((r: any) => !r.success);
+
+    // Calculate totals from synced data
+    const totals = succeeded.reduce(
+      (acc: any, r: any) => ({
+        voters: acc.voters + r.voters,
+        users: acc.users + r.users,
+        elections: acc.elections + r.elections,
+        cadres: acc.cadres + r.cadres,
+      }),
+      { voters: 0, users: 0, elections: 0, cadres: 0 }
+    );
+
+    auditLog(req, 'SYNC_COUNTS', 'tenant', req.body?.tenantId ?? null, req.body?.tenantId ?? null, { synced: succeeded.length, failed: failed.length });
+
+    res.json({
+      success: true,
+      data: {
+        synced: succeeded.length,
+        failed: failed.length,
+        total: results.length,
+        totals,
+        results,
       },
     });
   } catch (error) {
@@ -214,6 +285,8 @@ router.post('/admins', async (req, res, next) => {
       },
     });
 
+    auditLog(req, 'CREATE_ADMIN', 'super_admin', admin.id, null, { email: admin.email });
+
     res.status(201).json({
       success: true,
       data: {
@@ -263,6 +336,8 @@ router.put('/admins/:id/deactivate', async (req, res, next) => {
       data: { isActive: false },
     });
 
+    auditLog(req, 'DEACTIVATE_ADMIN', 'super_admin', req.params.id);
+
     res.json({
       success: true,
       message: 'Super Admin deactivated',
@@ -279,6 +354,8 @@ router.put('/admins/:id/activate', async (req, res, next) => {
       where: { id: req.params.id },
       data: { isActive: true },
     });
+
+    auditLog(req, 'ACTIVATE_ADMIN', 'super_admin', req.params.id);
 
     res.json({
       success: true,
@@ -313,6 +390,99 @@ router.get('/health', async (_req, res, _next) => {
         timestamp: new Date().toISOString(),
       },
     });
+  }
+});
+
+// Check health of all microservices
+router.get('/services-health', async (_req, res, _next) => {
+  const services = [
+    { name: 'Gateway', port: 3000, path: '/health' },
+    { name: 'Auth Service', port: 3001, path: '/health' },
+    { name: 'Election Service', port: 3002, path: '/health' },
+    { name: 'Voter Service', port: 3003, path: '/health' },
+    { name: 'Cadre Service', port: 3004, path: '/health' },
+    { name: 'Analytics Service', port: 3005, path: '/health' },
+    { name: 'Reporting Service', port: 3006, path: '/health' },
+    { name: 'AI Analytics Service', port: 3007, path: '/health' },
+    { name: 'Super Admin Service', port: 3008, path: '/health' },
+  ];
+
+  const results = await Promise.all(
+    services.map(async (svc) => {
+      const start = Date.now();
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(`http://localhost:${svc.port}${svc.path}`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        const latency = Date.now() - start;
+        return {
+          name: svc.name,
+          port: svc.port,
+          status: response.ok ? 'healthy' : 'unhealthy',
+          statusCode: response.status,
+          latency,
+        };
+      } catch (err: any) {
+        return {
+          name: svc.name,
+          port: svc.port,
+          status: 'down',
+          statusCode: 0,
+          latency: Date.now() - start,
+          error: err.code || err.message || 'Connection failed',
+        };
+      }
+    })
+  );
+
+  const healthy = results.filter((r) => r.status === 'healthy').length;
+
+  res.json({
+    success: true,
+    data: {
+      total: results.length,
+      healthy,
+      unhealthy: results.length - healthy,
+      services: results,
+      checkedAt: new Date().toISOString(),
+    },
+  });
+});
+
+// Get platform audit logs
+router.get('/logs', async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 300);
+    const page = parseInt(req.query.page as string) || 1;
+    const entityType = req.query.entityType as string;
+    const action = req.query.action as string;
+    const tenantId = req.query.tenantId as string;
+
+    const where: any = {};
+    if (entityType) where.entityType = entityType;
+    if (action) where.action = { contains: action, mode: 'insensitive' };
+    if (tenantId) where.tenantId = tenantId;
+
+    const [logs, total] = await Promise.all([
+      prisma.platformAuditLog.findMany({
+        where,
+        take: limit,
+        skip: (page - 1) * limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.platformAuditLog.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: logs,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

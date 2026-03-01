@@ -1,8 +1,21 @@
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
+
 import express from 'express';
 import cors from 'cors';
 
 import { aiAnalyticsRoutes } from './routes/ai-analytics.js';
 import { aiFeaturesRoutes } from './routes/ai-features.js';
+import { nbBroadcastRoutes } from './routes/nb-broadcast.js';
+import { caffeAiRoutes } from './routes/caffe-ai.js';
+import { caffeAiReportRoutes } from './routes/caffe-ai-report.js';
+import { surveyAiRoutes } from './routes/survey-ai.js';
+import { campaignAiRoutes } from './routes/campaign-ai.js';
+import { pollDayAiRoutes } from './routes/poll-day-ai.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { SERVICE_PORTS, createLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
 
@@ -38,6 +51,12 @@ app.get('/metrics', metricsEndpoint);
 // Routes
 app.use('/api/ai-analytics', aiAnalyticsRoutes);
 app.use('/api/ai/features', aiFeaturesRoutes);
+app.use('/api/nb', nbBroadcastRoutes);
+app.use('/api/caffe-ai', caffeAiRoutes);
+app.use('/api/caffe-ai', caffeAiReportRoutes);
+app.use('/api/caffe-ai', surveyAiRoutes);
+app.use('/api/caffe-ai', campaignAiRoutes);
+app.use('/api/ai-analytics', pollDayAiRoutes);
 
 // Error handler
 app.use(errorHandler);

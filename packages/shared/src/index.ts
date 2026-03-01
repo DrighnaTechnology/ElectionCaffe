@@ -4,5 +4,7 @@ export * from './constants/index.js';
 export * from './utils/index.js';
 export * from './logger.js';
 export * from './notifications.js';
+export * from './providers/index.js';
 export { validateEnv } from './env.js';
 export { requestIdMiddleware } from './requestId.js';
+export { metricsMiddleware, metricsEndpoint } from './metrics.js';

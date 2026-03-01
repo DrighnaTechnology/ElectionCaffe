@@ -1,0 +1,37 @@
+## Election Lifecycle Context
+
+**Create an Election** — Elections page → Create Election
+- Fields: Election Name, Election Type (Assembly / Parliament / Municipal / Panchayat / By-Election), Constituency Name, State, District, Poll Date
+- New election starts in Draft status
+
+**Select Active Election**
+- Use the header dropdown to switch between elections
+- CRITICAL: Must select an election before accessing any data page — voters, booths, cadres, families, analytics are all tied to the selected election
+
+**Election Statuses**
+- Draft: data entry phase — all edits allowed
+- Active: election in progress
+- Locked: frozen before poll day — no edits allowed
+
+**Lock Election** — Elections page → Lock election
+- Freezes all election data to prevent accidental changes
+- Do this on the day before or morning of poll day
+- After locking: use Poll Day dashboard for monitoring
+
+**Unlock Election**
+- Can be unlocked by Tenant Admin if corrections needed before poll day
+
+**Poll Day Operations** — Poll Day page
+- Election day monitoring dashboard
+- Track booth-level status in real time
+- Coordinate with booth committees
+
+**Voter Slips** — Poll Day > Voter Slips
+- Configure slip options: show/hide photo, include QR code, show address, paper size (A4)
+- Batch print booth-wise
+- Print before poll day — distribute through booth committees
+
+**Multiple Elections**
+- One tenant can manage multiple elections simultaneously
+- Each election has its own independent dataset (voters, booths, cadres, etc.)
+- Switch between elections using the header dropdown

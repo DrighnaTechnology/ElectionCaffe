@@ -1,0 +1,30 @@
+CURRENT STEP: Step 12 — Review Dashboard & Analytics
+
+Go to the **Dashboard** to see real-time KPIs:
+- Total voters, booths, cadres, families
+- Days until poll date
+- Gender distribution (pie chart)
+- Religion / Caste / Party / Language / Age breakdowns
+- Booth operations status
+- Data completeness score
+
+Then go to the **Analytics** page for deeper analysis:
+- Age group distribution
+- Gender breakdown
+- Political leaning by caste/religion
+- Data quality metrics (missing fields)
+
+Run **AI Analytics** (AI Analytics page) for predictive insights:
+- Turnout prediction (booth-level)
+- Swing voter identification
+- Booth risk assessment
+- Demographic insights
+
+Go to **Reports** to generate and export:
+- Voter Demographics
+- Booth Statistics
+- Cadre Performance
+- Feedback Summary
+Export as PDF or Excel.
+
+Tip: Run analytics after major data imports to verify distributions look realistic. Data completeness score should be above 70% before poll day.

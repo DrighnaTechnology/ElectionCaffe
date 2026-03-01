@@ -105,7 +105,7 @@ export class UserController {
     try {
       const tenantId = req.headers['x-tenant-id'] as string;
       const tenantDb = await getTenantDb(req);
-      const { firstName, lastName, email, mobile, password, role } = req.body;
+      const { firstName, lastName, email, mobile, password } = req.body;
 
       // Check if user already exists
       const existingUser = await tenantDb.user.findFirst({
@@ -132,7 +132,7 @@ export class UserController {
           email,
           mobile,
           passwordHash,
-          role: role || 'VOLUNTEER',
+          role: 'CENTRAL_ADMIN',
           status: 'ACTIVE',
         },
         select: {
@@ -290,14 +290,14 @@ export class UserController {
         return;
       }
 
-      const validRoles = ['TENANT_ADMIN', 'CAMPAIGN_MANAGER', 'COORDINATOR', 'BOOTH_INCHARGE', 'VOLUNTEER', 'AGENT'];
-      if (!validRoles.includes(role)) {
-        res.status(400).json(errorResponse('E2001', 'Invalid role'));
+      // Only CENTRAL_ADMIN is valid — all other roles are managed via custom_roles
+      if (role !== 'CENTRAL_ADMIN') {
+        res.status(400).json(errorResponse('E2001', 'Invalid role. Use custom roles for non-admin users.'));
         return;
       }
 
-      // Only tenant admin or super admin can assign admin roles
-      if (role === 'TENANT_ADMIN' && !['SUPER_ADMIN', 'TENANT_ADMIN'].includes(requestingUserRole)) {
+      // Only CENTRAL_ADMIN can assign CENTRAL_ADMIN role
+      if (requestingUserRole !== 'CENTRAL_ADMIN') {
         res.status(403).json(errorResponse('E1005', 'Insufficient permissions to assign admin role'));
         return;
       }

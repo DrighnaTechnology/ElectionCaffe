@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { newsAPI } from '../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -64,15 +64,23 @@ export function TenantNewsPage() {
   const [selectedNews, setSelectedNews] = useState<any>(null);
   const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
 
-  const { data: newsData, isLoading } = useQuery({
+  const { data: newsData, isLoading, isError } = useQuery({
     queryKey: ['tenant-news', { search, category, scope }],
     queryFn: () => newsAPI.getAll({ search, category: category || undefined, scope: scope || undefined, limit: 50 }),
+    retry: false,
   });
 
   const { data: categoryStats } = useQuery({
     queryKey: ['news-category-stats'],
     queryFn: () => newsAPI.getCategoryStats(),
+    retry: false,
   });
+
+  useEffect(() => {
+    if (isError) {
+      toast.error('Failed to load news. Please try again later.');
+    }
+  }, [isError]);
 
   const analysisMutation = useMutation({
     mutationFn: (newsId: string) => newsAPI.requestAnalysis(newsId),
@@ -193,7 +201,7 @@ export function TenantNewsPage() {
       </Card>
 
       {/* News List */}
-      {isLoading ? (
+      {isLoading && !isError ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i}>

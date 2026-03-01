@@ -18,6 +18,7 @@
     "db:generate": "npm run db:generate --workspace=@electioncaffe/database",
     "db:migrate": "npm run db:migrate --workspace=@electioncaffe/database",
     "db:push": "npm run db:push --workspace=@electioncaffe/database",
+    "db:migrate:all-tenants": "npm run db:migrate:all-tenants --workspace=@electioncaffe/database",
     "db:seed": "npm run db:seed --workspace=@electioncaffe/database",
     "db:studio": "npm run db:studio --workspace=@electioncaffe/database",
     "gateway:dev": "npm run dev --workspace=@electioncaffe/gateway",
@@ -30,8 +31,18 @@
     "ai:dev": "npm run dev --workspace=@electioncaffe/ai-analytics-service",
     "web:dev": "npm run dev --workspace=@electioncaffe/web",
     "super-admin:dev": "npm run dev --workspace=@electioncaffe/super-admin",
-    "services:dev": "concurrently \"npm run gateway:dev\" \"npm run auth:dev\" \"npm run election:dev\" \"npm run voter:dev\" \"npm run cadre:dev\" \"npm run analytics:dev\" \"npm run reporting:dev\" \"npm run ai:dev\"",
-    "setup": "npm install && npm run db:generate && npm run db:push && npm run db:seed"
+    "super-admin-api:dev": "npm run dev --workspace=@electioncaffe/super-admin-service",
+    "services:dev": "concurrently \"npm run gateway:dev\" \"npm run auth:dev\" \"npm run election:dev\" \"npm run voter:dev\" \"npm run cadre:dev\" \"npm run analytics:dev\" \"npm run reporting:dev\" \"npm run ai:dev\" \"npm run super-admin-api:dev\"",
+    "setup": "npm install && npm run db:generate && npm run db:push && npm run db:seed",
+    "start:local": "node scripts/run.js start.sh --mode=local",
+    "start:prod": "node scripts/run.js start.sh --mode=production",
+    "start:backend": "node scripts/run.js start.sh --backend",
+    "start:frontend": "node scripts/run.js start.sh --frontend",
+    "start:backend:prod": "node scripts/run.js start.sh --backend --mode=production",
+    "start:frontend:prod": "node scripts/run.js start.sh --frontend --mode=production",
+    "stop": "node scripts/run.js stop.sh",
+    "sto:backend": "node scripts/run.js stop.sh --backend",
+    "stop:frontend": "node scripts/run.js stop.sh --frontend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

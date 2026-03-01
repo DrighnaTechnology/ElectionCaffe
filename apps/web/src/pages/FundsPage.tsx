@@ -7,6 +7,7 @@ import {
   DollarSignIcon,
   PlusIcon,
   RefreshCwIcon,
+  UploadIcon,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -22,12 +23,16 @@ import TransactionsList from '../components/funds/TransactionsList';
 import CreateFundAccountDialog from '../components/funds/CreateFundAccountDialog';
 import CreateDonationDialog from '../components/funds/CreateDonationDialog';
 import CreateExpenseDialog from '../components/funds/CreateExpenseDialog';
+import BulkImportDialog from '../components/funds/BulkImportDialog';
+import FundOverview from '../components/funds/FundOverview';
 
 export default function FundsPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [createDonationOpen, setCreateDonationOpen] = useState(false);
   const [createExpenseOpen, setCreateExpenseOpen] = useState(false);
+  const [bulkDonationOpen, setBulkDonationOpen] = useState(false);
+  const [bulkExpenseOpen, setBulkExpenseOpen] = useState(false);
 
   const { data: summary, isLoading: summaryLoading, refetch } = useQuery({
     queryKey: ['funds-summary'],
@@ -74,8 +79,8 @@ export default function FundsPage() {
       title: 'Expenses (Pending)',
       value: summaryData?.expenses?.pending?.amount || 0,
       icon: DollarSignIcon,
-      color: 'text-orange-600',
-      bg: 'bg-orange-100',
+      color: 'text-brand',
+      bg: 'bg-brand-muted',
       isCurrency: true,
       subtitle: `${summaryData?.expenses?.pending?.count || 0} pending`,
     },
@@ -95,8 +100,8 @@ export default function FundsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Fund Management</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">Fund Management</h1>
+          <p className="text-muted-foreground mt-1">
             Manage accounts, donations, and expenses
           </p>
         </div>
@@ -115,14 +120,14 @@ export default function FundsPage() {
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="text-sm text-gray-500 mb-1">{stat.title}</p>
+                  <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
                   <p className="text-2xl font-bold">
                     {stat.isCurrency
                       ? formatCurrency(stat.value)
                       : formatNumber(stat.value)}
                   </p>
                   {stat.subtitle && (
-                    <p className="text-xs text-gray-400 mt-1">{stat.subtitle}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{stat.subtitle}</p>
                   )}
                 </div>
                 <div className={`p-3 rounded-full ${stat.bg}`}>
@@ -145,13 +150,13 @@ export default function FundsPage() {
               {summaryData.accounts.map((account: any) => (
                 <div
                   key={account.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-blue-500" />
                     <div>
                       <p className="font-medium">{account.accountName}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         {account.accountType.replace('_', ' ').toUpperCase()}
                       </p>
                     </div>
@@ -189,7 +194,7 @@ export default function FundsPage() {
                   >
                     <div className="flex-1">
                       <p className="font-medium text-sm">{txn.description}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         {new Date(txn.createdAt).toLocaleDateString()}
                       </p>
                     </div>
@@ -204,7 +209,7 @@ export default function FundsPage() {
                         {txn.transactionType === 'DONATION' ? '+' : '-'}
                         {formatCurrency(txn.amount)}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         Balance: {formatCurrency(txn.balanceAfter)}
                       </p>
                     </div>
@@ -225,10 +230,8 @@ export default function FundsPage() {
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-4 mt-4">
-          <div className="text-center py-8 text-gray-500">
-            <p>Select a tab above to view detailed information</p>
-          </div>
+        <TabsContent value="overview" className="mt-4">
+          <FundOverview />
         </TabsContent>
 
         <TabsContent value="accounts" className="mt-4">
@@ -242,7 +245,11 @@ export default function FundsPage() {
         </TabsContent>
 
         <TabsContent value="donations" className="mt-4">
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <Button variant="outline" onClick={() => setBulkDonationOpen(true)}>
+              <UploadIcon className="h-4 w-4 mr-2" />
+              Bulk Import
+            </Button>
             <Button onClick={() => setCreateDonationOpen(true)}>
               <PlusIcon className="h-4 w-4 mr-2" />
               Record Donation
@@ -252,7 +259,11 @@ export default function FundsPage() {
         </TabsContent>
 
         <TabsContent value="expenses" className="mt-4">
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <Button variant="outline" onClick={() => setBulkExpenseOpen(true)}>
+              <UploadIcon className="h-4 w-4 mr-2" />
+              Bulk Import
+            </Button>
             <Button onClick={() => setCreateExpenseOpen(true)}>
               <PlusIcon className="h-4 w-4 mr-2" />
               Submit Expense
@@ -278,6 +289,16 @@ export default function FundsPage() {
       <CreateExpenseDialog
         open={createExpenseOpen}
         onOpenChange={setCreateExpenseOpen}
+      />
+      <BulkImportDialog
+        open={bulkDonationOpen}
+        onOpenChange={setBulkDonationOpen}
+        type="donations"
+      />
+      <BulkImportDialog
+        open={bulkExpenseOpen}
+        onOpenChange={setBulkExpenseOpen}
+        type="expenses"
       />
     </div>
   );

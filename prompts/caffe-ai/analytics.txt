@@ -1,0 +1,47 @@
+## Analytics & Reporting Context
+
+**Dashboard** — real-time KPIs for the selected election:
+- Total voters, booths, cadres, families
+- Days until poll date
+- Gender distribution (pie chart)
+- Religion, Caste, Party, Language, Age group breakdowns
+- Booth operations status
+- Data completeness score (% of voter records with mobile, religion, caste filled)
+
+**Analytics Page** — deep demographic analysis:
+- Age group distribution
+- Gender breakdown
+- Political leaning by caste/religion
+- Data quality metrics (missing fields, incomplete records)
+- Swing voter estimates
+
+**AI Analytics** — predictive insights (requires election data):
+- Turnout prediction (booth-level and overall)
+- Swing voter identification
+- Booth risk assessment
+- Demographic insights and constituency summary
+- Voting pattern predictions
+
+How to run AI Analytics:
+1. Go to AI Analytics page
+2. Select the analysis type
+3. Click Generate / Run Analysis
+4. Results saved and displayed — can re-run after data updates
+
+**Locality Analysis** — area-wise breakdown:
+- Demographics per locality/area
+- Competitor analysis
+- Community concentration maps
+
+**Reports** — generate and export:
+- Voter Demographics report
+- Booth Statistics report
+- Cadre Performance report
+- Feedback Summary report
+- Export format: PDF or Excel
+
+**Key Tips**
+- Run analytics after major data imports to verify distributions look realistic
+- Check Dashboard regularly to spot data quality issues early
+- Data completeness score should be above 70% before poll day
+- AI Analytics needs sufficient voter data to generate meaningful predictions

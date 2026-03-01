@@ -1,0 +1,47 @@
+Generate actionable campaign items based on the following news article and its AI analysis.
+
+=== NEWS ARTICLE ===
+Title: {{newsTitle}}
+Content: {{newsContent}}
+Category: {{newsCategory}}
+Constituency: {{constituency}}
+State: {{state}}
+
+=== AI ANALYSIS (if available) ===
+{{aiAnalysis}}
+
+Generate action items in this exact JSON structure. Every field is mandatory for each action.
+
+{
+  "actions": [
+    {
+      "title": "Clear, concise action title (max 100 characters). Must be actionable -- start with a verb.",
+      "description": "Detailed description of what needs to be done, by whom, and how. 2-3 sentences. Reference the constituency name and specific context from the news.",
+      "actionType": "COMMUNICATION | FIELD_VISIT | MEETING | MEDIA_RESPONSE | VOTER_OUTREACH | ISSUE_RESOLUTION | CAMPAIGN_ACTIVITY | SURVEY | MONITORING | ESCALATION | INVESTIGATION | DOCUMENTATION | LEGAL | OTHER",
+      "priority": "CRITICAL | URGENT | HIGH | MEDIUM | LOW",
+      "geographicLevel": "CONSTITUENCY | DISTRICT | SECTION | BOOTH",
+      "targetAudience": "Who this action targets (e.g., 'Youth voters aged 18-25', 'Women SHG groups', 'Farmer cooperatives', 'Senior citizens in urban wards')",
+      "confidence": "Integer 0-100. How confident are you this action will be effective?",
+      "reasoning": "Why this action is recommended based on the news article. 1-2 sentences.",
+      "steps": [
+        "Step 1: Specific executable step with clear deliverable",
+        "Step 2: Next step",
+        "Step 3: Follow-up step"
+      ],
+      "expectedImpact": "What voter reach or sentiment shift this action is expected to produce. Be specific.",
+      "suggestedDeadline": "ISO date string (YYYY-MM-DD). Urgent items within 2 days, high within 5 days, medium within 1 week, low within 2 weeks."
+    }
+  ]
+}
+
+CRITICAL INSTRUCTIONS:
+1. Generate 3-7 actions, ordered by priority (most urgent first).
+2. Each action must be directly connected to the news article content -- do not generate generic campaign actions.
+3. Actions must be practical for Indian constituency-level campaign teams with limited resources.
+4. Use actual constituency and state names in descriptions and steps.
+5. Deadlines should be realistic -- calculate from today's date.
+6. Action types should accurately reflect the nature of the task.
+7. If the news is negative for our side, include defensive/damage-control actions.
+8. If the news is positive, include actions to amplify the advantage.
+9. The entire response must be valid JSON. No trailing commas, no comments.
+10. Do NOT use any emojis or special unicode characters.

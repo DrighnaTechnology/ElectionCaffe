@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
 import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, createPaginationMeta, calculateSkip, paginationSchema, createLogger } from '@electioncaffe/shared';
 import axios from 'axios';
@@ -25,13 +24,13 @@ router.get('/embeds', async (req: Request, res: Response) => {
     if (electionId) where.electionId = electionId;
 
     const [embeds, total] = await Promise.all([
-      prisma.dataCaffeEmbed.findMany({
+      (await getTenantDb(req)).dataCaffeEmbed.findMany({
         where,
         skip,
         take: limit,
         orderBy: { displayOrder: 'asc' },
       }),
-      prisma.dataCaffeEmbed.count({ where }),
+      (await getTenantDb(req)).dataCaffeEmbed.count({ where }),
     ]);
 
     res.json(successResponse(embeds, createPaginationMeta(total, page, limit)));
@@ -43,7 +42,7 @@ router.get('/embeds', async (req: Request, res: Response) => {
 // Get embed by ID (legacy schema)
 router.get('/embeds/:id', async (req: Request, res: Response) => {
   try {
-    const embed = await prisma.dataCaffeEmbed.findUnique({
+    const embed = await (await getTenantDb(req)).dataCaffeEmbed.findUnique({
       where: { id: req.params.id },
     });
 
@@ -71,7 +70,7 @@ router.post('/embeds', async (req: Request, res: Response) => {
       return;
     }
 
-    const embed = await prisma.dataCaffeEmbed.create({
+    const embed = await (await getTenantDb(req)).dataCaffeEmbed.create({
       data: {
         tenantId,
         electionId: electionId as string | undefined,
@@ -97,7 +96,7 @@ router.put('/embeds/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { embedName, embedUrl, embedType, description, accessToken, isActive, displayOrder } = req.body;
 
-    const embed = await prisma.dataCaffeEmbed.update({
+    const embed = await (await getTenantDb(req)).dataCaffeEmbed.update({
       where: { id },
       data: {
         ...(embedName !== undefined && { embedName }),
@@ -119,7 +118,7 @@ router.put('/embeds/:id', async (req: Request, res: Response) => {
 // Delete embed (legacy schema)
 router.delete('/embeds/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.dataCaffeEmbed.delete({ where: { id: req.params.id } });
+    await (await getTenantDb(req)).dataCaffeEmbed.delete({ where: { id: req.params.id } });
     res.json(successResponse({ message: 'Embed deleted' }));
   } catch (error) {
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -129,14 +128,14 @@ router.delete('/embeds/:id', async (req: Request, res: Response) => {
 // Toggle embed active status (legacy schema)
 router.put('/embeds/:id/toggle', async (req: Request, res: Response) => {
   try {
-    const embed = await prisma.dataCaffeEmbed.findUnique({ where: { id: req.params.id } });
+    const embed = await (await getTenantDb(req)).dataCaffeEmbed.findUnique({ where: { id: req.params.id } });
 
     if (!embed) {
       res.status(404).json(errorResponse('E3001', 'Embed not found'));
       return;
     }
 
-    const updated = await prisma.dataCaffeEmbed.update({
+    const updated = await (await getTenantDb(req)).dataCaffeEmbed.update({
       where: { id: req.params.id },
       data: { isActive: !embed.isActive },
     });
@@ -150,7 +149,7 @@ router.put('/embeds/:id/toggle', async (req: Request, res: Response) => {
 // Get embed URL with authentication token (legacy schema)
 router.get('/embeds/:id/url', async (req: Request, res: Response) => {
   try {
-    const embed = await prisma.dataCaffeEmbed.findUnique({
+    const embed = await (await getTenantDb(req)).dataCaffeEmbed.findUnique({
       where: { id: req.params.id },
     });
 

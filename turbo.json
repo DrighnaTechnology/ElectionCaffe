@@ -1,7 +1,20 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env.*local", ".env"],
-  "globalEnv": ["DATABASE_URL", "JWT_SECRET", "JWT_REFRESH_SECRET", "NODE_ENV", "CORS_ORIGIN"],
+  "globalDependencies": [".env"],
+  "globalEnv": [
+    "DATABASE_URL", "CORE_DATABASE_URL", "TENANT_DATABASE_URL",
+    "JWT_SECRET", "JWT_REFRESH_SECRET",
+    "NODE_ENV", "CORS_ORIGIN", "LOG_LEVEL", "ENABLE_FILE_LOGGING",
+    "GATEWAY_PORT", "AUTH_PORT", "ELECTION_PORT", "VOTER_PORT", "CADRE_PORT",
+    "ANALYTICS_PORT", "REPORTING_PORT", "AI_ANALYTICS_PORT", "WEB_PORT",
+    "STORAGE_TYPE", "STORAGE_PATH",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "AWS_S3_BUCKET",
+    "REDIS_URL",
+    "DATACAFFE_API_URL", "DATACAFFE_API_KEY",
+    "OPENAI_API_KEY", "OPENAI_MODEL",
+    "DC_OPENAI_API_KEY", "DC_OPENAI_API_KEY_DEV", "DC_OPENAI_MODEL", "DC_OPENAI_MODEL_DEV",
+    "GEMINI_API_KEY", "GEMINI_MODEL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

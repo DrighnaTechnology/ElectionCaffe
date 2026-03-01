@@ -32,6 +32,7 @@ router.get('/election/:electionId', async (req: Request, res: Response) => {
       totalCadres,
       votersWithMobile,
       votersWithDOB,
+      votersWithCaste,
       crossBoothFamilies,
       singleMemberFamilies,
       religionStats,
@@ -40,6 +41,14 @@ router.get('/election/:electionId', async (req: Request, res: Response) => {
       partyStats,
       genderStats,
       voterCategoryStats,
+      votersWithAge,
+      cadreAssignments,
+      activeCadresToday,
+      bla2Assigned,
+      bla2Trained,
+      bla2Confirmed,
+      committeeByPart,
+      totalCommitteeMembers,
     ] = await Promise.all([
       (tenantDb as any).voter.count({ where: { electionId, deletedAt: null } }),
       (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, gender: 'MALE' } }),
@@ -50,6 +59,7 @@ router.get('/election/:electionId', async (req: Request, res: Response) => {
       (tenantDb as any).cadre.count({ where: { electionId, isActive: true } }),
       (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, mobile: { not: null } } }),
       (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, dateOfBirth: { not: null } } }),
+      (tenantDb as any).voter.count({ where: { electionId, deletedAt: null, casteId: { not: null } } }),
       getCrossBoothFamilyCount(tenantDb, electionId as string),
       (tenantDb as any).family.count({ where: { electionId, totalMembers: 1 } }),
       getReligionStats(tenantDb, electionId as string),
@@ -58,7 +68,62 @@ router.get('/election/:electionId', async (req: Request, res: Response) => {
       getPartyStats(tenantDb, electionId as string),
       getGenderStats(tenantDb, electionId as string),
       getVoterCategoryStats(tenantDb, electionId as string),
+      // Age distribution: get all voters with age
+      (tenantDb as any).voter.findMany({
+        where: { electionId, deletedAt: null, age: { not: null } },
+        select: { age: true },
+      }),
+      // Cadre assignments — count cadres that have ANY assignment (BLA-2, committee, or generic)
+      (tenantDb as any).cadre.count({
+        where: {
+          electionId,
+          isActive: true,
+          OR: [
+            { bla2Assignments: { some: {} } },
+            { boothCommittee: { some: {} } },
+            { assignments: { some: {} } },
+          ],
+        },
+      }).catch(() => 0),
+      // Active cadres (logged in today)
+      (tenantDb as any).cadre.count({
+        where: { electionId, isActive: true, isLoggedIn: true },
+      }).catch(() => 0),
+      // BLA-2 assignments
+      (tenantDb as any).bla2Assignment.count({ where: { electionId } }).catch(() => 0),
+      (tenantDb as any).bla2Assignment.count({ where: { electionId, trainingCompleted: true } }).catch(() => 0),
+      (tenantDb as any).bla2Assignment.count({ where: { electionId, status: 'CONFIRMED' } }).catch(() => 0),
+      // Booth Committee stats
+      (tenantDb as any).boothCommitteeMember.groupBy({
+        by: ['partId'],
+        where: { electionId },
+        _count: { id: true },
+      }).catch(() => []),
+      (tenantDb as any).boothCommitteeMember.count({ where: { electionId } }).catch(() => 0),
     ]);
+
+    // Calculate age distribution server-side
+    const ageGroups = {
+      '18-25': 0, '26-35': 0, '36-45': 0, '46-55': 0, '56-65': 0, '65+': 0,
+    };
+    (votersWithAge as any[]).forEach((v) => {
+      const age = v.age as number;
+      if (age <= 25) ageGroups['18-25']++;
+      else if (age <= 35) ageGroups['26-35']++;
+      else if (age <= 45) ageGroups['36-45']++;
+      else if (age <= 55) ageGroups['46-55']++;
+      else if (age <= 65) ageGroups['56-65']++;
+      else ageGroups['65+']++;
+    });
+    const ageDistribution = Object.entries(ageGroups).map(([ageGroup, count]) => ({
+      ageGroup,
+      count,
+      percentage: calculatePercentage(count, totalVoters),
+    }));
+
+    // Cadre metrics
+    const assignedCadres = cadreAssignments;
+    const unassignedCadres = totalCadres - Math.min(cadreAssignments, totalCadres);
 
     const dashboard = {
       election: {
@@ -93,10 +158,37 @@ router.get('/election/:electionId', async (req: Request, res: Response) => {
         party: partyStats,
         voterCategory: voterCategoryStats,
       },
+      ageDistribution,
+      cadreMetrics: {
+        assigned: assignedCadres,
+        unassigned: unassignedCadres,
+        activeToday: activeCadresToday,
+      },
+      dataCompleteness: {
+        mobilePercent: calculatePercentage(votersWithMobile, totalVoters),
+        agePercent: calculatePercentage(votersWithDOB, totalVoters),
+        castePercent: calculatePercentage(votersWithCaste, totalVoters),
+      },
       familyMetrics: {
         total: totalFamilies,
         crossBooth: crossBoothFamilies,
         singleMember: singleMemberFamilies,
+      },
+      boothOperations: {
+        bla2: {
+          assigned: bla2Assigned,
+          trained: bla2Trained,
+          confirmed: bla2Confirmed,
+          totalBooths: totalParts,
+          coveragePercent: calculatePercentage(bla2Assigned, totalParts),
+        },
+        committee: {
+          boothsWithCommittee: (committeeByPart as any[]).length,
+          completeCommittees: (committeeByPart as any[]).filter((g: any) => g._count.id >= 3).length,
+          totalMembers: totalCommitteeMembers,
+          totalBooths: totalParts,
+          coveragePercent: calculatePercentage((committeeByPart as any[]).length, totalParts),
+        },
       },
       genderBreakdown: {
         male: { count: maleVoters, percentage: calculatePercentage(maleVoters, totalVoters) },

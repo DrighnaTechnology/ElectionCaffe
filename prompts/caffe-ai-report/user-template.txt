@@ -1,0 +1,49 @@
+Generate a strategic election report in JSON format for the following election using ONLY the data provided below.
+
+### Election Overview
+- Name: {{electionName}}
+- Type: {{electionType}}
+- State: {{state}}
+- Constituency: {{constituency}}
+- Status: {{status}}
+- Poll Date: {{pollDate}}
+- Total Candidates: {{candidateCount}}
+
+### Voter Data (aggregated counts)
+- Total Voters: {{totalVoters}}
+- Male: {{maleVoters}} | Female: {{femaleVoters}} | Other: {{otherVoters}}
+
+**Political Leaning:**
+- Loyal: {{loyalVoters}} | Swing: {{swingVoters}} | Opposition: {{oppositionVoters}} | Unknown: {{unknownLeaningVoters}}
+
+**Influence Levels:**
+- High: {{highInfluence}} | Medium: {{mediumInfluence}} | Low: {{lowInfluence}} | None: {{noneInfluence}}
+
+**Age Distribution:**
+{{ageDistribution}}
+
+**Top Religions (by voter count):**
+{{topReligions}}
+
+**Top Caste Categories (by voter count):**
+{{topCastes}}
+
+### Booth Data (aggregated counts)
+- Total Booths: {{totalBooths}}
+- Urban: {{urbanBooths}} | Rural: {{ruralBooths}}
+- Vulnerable Booths: {{vulnerableBooths}}
+
+**Top 10 Booths by Voter Count:**
+{{boothDetails}}
+
+### Family Data
+- Total Families: {{totalFamilies}}
+- Average Family Size: {{avgFamilySize}}
+
+### Cadre / Ground Force Data
+- Total Cadres: {{totalCadres}}
+- Active Cadres: {{activeCadres}}
+- Cadre-to-Booth Ratio: {{cadreBoothRatio}}
+
+**Cadre Type Breakdown:**
+{{cadreTypeBreakdown}}

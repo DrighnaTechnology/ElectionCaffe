@@ -15,7 +15,7 @@ async function main() {
   // 1. Admin user
   let user = await prisma.user.findFirst({ where: { mobile: '9876543210' } });
   if (!user) {
-    const hash = await bcrypt.hash('admin123', 10);
+    const hash = await bcrypt.hash('Admin@123', 10);
     user = await prisma.user.create({
       data: { tenantId: TENANT_ID, firstName: 'Admin', lastName: 'TN BJP', mobile: '9876543210', email: 'admin.tn.bjp@electioncaffe.com', passwordHash: hash, role: 'TENANT_ADMIN', status: 'ACTIVE', permissions: ['all'] },
     });

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
+import { getTenantDb } from '../utils/tenantDb.js';
 import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');
@@ -13,25 +13,24 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { status, priority, notificationType, page = '1', limit = '20' } = req.query;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-    const where: any = { tenantId: user.tenant.id };
+    const where: any = { tenantId: user.tenantId };
     if (status) where.status = status;
     if (priority) where.priority = priority;
     if (notificationType) where.notificationType = notificationType;
 
     const [notifications, total] = await Promise.all([
-      prisma.internalNotification.findMany({
+      (await getTenantDb(req)).internalNotification.findMany({
         where,
         include: {
           _count: { select: { recipients: true } },
@@ -40,7 +39,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
         skip,
         take: parseInt(limit as string),
       }),
-      prisma.internalNotification.count({ where }),
+      (await getTenantDb(req)).internalNotification.count({ where }),
     ]);
 
     res.json(successResponse({ notifications, total, page: parseInt(page as string), limit: parseInt(limit as string) }));
@@ -56,18 +55,17 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const notification = await prisma.internalNotification.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const notification = await (await getTenantDb(req)).internalNotification.findFirst({
+      where: { id, tenantId: user.tenantId },
       include: {
         recipients: {
           orderBy: { createdAt: 'desc' },
@@ -97,19 +95,17 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'DISTRICT_ADMIN', 'MANDAL_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
@@ -125,9 +121,9 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const notification = await prisma.internalNotification.create({
+    const notification = await (await getTenantDb(req)).internalNotification.create({
       data: {
-        tenantId: user.tenant.id,
+        tenantId: user.tenantId,
         title,
         titleLocal,
         message,
@@ -164,18 +160,17 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const notification = await prisma.internalNotification.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const notification = await (await getTenantDb(req)).internalNotification.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!notification) {
@@ -195,7 +190,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
       expiresAt, scheduledAt,
     } = req.body;
 
-    const updatedNotification = await prisma.internalNotification.update({
+    const updatedNotification = await (await getTenantDb(req)).internalNotification.update({
       where: { id },
       data: {
         ...(title !== undefined && { title }),
@@ -232,18 +227,17 @@ router.post('/:id/publish', async (req: Request, res: Response): Promise<void> =
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const notification = await prisma.internalNotification.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const notification = await (await getTenantDb(req)).internalNotification.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!notification) {
@@ -260,15 +254,15 @@ router.post('/:id/publish', async (req: Request, res: Response): Promise<void> =
     let targetUserIds: string[] = [];
 
     if (notification.targetAll) {
-      const users = await prisma.user.findMany({
-        where: { tenantId: user.tenant.id, status: 'ACTIVE' },
+      const users = await (await getTenantDb(req)).user.findMany({
+        where: { tenantId: user.tenantId, status: 'ACTIVE' },
         select: { id: true },
       });
       targetUserIds = users.map(u => u.id);
     } else if (Array.isArray(notification.targetRoles) && notification.targetRoles.length > 0) {
-      const users = await prisma.user.findMany({
+      const users = await (await getTenantDb(req)).user.findMany({
         where: {
-          tenantId: user.tenant.id,
+          tenantId: user.tenantId,
           status: 'ACTIVE',
           role: { in: notification.targetRoles as any },
         },
@@ -288,13 +282,13 @@ router.post('/:id/publish', async (req: Request, res: Response): Promise<void> =
       deliveredAt: new Date(),
     }));
 
-    await prisma.notificationRecipient.createMany({
+    await (await getTenantDb(req)).notificationRecipient.createMany({
       data: recipientData,
       skipDuplicates: true,
     });
 
     // Update notification status
-    await prisma.internalNotification.update({
+    await (await getTenantDb(req)).internalNotification.update({
       where: { id },
       data: {
         status: 'SENT',
@@ -317,18 +311,17 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
     const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const user = await prisma.user.findUnique({
+    const user = await (await getTenantDb(req)).user.findUnique({
       where: { id: userId },
-      include: { tenant: true },
     });
 
-    if (!user || !user.tenant) {
-      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
       return;
     }
 
-    const notification = await prisma.internalNotification.findFirst({
-      where: { id, tenantId: user.tenant.id },
+    const notification = await (await getTenantDb(req)).internalNotification.findFirst({
+      where: { id, tenantId: user.tenantId },
     });
 
     if (!notification) {
@@ -337,8 +330,8 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Delete recipients first (cascade should handle this but being explicit)
-    await prisma.notificationRecipient.deleteMany({ where: { notificationId: id } });
-    await prisma.internalNotification.delete({ where: { id } });
+    await (await getTenantDb(req)).notificationRecipient.deleteMany({ where: { notificationId: id } });
+    await (await getTenantDb(req)).internalNotification.delete({ where: { id } });
 
     res.json(successResponse({ message: 'Notification deleted' }));
   } catch (error) {
@@ -367,7 +360,7 @@ router.get('/inbox/my', async (req: Request, res: Response): Promise<void> => {
     }
 
     const [notifications, total, unreadCount] = await Promise.all([
-      prisma.notificationRecipient.findMany({
+      (await getTenantDb(req)).notificationRecipient.findMany({
         where,
         include: {
           notification: {
@@ -392,8 +385,8 @@ router.get('/inbox/my', async (req: Request, res: Response): Promise<void> => {
         skip,
         take: parseInt(limit as string),
       }),
-      prisma.notificationRecipient.count({ where }),
-      prisma.notificationRecipient.count({ where: { userId, readAt: null } }),
+      (await getTenantDb(req)).notificationRecipient.count({ where }),
+      (await getTenantDb(req)).notificationRecipient.count({ where: { userId, readAt: null } }),
     ]);
 
     res.json(successResponse({
@@ -415,7 +408,7 @@ router.patch('/inbox/:recipientId/read', async (req: Request, res: Response): Pr
     const userId = req.headers['x-user-id'] as string;
     const { recipientId } = req.params;
 
-    const recipient = await prisma.notificationRecipient.findFirst({
+    const recipient = await (await getTenantDb(req)).notificationRecipient.findFirst({
       where: { id: recipientId, userId },
     });
 
@@ -424,13 +417,13 @@ router.patch('/inbox/:recipientId/read', async (req: Request, res: Response): Pr
       return;
     }
 
-    await prisma.notificationRecipient.update({
+    await (await getTenantDb(req)).notificationRecipient.update({
       where: { id: recipientId },
       data: { readAt: new Date(), status: 'read' },
     });
 
     // Update read count on notification
-    await prisma.internalNotification.update({
+    await (await getTenantDb(req)).internalNotification.update({
       where: { id: recipient.notificationId },
       data: { readCount: { increment: 1 } },
     });
@@ -447,13 +440,13 @@ router.patch('/inbox/read-all', async (req: Request, res: Response): Promise<voi
   try {
     const userId = req.headers['x-user-id'] as string;
 
-    const unreadRecipients = await prisma.notificationRecipient.findMany({
+    const unreadRecipients = await (await getTenantDb(req)).notificationRecipient.findMany({
       where: { userId, readAt: null },
       select: { id: true, notificationId: true },
     });
 
     if (unreadRecipients.length > 0) {
-      await prisma.notificationRecipient.updateMany({
+      await (await getTenantDb(req)).notificationRecipient.updateMany({
         where: { userId, readAt: null },
         data: { readAt: new Date(), status: 'read' },
       });
@@ -462,7 +455,7 @@ router.patch('/inbox/read-all', async (req: Request, res: Response): Promise<voi
       const notificationIds = [...new Set(unreadRecipients.map(r => r.notificationId))];
       for (const notifId of notificationIds) {
         const count = unreadRecipients.filter(r => r.notificationId === notifId).length;
-        await prisma.internalNotification.update({
+        await (await getTenantDb(req)).internalNotification.update({
           where: { id: notifId },
           data: { readCount: { increment: count } },
         });
@@ -482,7 +475,7 @@ router.delete('/inbox/:recipientId', async (req: Request, res: Response): Promis
     const userId = req.headers['x-user-id'] as string;
     const { recipientId } = req.params;
 
-    const recipient = await prisma.notificationRecipient.findFirst({
+    const recipient = await (await getTenantDb(req)).notificationRecipient.findFirst({
       where: { id: recipientId, userId },
     });
 
@@ -491,7 +484,7 @@ router.delete('/inbox/:recipientId', async (req: Request, res: Response): Promis
       return;
     }
 
-    await prisma.notificationRecipient.delete({ where: { id: recipientId } });
+    await (await getTenantDb(req)).notificationRecipient.delete({ where: { id: recipientId } });
 
     res.json(successResponse({ message: 'Notification removed from inbox' }));
   } catch (error) {

@@ -6,14 +6,30 @@
  * - Running migrations on tenant databases
  * - Testing database connections
  * - Database health checks
+ *
+ * Uses pg Client directly (cross-platform, no psql dependency)
  */
 
-import { exec } from 'child_process';
+import { Client } from 'pg';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { resolve, join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import { coreDb } from './core-client.js';
-import { generateTenantDbName, generateTenantDbUrl } from './tenant-client.js';
+import { generateTenantDbName, generateTenantDbUrl, getTenantClientBySlug } from './tenant-client.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Derive the database package root from this file's location (works regardless of cwd)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const dbPkgRoot = resolve(__dirname, '..', '..');
+
+// Resolve prisma CLI path and node binary (absolute paths, cross-platform)
+const _require = createRequire(import.meta.url);
+const prismaCli = _require.resolve('prisma/build/index.js');
+const nodeBin = process.execPath;
 
 export interface TenantDbConfig {
   host: string;
@@ -34,18 +50,36 @@ export interface CreateTenantDbResult {
  * Gets the default database configuration from environment
  */
 export function getDefaultDbConfig(): TenantDbConfig {
+  // Parse from CORE_DATABASE_URL if available
+  const coreUrl = process.env.CORE_DATABASE_URL || '';
+  let host = process.env.DB_HOST || 'localhost';
+  let port = parseInt(process.env.DB_PORT || '5432');
+  let user = process.env.DB_USER || 'postgres';
+  let password = process.env.DB_PASSWORD || 'postgres';
+
+  if (coreUrl) {
+    try {
+      const url = new URL(coreUrl);
+      host = url.hostname || host;
+      port = parseInt(url.port) || port;
+      user = url.username || user;
+      password = decodeURIComponent(url.password) || password;
+    } catch {
+      // Fall back to env vars
+    }
+  }
+
   return {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
+    host,
+    port,
+    user,
+    password,
     ssl: process.env.DB_SSL === 'true',
   };
 }
 
 /**
- * Creates a new database for a tenant
- * Database name format: EC_<TenantName>
+ * Creates a new database for a tenant using pg Client
  */
 export async function createTenantDatabase(
   tenantName: string,
@@ -54,20 +88,33 @@ export async function createTenantDatabase(
   const dbConfig = { ...getDefaultDbConfig(), ...config };
   const dbName = generateTenantDbName(tenantName);
 
-  try {
-    // Use psql to create the database
-    const createDbCommand = `PGPASSWORD="${dbConfig.password}" psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.user} -d postgres -c "CREATE DATABASE \\"${dbName}\\""`;
+  const client = new Client({
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    password: dbConfig.password,
+    database: 'postgres', // Connect to default db to create new one
+    ssl: dbConfig.ssl ? { rejectUnauthorized: false } : false,
+  });
 
-    try {
-      await execAsync(createDbCommand);
-    } catch (error: any) {
-      // Check if database already exists (not an error)
-      if (error.stderr && error.stderr.includes('already exists')) {
-        console.log(`Database ${dbName} already exists, skipping creation`);
-      } else {
-        throw error;
-      }
+  try {
+    await client.connect();
+
+    // Check if database already exists
+    const checkResult = await client.query(
+      `SELECT 1 FROM pg_database WHERE datname = $1`,
+      [dbName]
+    );
+
+    if (checkResult.rows.length > 0) {
+      console.log(`Database ${dbName} already exists, skipping creation`);
+    } else {
+      // CREATE DATABASE cannot use parameterized queries, but dbName is sanitized by generateTenantDbName
+      await client.query(`CREATE DATABASE "${dbName}"`);
+      console.log(`Database ${dbName} created successfully`);
     }
+
+    await client.end();
 
     // Generate the connection URL for the new database
     const connectionUrl = generateTenantDbUrl(tenantName, dbConfig);
@@ -78,7 +125,8 @@ export async function createTenantDatabase(
       connectionUrl,
     };
   } catch (error: any) {
-    console.error(`Failed to create tenant database ${dbName}:`, error);
+    console.error(`Failed to create tenant database ${dbName}:`, error.message);
+    try { await client.end(); } catch {}
     return {
       success: false,
       databaseName: dbName,
@@ -98,17 +146,15 @@ export async function migrateTenantDatabase(
   const dbName = generateTenantDbName(tenantName);
 
   try {
-    // Set the TENANT_DATABASE_URL for Prisma
-    process.env.TENANT_DATABASE_URL = connectionUrl;
+    const dbPkgDir = dbPkgRoot;
+    const env = { ...process.env, TENANT_DATABASE_URL: connectionUrl };
+    const schemaPath = join(dbPkgDir, 'prisma', 'tenant', 'schema.prisma');
 
-    // Run prisma migrate deploy for tenant schema
-    const migrateCommand = `cd ${process.cwd()}/packages/database && TENANT_DATABASE_URL="${connectionUrl}" npx prisma migrate deploy --schema=./prisma/tenant/schema.prisma`;
-
-    await execAsync(migrateCommand);
+    await execFileAsync(nodeBin, [prismaCli, 'migrate', 'deploy', `--schema=${schemaPath}`], { env, cwd: dbPkgDir });
 
     return { success: true };
   } catch (error: any) {
-    console.error(`Failed to migrate tenant database ${dbName}:`, error);
+    console.error(`Failed to migrate tenant database ${dbName}:`, error.message);
     return {
       success: false,
       error: error.message || 'Unknown error',
@@ -123,14 +169,15 @@ export async function pushTenantSchema(
   connectionUrl: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Run prisma db push for tenant schema
-    const pushCommand = `cd ${process.cwd()}/packages/database && TENANT_DATABASE_URL="${connectionUrl}" npx prisma db push --schema=./prisma/tenant/schema.prisma --accept-data-loss`;
+    const dbPkgDir = dbPkgRoot;
+    const env = { ...process.env, TENANT_DATABASE_URL: connectionUrl };
+    const schemaPath = join(dbPkgDir, 'prisma', 'tenant', 'schema.prisma');
 
-    await execAsync(pushCommand);
+    await execFileAsync(nodeBin, [prismaCli, 'db', 'push', `--schema=${schemaPath}`, '--accept-data-loss'], { env, cwd: dbPkgDir, timeout: 60000 });
 
     return { success: true };
   } catch (error: any) {
-    console.error('Failed to push tenant schema:', error);
+    console.error('Failed to push tenant schema:', error.message);
     return {
       success: false,
       error: error.message || 'Unknown error',
@@ -146,23 +193,19 @@ export async function testDatabaseConnection(
 ): Promise<{ success: boolean; latencyMs?: number; error?: string }> {
   const startTime = Date.now();
 
+  const client = new Client({ connectionString: connectionUrl });
+
   try {
-    const { PrismaClient } = await import('@prisma/client');
-    const client = new PrismaClient({
-      datasources: { db: { url: connectionUrl } },
-    });
-
-    await client.$connect();
-    await client.$queryRaw`SELECT 1`;
-    await client.$disconnect();
-
-    const latencyMs = Date.now() - startTime;
+    await client.connect();
+    await client.query('SELECT 1');
+    await client.end();
 
     return {
       success: true,
-      latencyMs,
+      latencyMs: Date.now() - startTime,
     };
   } catch (error: any) {
+    try { await client.end(); } catch {}
     return {
       success: false,
       error: error.message || 'Connection failed',
@@ -203,18 +246,19 @@ export async function provisionTenantDatabase(
       throw new Error(testResult.error || 'Connection test failed');
     }
 
-    // Step 4: Update tenant record in core database with database info
+    // Step 4: Update tenant record in core database with connection details
+    // Note: databaseType is NOT overwritten — it was set correctly during tenant creation
+    const dbConfig = { ...getDefaultDbConfig(), ...config };
     await coreDb.tenant.update({
       where: { id: tenantId },
       data: {
-        databaseType: 'DEDICATED_MANAGED',
         databaseStatus: 'READY',
         databaseName: createResult.databaseName,
-        databaseHost: config?.host || process.env.DB_HOST || 'localhost',
-        databasePort: config?.port || parseInt(process.env.DB_PORT || '5432'),
-        databaseUser: config?.user || process.env.DB_USER || 'postgres',
-        databasePassword: config?.password || process.env.DB_PASSWORD || 'postgres',
-        databaseSSL: config?.ssl ?? false,
+        databaseHost: dbConfig.host,
+        databasePort: dbConfig.port,
+        databaseUser: dbConfig.user,
+        databasePassword: dbConfig.password,
+        databaseSSL: dbConfig.ssl,
         databaseConnectionUrl: createResult.connectionUrl,
         databaseManagedBy: 'super_admin',
         databaseLastCheckedAt: new Date(),
@@ -228,7 +272,7 @@ export async function provisionTenantDatabase(
       connectionUrl: createResult.connectionUrl,
     };
   } catch (error: any) {
-    console.error(`Failed to provision database for tenant ${tenantSlug}:`, error);
+    console.error(`Failed to provision database for tenant ${tenantSlug}:`, error.message);
 
     // Update tenant record with error status
     try {
@@ -252,8 +296,7 @@ export async function provisionTenantDatabase(
 }
 
 /**
- * Drops a tenant database
- * WARNING: This is destructive and cannot be undone!
+ * Drops a tenant database using pg Client
  */
 export async function dropTenantDatabase(
   tenantName: string,
@@ -262,18 +305,31 @@ export async function dropTenantDatabase(
   const dbConfig = { ...getDefaultDbConfig(), ...config };
   const dbName = generateTenantDbName(tenantName);
 
+  const client = new Client({
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    password: dbConfig.password,
+    database: 'postgres',
+    ssl: dbConfig.ssl ? { rejectUnauthorized: false } : false,
+  });
+
   try {
-    // First disconnect any cached connections
-    // Note: We need to find the tenant ID to disconnect, but for now we'll skip this
-
-    // Drop the database
-    const dropDbCommand = `PGPASSWORD="${dbConfig.password}" psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.user} -d postgres -c "DROP DATABASE IF EXISTS \\"${dbName}\\""`;
-
-    await execAsync(dropDbCommand);
+    await client.connect();
+    // Terminate existing connections first
+    await client.query(`
+      SELECT pg_terminate_backend(pg_stat_activity.pid)
+      FROM pg_stat_activity
+      WHERE pg_stat_activity.datname = $1
+      AND pid <> pg_backend_pid()
+    `, [dbName]);
+    await client.query(`DROP DATABASE IF EXISTS "${dbName}"`);
+    await client.end();
 
     return { success: true };
   } catch (error: any) {
-    console.error(`Failed to drop tenant database ${dbName}:`, error);
+    console.error(`Failed to drop tenant database ${dbName}:`, error.message);
+    try { await client.end(); } catch {}
     return {
       success: false,
       error: error.message || 'Unknown error',
@@ -292,7 +348,6 @@ export async function checkTenantDatabaseHealth(
   error?: string;
 }> {
   try {
-    // Get tenant from core database
     const tenant = await coreDb.tenant.findUnique({
       where: { id: tenantId },
       select: {
@@ -311,10 +366,8 @@ export async function checkTenantDatabaseHealth(
       return { healthy: false, error: 'No database configured' };
     }
 
-    // Test the connection
     const testResult = await testDatabaseConnection(tenant.databaseConnectionUrl);
 
-    // Update last checked timestamp
     await coreDb.tenant.update({
       where: { id: tenantId },
       data: {
@@ -335,6 +388,36 @@ export async function checkTenantDatabaseHealth(
       error: error.message || 'Health check failed',
     };
   }
+}
+
+/**
+ * Pushes the latest tenant schema to ALL existing tenant databases.
+ * Run on startup to ensure every tenant DB has the current schema.
+ * New tenants are handled automatically by provisionTenantDatabase().
+ */
+export async function migrateAllTenantDatabases(): Promise<void> {
+  const tenants = await coreDb.tenant.findMany({
+    where: { databaseStatus: 'READY', databaseConnectionUrl: { not: null } },
+    select: { id: true, slug: true, databaseConnectionUrl: true },
+  });
+
+  if (tenants.length === 0) {
+    console.log('[migrate-tenants] No READY tenant databases found, skipping.');
+    return;
+  }
+
+  console.log(`[migrate-tenants] Pushing schema to ${tenants.length} tenant database(s)...`);
+
+  for (const tenant of tenants) {
+    const result = await pushTenantSchema(tenant.databaseConnectionUrl!);
+    if (result.success) {
+      console.log(`[migrate-tenants] ✓ ${tenant.slug}`);
+    } else {
+      console.error(`[migrate-tenants] ✗ ${tenant.slug}: ${result.error}`);
+    }
+  }
+
+  console.log('[migrate-tenants] Done.');
 }
 
 /**
@@ -364,4 +447,125 @@ export async function getTenantDatabaseStatuses(): Promise<
   });
 
   return tenants;
+}
+
+/**
+ * Syncs usage counts (voters, users, elections, cadres) from all READY tenant
+ * databases back into the core Tenant model.
+ *
+ * This is the only reliable way to get cross-tenant aggregate numbers because
+ * each tenant has its own isolated database.
+ *
+ * Can optionally sync a single tenant by passing its ID.
+ */
+export interface TenantSyncResult {
+  tenantId: string;
+  slug: string;
+  voters: number;
+  users: number;
+  elections: number;
+  cadres: number;
+  success: boolean;
+  error?: string;
+}
+
+export async function syncTenantCounts(tenantId?: string): Promise<TenantSyncResult[]> {
+  const whereClause: any = {
+    databaseStatus: 'READY',
+  };
+  if (tenantId) {
+    whereClause.id = tenantId;
+  }
+
+  const tenants = await coreDb.tenant.findMany({
+    where: whereClause,
+    select: {
+      id: true,
+      slug: true,
+      databaseHost: true,
+      databaseName: true,
+      databaseUser: true,
+      databasePassword: true,
+      databasePort: true,
+      databaseSSL: true,
+      databaseConnectionUrl: true,
+    },
+  });
+
+  if (tenants.length === 0) {
+    console.log('[sync-counts] No READY tenant databases found.');
+    return [];
+  }
+
+  console.log(`[sync-counts] Syncing counts for ${tenants.length} tenant(s)...`);
+
+  const results: TenantSyncResult[] = [];
+
+  for (const tenant of tenants) {
+    try {
+      const tenantDb = await getTenantClientBySlug(
+        tenant.slug,
+        {
+          databaseHost: tenant.databaseHost,
+          databaseName: tenant.databaseName,
+          databaseUser: tenant.databaseUser,
+          databasePassword: tenant.databasePassword,
+          databasePort: tenant.databasePort,
+          databaseSSL: tenant.databaseSSL,
+          databaseConnectionUrl: tenant.databaseConnectionUrl,
+        },
+        tenant.id
+      );
+
+      const db = tenantDb as any;
+
+      // Run all counts in parallel for this tenant
+      const [voterCount, userCount, electionCount, cadreCount] = await Promise.all([
+        db.voter.count().catch(() => 0),
+        db.user.count().catch(() => 0),
+        db.election.count().catch(() => 0),
+        db.cadre.count().catch(() => 0),
+      ]);
+
+      // Update the core Tenant record with cached counts
+      await coreDb.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          currentVoterCount: voterCount,
+          currentUserCount: userCount,
+          currentElectionCount: electionCount,
+          currentCadreCount: cadreCount,
+          countsLastSyncedAt: new Date(),
+        },
+      });
+
+      const result: TenantSyncResult = {
+        tenantId: tenant.id,
+        slug: tenant.slug,
+        voters: voterCount,
+        users: userCount,
+        elections: electionCount,
+        cadres: cadreCount,
+        success: true,
+      };
+
+      results.push(result);
+      console.log(`[sync-counts] ✓ ${tenant.slug}: ${voterCount} voters, ${userCount} users, ${electionCount} elections, ${cadreCount} cadres`);
+    } catch (error: any) {
+      results.push({
+        tenantId: tenant.id,
+        slug: tenant.slug,
+        voters: 0,
+        users: 0,
+        elections: 0,
+        cadres: 0,
+        success: false,
+        error: error.message || 'Unknown error',
+      });
+      console.error(`[sync-counts] ✗ ${tenant.slug}: ${error.message}`);
+    }
+  }
+
+  console.log(`[sync-counts] Done. ${results.filter(r => r.success).length}/${results.length} succeeded.`);
+  return results;
 }

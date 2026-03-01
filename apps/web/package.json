@@ -5,11 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:demo": "vite --port 5180",
-    "dev:bjp-tn": "vite --port 5181",
-    "dev:bjp-up": "vite --port 5182",
-    "dev:aidmk-tn": "vite --port 5183",
-    "dev:all-tenants": "concurrently \"npm run dev:demo\" \"npm run dev:bjp-tn\" \"npm run dev:bjp-up\" \"npm run dev:aidmk-tn\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"

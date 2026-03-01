@@ -1,10 +1,51 @@
 import { Router, Request, Response } from 'express';
 import { Client } from 'pg';
 import { coreDb } from '@electioncaffe/database';
-import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
+import { successResponse, errorResponse, createLogger, buildTenantUrl } from '@electioncaffe/shared';
 
 const logger = createLogger('auth-service');
 const router = Router();
+
+// Resolve tenant by slug — PUBLIC (no auth required)
+// Returns minimal info for login page, or 404 if slug doesn't exist
+router.get('/resolve/:slug', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tenant = await coreDb.tenant.findUnique({
+      where: { slug: req.params.slug },
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
+        logoUrl: true,
+        primaryColor: true,
+        status: true,
+        tenantType: true,
+      },
+    });
+
+    if (!tenant) {
+      res.status(404).json(errorResponse('E3001', 'Tenant not found'));
+      return;
+    }
+
+    if (tenant.status === 'SUSPENDED') {
+      res.status(403).json(errorResponse('E3002', 'This tenant has been suspended'));
+      return;
+    }
+
+    res.json(successResponse({
+      name: tenant.name,
+      displayName: tenant.displayName,
+      logoUrl: tenant.logoUrl,
+      primaryColor: tenant.primaryColor,
+      status: tenant.status,
+      tenantType: tenant.tenantType,
+    }));
+  } catch (error) {
+    logger.error({ err: error }, 'Resolve tenant error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
 
 // Get tenant branding/settings (accessible by all authenticated users)
 router.get('/branding', async (req: Request, res: Response): Promise<void> => {
@@ -32,7 +73,7 @@ router.get('/branding', async (req: Request, res: Response): Promise<void> => {
       tenantType: tenant.tenantType,
       partyName: tenant.partyName,
       partySymbolUrl: tenant.partySymbolUrl,
-      tenantUrl: tenant.tenantUrl,
+      tenantUrl: buildTenantUrl(tenant.slug),
       customDomain: tenant.customDomain,
     }));
   } catch (error) {
@@ -48,8 +89,7 @@ router.put('/branding', async (req: Request, res: Response): Promise<void> => {
     const userRole = req.headers['x-user-role'] as string;
 
     // Only allow admin roles to update branding
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied. Only administrators can update branding settings.'));
       return;
     }
@@ -106,7 +146,7 @@ router.put('/branding', async (req: Request, res: Response): Promise<void> => {
       faviconUrl: updatedTenant.faviconUrl,
       partyName: updatedTenant.partyName,
       partySymbolUrl: updatedTenant.partySymbolUrl,
-      tenantUrl: updatedTenant.tenantUrl,
+      tenantUrl: buildTenantUrl(updatedTenant.slug),
       customDomain: updatedTenant.customDomain,
     }));
   } catch (error) {
@@ -122,8 +162,7 @@ router.get('/database', async (req: Request, res: Response): Promise<void> => {
     const userRole = req.headers['x-user-role'] as string;
 
     // Only allow TENANT_ADMIN or higher to access database settings
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'SUPER_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN' && userRole !== 'SUPER_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied. Only tenant administrators can view database settings.'));
       return;
     }
@@ -167,8 +206,7 @@ router.put('/database', async (req: Request, res: Response): Promise<void> => {
     const userRole = req.headers['x-user-role'] as string;
 
     // Only allow TENANT_ADMIN or higher
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'SUPER_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN' && userRole !== 'SUPER_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied. Only tenant administrators can update database settings.'));
       return;
     }
@@ -195,7 +233,7 @@ router.put('/database', async (req: Request, res: Response): Promise<void> => {
     const updatedTenant = await coreDb.tenant.update({
       where: { id: tenant.id },
       data: {
-        databaseType: 'DEDICATED_SELF',
+        databaseType: 'DEDICATED_EXTERNAL',
         databaseStatus: 'PENDING_SETUP',
         databaseHost: databaseHost || tenant.databaseHost,
         databaseName: databaseName || tenant.databaseName,
@@ -232,8 +270,7 @@ router.post('/database/test', async (req: Request, res: Response): Promise<void>
     const userRole = req.headers['x-user-role'] as string;
 
     // Only allow TENANT_ADMIN or higher
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'SUPER_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN' && userRole !== 'SUPER_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }

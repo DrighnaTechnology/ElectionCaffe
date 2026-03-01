@@ -1,0 +1,20 @@
+CURRENT STEP: Step 5 — Import Polling Booths
+
+Go to **Parts / Booths** page → click **Bulk Upload** → download the CSV template.
+
+Fill in for each booth:
+- Part Number (unique, from Election Commission data — required)
+- Booth Name in English (required)
+- Booth Name in Local Language
+- Address
+- Landmark
+- Pincode
+- Type: URBAN or RURAL
+
+Upload the filled CSV. The system validates and creates all booths.
+
+Alternative: Create booths one by one using the **Add Part** button.
+
+After import: click any booth row to verify address, type, and other details. You can also set vulnerability status (HIGH / MEDIUM / LOW) for sensitive booths.
+
+IMPORTANT: Booths must exist before you can import voters — voters are linked to booths using the Part Number.

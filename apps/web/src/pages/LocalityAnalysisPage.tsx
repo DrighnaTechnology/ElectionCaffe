@@ -174,8 +174,8 @@ export function LocalityAnalysisPage() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
-                      <div className="p-2 bg-orange-100 rounded-lg">
-                        <ShieldIcon className="h-6 w-6 text-orange-600" />
+                      <div className="p-2 bg-brand-muted rounded-lg">
+                        <ShieldIcon className="h-6 w-6 text-brand" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{insights.competitiveBooths || 0}</p>
@@ -201,17 +201,17 @@ export function LocalityAnalysisPage() {
                   {insights.keyInsights && insights.keyInsights.length > 0 ? (
                     <div className="space-y-4">
                       {insights.keyInsights.map((insight: any, index: number) => (
-                        <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                        <div key={index} className="p-4 border rounded-lg bg-muted/50">
                           <div className="flex items-start gap-3">
                             <div className={`p-2 rounded-lg ${
                               insight.type === 'opportunity' ? 'bg-green-100' :
                               insight.type === 'risk' ? 'bg-red-100' :
-                              insight.type === 'trend' ? 'bg-blue-100' : 'bg-gray-100'
+                              insight.type === 'trend' ? 'bg-blue-100' : 'bg-muted'
                             }`}>
                               {insight.type === 'opportunity' ? <TrendingUpIcon className="h-4 w-4 text-green-600" /> :
                                insight.type === 'risk' ? <AlertTriangleIcon className="h-4 w-4 text-red-600" /> :
                                insight.type === 'trend' ? <BarChart3Icon className="h-4 w-4 text-blue-600" /> :
-                               <LightbulbIcon className="h-4 w-4 text-gray-600" />}
+                               <LightbulbIcon className="h-4 w-4 text-muted-foreground" />}
                             </div>
                             <div className="flex-1">
                               <p className="font-medium">{insight.title}</p>
@@ -261,7 +261,7 @@ export function LocalityAnalysisPage() {
                         {Object.entries(demographics.ageGroups).map(([group, percentage]: [string, any]) => (
                           <div key={group} className="flex items-center gap-3">
                             <span className="text-sm w-20">{group}</span>
-                            <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div className="flex-1 bg-muted rounded-full h-2">
                               <div
                                 className="bg-blue-600 h-2 rounded-full"
                                 style={{ width: `${percentage}%` }}
@@ -288,7 +288,7 @@ export function LocalityAnalysisPage() {
                         {Object.entries(demographics.genderDistribution).map(([gender, percentage]: [string, any]) => (
                           <div key={gender} className="flex items-center gap-3">
                             <span className="text-sm w-20 capitalize">{gender}</span>
-                            <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div className="flex-1 bg-muted rounded-full h-2">
                               <div
                                 className={`h-2 rounded-full ${
                                   gender === 'male' ? 'bg-blue-600' :
@@ -318,7 +318,7 @@ export function LocalityAnalysisPage() {
                         {Object.entries(demographics.communityDistribution).slice(0, 6).map(([community, percentage]: [string, any]) => (
                           <div key={community} className="flex items-center gap-3">
                             <span className="text-sm w-24 truncate">{community}</span>
-                            <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div className="flex-1 bg-muted rounded-full h-2">
                               <div
                                 className="bg-green-600 h-2 rounded-full"
                                 style={{ width: `${percentage}%` }}
@@ -416,7 +416,7 @@ export function LocalityAnalysisPage() {
                             <div className="space-y-2">
                               {votingPatterns.predictions.riskAreas.map((area: any, i: number) => (
                                 <div key={i} className="flex items-center gap-2 text-sm">
-                                  <AlertTriangleIcon className="h-4 w-4 text-orange-500" />
+                                  <AlertTriangleIcon className="h-4 w-4 text-brand" />
                                   <span>{area.name}: {area.reason}</span>
                                 </div>
                               ))}

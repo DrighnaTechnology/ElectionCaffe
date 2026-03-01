@@ -7,25 +7,22 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "db:generate": "npm run db:generate:legacy && npm run db:generate:core && npm run db:generate:tenant",
-    "db:generate:legacy": "prisma generate --schema=./prisma/schema.prisma",
+    "db:generate": "npm run db:generate:core && npm run db:generate:tenant",
     "db:generate:core": "prisma generate --schema=./prisma/core/schema.prisma",
     "db:generate:tenant": "prisma generate --schema=./prisma/tenant/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema=./prisma/schema.prisma",
     "db:migrate:core": "prisma migrate dev --schema=./prisma/core/schema.prisma",
     "db:migrate:tenant": "prisma migrate dev --schema=./prisma/tenant/schema.prisma",
-    "db:migrate:prod": "prisma migrate deploy --schema=./prisma/schema.prisma",
     "db:migrate:prod:core": "prisma migrate deploy --schema=./prisma/core/schema.prisma",
     "db:migrate:prod:tenant": "prisma migrate deploy --schema=./prisma/tenant/schema.prisma",
-    "db:push": "prisma db push --schema=./prisma/schema.prisma",
+    "db:push": "npm run db:push:core && npm run db:push:tenant",
     "db:push:core": "prisma db push --schema=./prisma/core/schema.prisma",
     "db:push:tenant": "prisma db push --schema=./prisma/tenant/schema.prisma",
-    "db:studio": "prisma studio --schema=./prisma/schema.prisma",
     "db:studio:core": "prisma studio --schema=./prisma/core/schema.prisma",
     "db:studio:tenant": "prisma studio --schema=./prisma/tenant/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:core": "tsx prisma/seed-core.ts",
     "db:seed:demo": "tsx prisma/seed-demo-data/index.ts",
+    "db:migrate:all-tenants": "tsx src/scripts/migrate-all-tenants.ts",
     "db:setup": "npm run db:generate && npm run db:push:core",
     "clean": "rm -rf dist"
   },
@@ -45,11 +42,6 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./client": {
-      "import": "./dist/client.js",
-      "require": "./dist/client.js",
-      "types": "./dist/client.d.ts"
     },
     "./core-client": {
       "import": "./dist/clients/core-client.js",

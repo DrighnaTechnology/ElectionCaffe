@@ -1,0 +1,36 @@
+## Family Management Context
+
+Families group voters by household. Used for targeted outreach and door-to-door campaigns.
+
+**Bulk Import Families** — Families page → Bulk Upload → Download CSV template
+
+CSV columns:
+```
+Family Name (required)
+House Number
+Address
+Captain EPIC (captainEpic — voter ID of the head of family, auto-links captain)
+```
+
+- Captain is the head/decision-maker of the household
+- `captainEpic` auto-links the captain by their Voter ID (EPIC) — must be an existing voter
+
+**Manual Family Creation** — Families page → Create Family
+- Fill: Family Name, House Number, Address
+- Then add members and assign captain
+
+**Family Detail Page** — click any family row:
+- **Add Member**: search voters by name (minimum 2 characters) → click to select → confirm
+- **Remove Member**: click remove icon next to member
+- **Change Captain**: Edit family → select new captain from members
+- Click any member name → jumps to their voter profile
+
+**Family Captains** — Families > Family Captains sub-page
+- View all captains across all families
+- Captains are key contacts for household-level outreach
+
+**Key Rules**
+- Import voters first — family members must be existing voters
+- Each family needs at least a captain for effective outreach
+- A voter can only belong to one family
+- Use captainEpic in CSV for fast bulk captain assignment

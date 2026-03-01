@@ -1,0 +1,61 @@
+Analyze the following news article for its electoral impact on the constituency.
+
+=== NEWS ARTICLE ===
+Title: {{newsTitle}}
+Content: {{newsContent}}
+Source: {{sourceName}}
+Current Category: {{category}}
+
+=== GEOGRAPHIC CONTEXT ===
+Constituency: {{constituency}}
+State: {{state}}
+
+Provide a comprehensive analysis in this exact JSON structure. Every field is mandatory.
+
+{
+  "summary": "2-3 sentence analysis of what this news means for the constituency. Be specific, not generic.",
+
+  "sentiment": "POSITIVE | NEGATIVE | NEUTRAL | MIXED",
+  "sentimentScore": "Float between -1.0 (very negative) to 1.0 (very positive)",
+
+  "impactScore": "Integer 0-100. How much could this affect the election outcome in this constituency? 0 = no impact, 100 = game-changer.",
+  "relevanceScore": "Integer 0-100. How relevant is this to this specific constituency? 0 = completely unrelated, 100 = directly about this constituency.",
+
+  "category": "Most accurate category: POLITICAL | ELECTION | DEVELOPMENT | SOCIAL | ECONOMIC | LAW_AND_ORDER | ENVIRONMENT | HEALTH | EDUCATION | INFRASTRUCTURE | GOVERNMENT_SCHEME | LOCAL_ISSUE | CONTROVERSY | ANNOUNCEMENT | OTHER",
+
+  "keyPoints": [
+    "Key point 1 extracted from the article",
+    "Key point 2",
+    "Key point 3"
+  ],
+
+  "electoralImplications": "How this news could affect voter behavior in the constituency. Be specific about which party/candidate benefits or loses.",
+
+  "affectedDemographics": ["List affected voter segments: youth, women, farmers, urban, minorities, seniors, traders, etc."],
+
+  "urgency": "IMMEDIATE | THIS_WEEK | THIS_MONTH | LOW",
+
+  "recommendations": [
+    "Specific action recommendation 1 for the campaign team",
+    "Specific action recommendation 2",
+    "Specific action recommendation 3"
+  ],
+
+  "suggestedActions": [
+    {
+      "action": "Brief action title",
+      "type": "COMMUNICATION | FIELD_VISIT | MEETING | MEDIA_RESPONSE | VOTER_OUTREACH | MONITORING | SURVEY | INVESTIGATION | LEGAL | OTHER",
+      "priority": "URGENT | HIGH | MEDIUM | LOW",
+      "deadline": "within X days"
+    }
+  ],
+
+  "riskIfIgnored": "What happens if the campaign team ignores this news entirely? Be blunt."
+}
+
+CRITICAL INSTRUCTIONS:
+1. Use actual article content to inform every field. Do not generate generic responses.
+2. If the article content is thin or unclear, say so in the summary and lower the confidence scores accordingly.
+3. Scores must be realistic -- do not default to high scores unless truly justified.
+4. The entire response must be valid JSON. No trailing commas, no comments.
+5. Do NOT use any emojis or special unicode characters.

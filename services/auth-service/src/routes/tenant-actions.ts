@@ -1,23 +1,29 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '@electioncaffe/database';
 import { successResponse, errorResponse, createLogger } from '@electioncaffe/shared';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+import { getTenantDb } from '../utils/tenantDb.js';
+import { verifyCredits } from '@electioncaffe/database';
+
+// Feature credit cost for action generation
+const ACTION_GENERATION_CREDIT_COST = 2;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const promptsDir = resolve(__dirname, '../../../../../prompts');
 
 const logger = createLogger('auth-service');
 const router = Router();
 
-// Helper to get tenant from user
-async function getTenantFromUser(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { tenant: true },
-  });
-  return user?.tenant;
+// Helper to get tenantId from request headers (set by JWT middleware)
+function getTenantId(req: Request): string | null {
+  return (req.headers['x-tenant-id'] as string) || null;
 }
 
 // Get all actions for tenant
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const {
       page = 1,
       limit = 20,
@@ -30,14 +36,16 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
+    const tenantDb = await getTenantDb(req);
+
     // Build where clause
-    const where: any = { tenantId: tenant.id };
+    const where: any = { tenantId };
 
     if (status) where.status = status;
     if (priority) where.priority = priority;
@@ -47,11 +55,11 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     if (geographicLevel) where.geographicLevel = geographicLevel;
 
     const [actions, total] = await Promise.all([
-      prisma.actionItem.findMany({
+      (tenantDb as any).actionItem.findMany({
         where,
         skip,
         take: Number(limit),
-        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }] as any,
+        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
         include: {
           news: {
             select: {
@@ -60,9 +68,9 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
               category: true,
             },
           },
-        } as any,
+        },
       }),
-      prisma.actionItem.count({ where }),
+      (tenantDb as any).actionItem.count({ where }),
     ]);
 
     res.json(successResponse({
@@ -83,19 +91,20 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 // Get single action
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
-    const action = await prisma.actionItem.findFirst({
+    const tenantDb = await getTenantDb(req);
+
+    const action = await (tenantDb as any).actionItem.findFirst({
       where: {
         id,
-        tenantId: tenant.id,
+        tenantId,
       },
       include: {
         news: true,
@@ -121,17 +130,18 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     const userRole = req.headers['x-user-role'] as string;
 
     // Only allow certain roles to create actions
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN', 'CAMPAIGN_MANAGER', 'COORDINATOR'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
+
+    const tenantDb = await getTenantDb(req);
 
     const {
       newsId,
@@ -162,9 +172,9 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const action = await prisma.actionItem.create({
+    const action = await (tenantDb as any).actionItem.create({
       data: {
-        tenantId: tenant.id,
+        tenantId,
         newsId,
         title,
         titleLocal,
@@ -188,7 +198,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         targetAudience,
         successMetrics,
         createdBy: userId,
-      } as any,
+      },
       include: {
         news: {
           select: {
@@ -196,7 +206,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
             title: true,
           },
         },
-      } as any,
+      },
     });
 
     res.status(201).json(successResponse({ ...action, message: 'Action created successfully' }));
@@ -209,24 +219,24 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 // Update action
 router.put('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
     const { id } = req.params;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN', 'CAMPAIGN_MANAGER', 'COORDINATOR'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
-    const existingAction = await prisma.actionItem.findFirst({
-      where: { id, tenantId: tenant.id },
+    const tenantDb = await getTenantDb(req);
+
+    const existingAction = await (tenantDb as any).actionItem.findFirst({
+      where: { id, tenantId },
     });
 
     if (!existingAction) {
@@ -257,7 +267,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
       successMetrics,
     } = req.body;
 
-    const action = await prisma.actionItem.update({
+    const action = await (tenantDb as any).actionItem.update({
       where: { id },
       data: {
         ...(title !== undefined && { title }),
@@ -280,7 +290,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
         ...(requiredResources !== undefined && { requiredResources }),
         ...(targetAudience !== undefined && { targetAudience }),
         ...(successMetrics !== undefined && { successMetrics }),
-      } as any,
+      },
     });
 
     res.json(successResponse({ ...action, message: 'Action updated successfully' }));
@@ -293,18 +303,19 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
 // Update action status
 router.patch('/:id/status', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
     const { status, completionNotes, outcome } = req.body;
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
-    const existingAction = await prisma.actionItem.findFirst({
-      where: { id, tenantId: tenant.id },
+    const tenantDb = await getTenantDb(req);
+
+    const existingAction = await (tenantDb as any).actionItem.findFirst({
+      where: { id, tenantId },
     });
 
     if (!existingAction) {
@@ -326,11 +337,11 @@ router.patch('/:id/status', async (req: Request, res: Response): Promise<void> =
       if (outcome) updateData.outcome = outcome;
     }
 
-    if (status === 'IN_PROGRESS' && (existingAction.status as string) === 'PENDING') {
+    if (status === 'IN_PROGRESS' && existingAction.status === 'PENDING') {
       updateData.startedAt = new Date();
     }
 
-    const action = await prisma.actionItem.update({
+    const action = await (tenantDb as any).actionItem.update({
       where: { id },
       data: updateData,
     });
@@ -345,25 +356,25 @@ router.patch('/:id/status', async (req: Request, res: Response): Promise<void> =
 // Assign action to user
 router.patch('/:id/assign', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
     const { id } = req.params;
     const { assignedTo, assignedToName } = req.body;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN', 'CAMPAIGN_MANAGER', 'COORDINATOR'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
-    const existingAction = await prisma.actionItem.findFirst({
-      where: { id, tenantId: tenant.id },
+    const tenantDb = await getTenantDb(req);
+
+    const existingAction = await (tenantDb as any).actionItem.findFirst({
+      where: { id, tenantId },
     });
 
     if (!existingAction) {
@@ -371,7 +382,7 @@ router.patch('/:id/assign', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const action = await prisma.actionItem.update({
+    const action = await (tenantDb as any).actionItem.update({
       where: { id },
       data: {
         assignedTo,
@@ -390,24 +401,24 @@ router.patch('/:id/assign', async (req: Request, res: Response): Promise<void> =
 // Delete action
 router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const userRole = req.headers['x-user-role'] as string;
     const { id } = req.params;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
-    const existingAction = await prisma.actionItem.findFirst({
-      where: { id, tenantId: tenant.id },
+    const tenantDb = await getTenantDb(req);
+
+    const existingAction = await (tenantDb as any).actionItem.findFirst({
+      where: { id, tenantId },
     });
 
     if (!existingAction) {
@@ -415,7 +426,7 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    await prisma.actionItem.delete({ where: { id } });
+    await (tenantDb as any).actionItem.delete({ where: { id } });
 
     res.json(successResponse({ message: 'Action deleted successfully' }));
   } catch (error) {
@@ -427,47 +438,47 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
 // Get actions dashboard/stats
 router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.headers['x-user-id'] as string;
-
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
+    const tenantDb = await getTenantDb(req);
+
     // Get counts by status
-    const statusCounts = await prisma.actionItem.groupBy({
+    const statusCounts = await (tenantDb as any).actionItem.groupBy({
       by: ['status'],
-      where: { tenantId: tenant.id },
+      where: { tenantId },
       _count: { id: true },
     });
 
     // Get counts by priority
-    const priorityCounts = await prisma.actionItem.groupBy({
+    const priorityCounts = await (tenantDb as any).actionItem.groupBy({
       by: ['priority'],
-      where: { tenantId: tenant.id },
+      where: { tenantId },
       _count: { id: true },
     });
 
     // Get counts by action type
-    const typeCounts = await prisma.actionItem.groupBy({
+    const typeCounts = await (tenantDb as any).actionItem.groupBy({
       by: ['actionType'],
-      where: { tenantId: tenant.id },
+      where: { tenantId },
       _count: { id: true },
     });
 
     // Get overdue actions count
-    const overdueCount = await prisma.actionItem.count({
+    const overdueCount = await (tenantDb as any).actionItem.count({
       where: {
-        tenantId: tenant.id,
+        tenantId,
         dueDate: { lt: new Date() },
         status: { notIn: ['COMPLETED', 'CANCELLED'] },
-      } as any,
+      },
     });
 
     // Get recent actions
-    const recentActions = await prisma.actionItem.findMany({
-      where: { tenantId: tenant.id },
+    const recentActions = await (tenantDb as any).actionItem.findMany({
+      where: { tenantId },
       take: 5,
       orderBy: { createdAt: 'desc' },
       select: {
@@ -477,18 +488,18 @@ router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void
         priority: true,
         dueDate: true,
         assignedToName: true,
-      } as any,
+      },
     });
 
     // Get upcoming due actions
-    const upcomingActions = await prisma.actionItem.findMany({
+    const upcomingActions = await (tenantDb as any).actionItem.findMany({
       where: {
-        tenantId: tenant.id,
+        tenantId,
         dueDate: { gte: new Date() },
         status: { notIn: ['COMPLETED', 'CANCELLED'] },
-      } as any,
+      },
       take: 5,
-      orderBy: { dueDate: 'asc' } as any,
+      orderBy: { dueDate: 'asc' },
       select: {
         id: true,
         title: true,
@@ -496,13 +507,13 @@ router.get('/stats/dashboard', async (req: Request, res: Response): Promise<void
         priority: true,
         dueDate: true,
         assignedToName: true,
-      } as any,
+      },
     });
 
     res.json(successResponse({
-      statusCounts: statusCounts.map((s) => ({ status: s.status, count: s._count.id })),
-      priorityCounts: priorityCounts.map((p) => ({ priority: p.priority, count: p._count.id })),
-      typeCounts: typeCounts.map((t) => ({ type: t.actionType, count: t._count.id })),
+      statusCounts: statusCounts.map((s: any) => ({ status: s.status, count: s._count.id })),
+      priorityCounts: priorityCounts.map((p: any) => ({ priority: p.priority, count: p._count.id })),
+      typeCounts: typeCounts.map((t: any) => ({ type: t.actionType, count: t._count.id })),
       overdueCount,
       recentActions,
       upcomingActions,
@@ -520,32 +531,34 @@ router.get('/my/assigned', async (req: Request, res: Response): Promise<void> =>
     const { page = 1, limit = 20, status } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
+    const tenantDb = await getTenantDb(req);
+
     const where: any = {
-      tenantId: tenant.id,
+      tenantId,
       assignedTo: userId,
     };
 
     if (status) where.status = status;
 
     const [actions, total] = await Promise.all([
-      prisma.actionItem.findMany({
+      (tenantDb as any).actionItem.findMany({
         where,
         skip,
         take: Number(limit),
-        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }] as any,
+        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }],
         include: {
           news: {
             select: { id: true, title: true },
           },
-        } as any,
+        },
       }),
-      prisma.actionItem.count({ where }),
+      (tenantDb as any).actionItem.count({ where }),
     ]);
 
     res.json(successResponse({
@@ -570,24 +583,25 @@ router.post('/generate/:newsId', async (req: Request, res: Response): Promise<vo
     const userRole = req.headers['x-user-role'] as string;
     const { newsId } = req.params;
 
-    const allowedRoles = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN', 'CAMPAIGN_MANAGER'];
-    if (!allowedRoles.includes(userRole)) {
+    if (userRole !== 'CENTRAL_ADMIN') {
       res.status(403).json(errorResponse('E4001', 'Access denied'));
       return;
     }
 
-    const tenant = await getTenantFromUser(userId);
-    if (!tenant) {
+    const tenantId = getTenantId(req);
+    if (!tenantId) {
       res.status(404).json(errorResponse('E3001', 'Tenant not found'));
       return;
     }
 
+    const tenantDb = await getTenantDb(req);
+
     // Check if news exists and is accessible
-    const news = await prisma.newsInformation.findFirst({
+    const news = await (tenantDb as any).newsInformation.findFirst({
       where: {
         id: newsId,
         OR: [
-          { tenantId: tenant.id },
+          { tenantId },
           { tenantId: null },
         ],
       },
@@ -598,13 +612,177 @@ router.post('/generate/:newsId', async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    // TODO: Implement AI-based action generation
-    // For now, return a placeholder response
-    res.json(successResponse({
-      message: 'AI action generation request submitted. Actions will be created shortly.',
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) {
+      res.status(500).json(errorResponse('E5002', 'No OpenAI API key configured'));
+      return;
+    }
+
+    // Load prompts from files
+    let systemPrompt: string;
+    let userPromptTemplate: string;
+    try {
+      systemPrompt = readFileSync(resolve(promptsDir, 'action-generation-system.txt'), 'utf-8');
+      userPromptTemplate = readFileSync(resolve(promptsDir, 'action-generation-user.txt'), 'utf-8');
+    } catch (err) {
+      logger.error({ err }, 'Failed to load prompt files');
+      res.status(500).json(errorResponse('E5004', 'Prompt files not found'));
+      return;
+    }
+
+    const userPrompt = userPromptTemplate
+      .replace('{{newsTitle}}', news.title || '')
+      .replace('{{newsContent}}', news.content || news.summary || '')
+      .replace('{{newsCategory}}', news.category || 'POLITICAL')
+      .replace('{{constituency}}', news.constituency || 'N/A')
+      .replace('{{state}}', news.state || 'N/A')
+      .replace('{{aiAnalysis}}', JSON.stringify(news.aiAnalysis || 'Not available'));
+
+    const model = process.env.OPENAI_MODEL || 'gpt-4o';
+    logger.info({ model, newsId }, 'Requesting AI action generation');
+
+    // Credit check before AI call (using tenant DB for isolation)
+    const credits = await (tenantDb as any).tenantAICredits.findUnique({ where: { tenantId: tenantId! } });
+    const availableCredits = credits
+      ? (credits.totalCredits - credits.usedCredits + (credits.bonusCredits || 0))
+      : 0;
+
+    // Verify HMAC signature — detect tampering
+    if (credits && !verifyCredits({
+      tenantId: tenantId!,
+      totalCredits: credits.totalCredits,
+      bonusCredits: credits.bonusCredits || 0,
+      expiresAt: credits.expiresAt ? new Date(credits.expiresAt).toISOString() : null,
+      creditSignature: credits.creditSignature,
+    })) {
+      res.status(403).json(errorResponse('E4003', 'Credit verification failed. Please contact support.'));
+      return;
+    }
+
+    // Check expiry
+    if (credits?.expiresAt && new Date() > new Date(credits.expiresAt)) {
+      res.status(403).json(errorResponse('E4003', 'AI credits have expired. Please renew your subscription.'));
+      return;
+    }
+
+    if (!credits || availableCredits < ACTION_GENERATION_CREDIT_COST) {
+      res.status(403).json(errorResponse('E4003', `Insufficient AI credits. Required: ${ACTION_GENERATION_CREDIT_COST}, Available: ${availableCredits}`));
+      return;
+    }
+
+    const startTime = Date.now();
+    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 3000,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const errorData = await aiResponse.text();
+      logger.error({ status: aiResponse.status, error: errorData }, 'OpenAI API error');
+      res.status(502).json(errorResponse('E5003', 'AI action generation failed'));
+      return;
+    }
+
+    const result: any = await aiResponse.json();
+    const content = result.choices?.[0]?.message?.content;
+
+    let actionsData: any;
+    try {
+      actionsData = JSON.parse(content);
+    } catch {
+      logger.error({ content }, 'Failed to parse AI action response');
+      res.status(502).json(errorResponse('E5003', 'Invalid AI response format'));
+      return;
+    }
+
+    // Create action items from AI response
+    const createdActions = [];
+    for (const action of (actionsData.actions || [])) {
+      const created = await (tenantDb as any).actionItem.create({
+        data: {
+          tenantId,
+          newsId: newsId,
+          title: action.title || 'Untitled Action',
+          description: action.description || '',
+          actionType: action.actionType || 'OTHER',
+          priority: action.priority || 'MEDIUM',
+          status: 'pending',
+          geographicLevel: action.geographicLevel || news.geographicLevel || 'CONSTITUENCY',
+          state: news.state,
+          constituency: news.constituency,
+          targetAudience: action.targetAudience || null,
+          estimatedImpact: action.expectedImpact || null,
+          aiGenerated: true,
+          metadata: {
+            confidence: action.confidence,
+            reasoning: action.reasoning,
+            steps: action.steps,
+          },
+          dueDate: action.suggestedDeadline ? new Date(action.suggestedDeadline) : null,
+          createdBy: userId,
+        },
+      });
+      createdActions.push(created);
+    }
+
+    logger.info({ newsId, actionsCreated: createdActions.length }, 'AI action generation complete');
+
+    // Deduct credits in tenant DB (tenant isolation)
+    const responseTime = Date.now() - startTime;
+    try {
+      await (tenantDb as any).$transaction(async (tx: any) => {
+        await tx.tenantAICredits.update({
+          where: { tenantId: tenantId! },
+          data: { usedCredits: { increment: ACTION_GENERATION_CREDIT_COST } },
+        });
+        await tx.aIUsageLog.create({
+          data: {
+            tenantCreditsId: credits.id,
+            userId,
+            featureKey: 'action_generation',
+            creditsUsed: ACTION_GENERATION_CREDIT_COST,
+            inputTokens: result.usage?.prompt_tokens || 0,
+            outputTokens: result.usage?.completion_tokens || 0,
+            modelUsed: model,
+            responseTime,
+            status: 'success',
+          },
+        });
+        await tx.aICreditTransaction.create({
+          data: {
+            tenantCreditsId: credits.id,
+            transactionType: 'USAGE',
+            credits: -ACTION_GENERATION_CREDIT_COST,
+            description: `Used ${ACTION_GENERATION_CREDIT_COST} credits for action_generation`,
+            referenceType: 'AI_FEATURE',
+            referenceId: 'action_generation',
+            createdBy: userId,
+          },
+        });
+      });
+    } catch (creditErr) {
+      logger.warn({ err: creditErr }, 'Failed to deduct credits for action generation');
+    }
+
+    res.status(201).json(successResponse({
+      message: `Generated ${createdActions.length} action items from news`,
       newsId,
       newsTitle: news.title,
-      requestedAt: new Date().toISOString(),
+      actions: createdActions,
+      generatedAt: new Date().toISOString(),
     }));
   } catch (error) {
     logger.error({ err: error }, 'Generate actions error');

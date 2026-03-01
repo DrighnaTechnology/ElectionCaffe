@@ -1,3 +1,14 @@
+// CRITICAL: Load environment variables FIRST, before ANY other imports
+import dotenv from 'dotenv';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load .env from root directory - MUST happen before any other imports
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,6 +19,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { setupSocketIO } from './config/socket.js';
+import { createInternalRoutes } from './routes/internal.js';
 import { SERVICE_PORTS, createLogger, requestIdMiddleware, validateEnv } from '@electioncaffe/shared';
 
 export const logger = createLogger('gateway');
@@ -18,13 +30,16 @@ const app = express();
 const httpServer = createServer(app);
 
 // CORS origin whitelist
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5000,http://localhost:5174').split(',').map(s => s.trim());
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost,http://localhost:80,http://localhost:5000,http://localhost:5001,http://localhost:5174,http://localhost:8080').split(',').map(s => s.trim());
 
 // Socket.IO setup
 const io = new SocketIOServer(httpServer, {
   cors: {
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else if (origin && /^https?:\/\/[a-z0-9-]+\.localhost(:\d+)?$/.test(origin)) {
+        // Allow any *.localhost subdomain in development (matches Express CORS)
         callback(null, true);
       } else {
         callback(new Error('CORS not allowed'));
@@ -45,6 +60,9 @@ app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
       callback(null, true);
+    } else if (origin && /^https?:\/\/[a-z0-9-]+\.localhost(:\d+)?$/.test(origin)) {
+      // Allow any *.localhost subdomain in development
+      callback(null, true);
     } else {
       callback(new Error('CORS not allowed'));
     }
@@ -54,6 +72,10 @@ app.use(cors({
 
 // Body size limit
 app.use(express.json({ limit: '10mb' }));
+
+// Internal broadcast route (for inter-service WebSocket communication)
+// Mounted BEFORE auth middleware — uses its own x-internal-key auth
+app.use('/internal', createInternalRoutes(io));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -80,6 +102,10 @@ const authLimiter = rateLimit({
   message: { success: false, error: { code: 'E4029', message: 'Too many attempts. Please try again later.' } },
 });
 
+// Serve uploaded files (photos, etc.) - no auth needed
+const uploadsPath = resolve(__dirname, '../../../uploads');
+app.use('/uploads', express.static(uploadsPath));
+
 // Health check
 app.get('/health', (_req, res) => {
   const memUsage = process.memoryUsage();
@@ -102,6 +128,16 @@ const createServiceProxy = (target: string, pathRewrite?: Record<string, string>
     target,
     changeOrigin: true,
     ...(pathRewrite && { pathRewrite }),
+    onProxyReq: (proxyReq, req) => {
+      // Always re-write body if express.json() consumed it (even empty {})
+      // Without this, the upstream hangs waiting for Content-Length bytes that never arrive
+      if ((req as any).body !== undefined) {
+        const bodyData = JSON.stringify((req as any).body);
+        proxyReq.setHeader('Content-Type', 'application/json');
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
+      }
+    },
     onError: (err, req, res) => {
       logger.error({ err, path: req.url }, 'Proxy error');
       (res as any).status(503).json({
@@ -124,6 +160,9 @@ app.use('/api/auth/refresh', createServiceProxy(`http://localhost:${SERVICE_PORT
 app.use('/api/auth/forgot-password', authLimiter, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
 app.use('/api/auth/reset-password', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
 app.use('/api/auth/verify-otp', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`, { '^/api/auth': '/api' }));
+
+// Tenant resolve by slug - PUBLIC (no auth, used by login page to validate slug)
+app.use('/api/tenant/resolve', createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 
 // Tenant routes (database settings, etc.) - requires auth
 app.use('/api/tenant', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
@@ -153,13 +192,20 @@ app.use('/api/datacaffe', authMiddleware, createServiceProxy(`http://localhost:$
 app.use('/api/ai-analytics', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`, { '^/api/ai-analytics': '/api/ai-analytics' }));
 app.use('/api/ai/features', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`, { '^/api/ai/features': '/api/ai/features' }));
 app.use('/api/candidates', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.ELECTION}`, { '^/api/candidates': '/api/candidates' }));
+// Public survey form — NO auth required (must be before protected /api/surveys)
+app.use('/api/public/surveys', createServiceProxy(`http://localhost:${SERVICE_PORTS.ELECTION}`, { '^/api/public/surveys': '/api/public/surveys' }));
 app.use('/api/surveys', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.ELECTION}`, { '^/api/surveys': '/api/surveys' }));
+app.use('/api/campaigns', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.ELECTION}`, { '^/api/campaigns': '/api/campaigns' }));
 
 // EC Data, News, and Actions routes for tenant users (handled by auth-service)
 app.use('/api/ec-data', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/news', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/actions', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 
+// NB (News Broadcast) AI pipeline — handled by ai-analytics-service
+app.use('/api/nb', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`));
+// CaffeAI chat assistant — handled by ai-analytics-service
+app.use('/api/caffe-ai', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AI_ANALYTICS}`));
 // Additional auth-service module routes
 app.use('/api/nb-broadcast', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/website-builder', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
@@ -169,6 +215,7 @@ app.use('/api/events', authMiddleware, createServiceProxy(`http://localhost:${SE
 app.use('/api/notifications', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/chat', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 app.use('/api/organization', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
+app.use('/api/messaging-settings', authMiddleware, createServiceProxy(`http://localhost:${SERVICE_PORTS.AUTH}`));
 
 // Super Admin routes - public auth routes (apply auth rate limiter)
 app.use('/api/super-admin/auth/login', authLimiter, createServiceProxy(`http://localhost:${SERVICE_PORTS.SUPER_ADMIN}`));

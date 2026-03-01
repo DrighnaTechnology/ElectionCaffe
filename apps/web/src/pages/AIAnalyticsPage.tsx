@@ -134,9 +134,9 @@ export function AIAnalyticsPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election from the sidebar to view AI analytics.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election from the sidebar to view AI analytics.</p>
       </div>
     );
   }
@@ -164,7 +164,7 @@ export function AIAnalyticsPage() {
             <BrainCircuitIcon className="h-7 w-7 text-purple-600" />
             AI Analytics
           </h1>
-          <p className="text-gray-500">Advanced AI-powered election insights</p>
+          <p className="text-muted-foreground">Advanced AI-powered election insights</p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
@@ -239,211 +239,432 @@ export function AIAnalyticsPage() {
         </TabsList>
 
         <TabsContent value="predictions" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUpIcon className="h-5 w-5 text-green-600" />
-                  Turnout Prediction
-                </CardTitle>
-                <CardDescription>AI-predicted voter turnout by booth</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {turnoutLoading ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={turnout?.boothPredictions || []}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="partNo" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="predictedTurnout" fill="#10b981" name="Predicted %" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="historicalTurnout" fill="#94a3b8" name="Historical %" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
+          {turnoutLoading ? (
+            <Skeleton className="h-[400px] w-full" />
+          ) : (
+            <>
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-green-600">{turnout?.overallPrediction || turnout?.predictedTurnout || 0}%</p>
+                    <p className="text-sm text-muted-foreground">Predicted Turnout</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-blue-600">{formatNumber(turnout?.totalVoters || 0)}</p>
+                    <p className="text-sm text-muted-foreground">Total Voters</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-purple-600">{formatNumber(turnout?.predictedVotes || 0)}</p>
+                    <p className="text-sm text-muted-foreground">Predicted Votes</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-brand">{turnout?.confidence || 0}%</p>
+                    <p className="text-sm text-muted-foreground">Confidence</p>
+                    <p className="text-xs text-muted-foreground mt-1">Range: {turnout?.confidenceLow || 0}% - {turnout?.confidenceHigh || 0}%</p>
+                  </CardContent>
+                </Card>
+              </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Overall Prediction</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {turnoutLoading ? (
-                  <Skeleton className="h-48 w-full" />
-                ) : (
-                  <div className="text-center space-y-4">
-                    <div className="text-6xl font-bold text-green-600">{turnout?.overallPrediction || 0}%</div>
-                    <p className="text-gray-500">Expected Turnout</p>
-                    <div className="flex justify-center gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">Low:</span>
-                        <span className="font-medium ml-1">{turnout?.confidenceLow || 0}%</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">High:</span>
-                        <span className="font-medium ml-1">{turnout?.confidenceHigh || 0}%</span>
-                      </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Booth-level prediction chart */}
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUpIcon className="h-5 w-5 text-green-600" />
+                      Booth-wise Turnout Prediction
+                    </CardTitle>
+                    <CardDescription>Predicted vs historical turnout by part</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={turnout?.boothPredictions || turnout?.hourlyPrediction || []}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey={turnout?.boothPredictions ? 'partNumber' : 'hour'} />
+                        <YAxis />
+                        <Tooltip />
+                        {turnout?.boothPredictions ? (
+                          <>
+                            <Bar dataKey="predictedTurnout" fill="#10b981" name="Predicted %" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="historicalTurnout" fill="#94a3b8" name="Historical %" radius={[4, 4, 0, 0]} />
+                          </>
+                        ) : (
+                          <Bar dataKey="percentage" fill="#10b981" name="Turnout %" radius={[4, 4, 0, 0]} />
+                        )}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Hourly prediction */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Hourly Prediction</CardTitle>
+                    <CardDescription>Expected turnout progression</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {(turnout?.hourlyPrediction || []).map((h: any) => (
+                        <div key={h.hour} className="flex items-center gap-3">
+                          <span className="text-sm font-medium w-12">{h.hour}</span>
+                          <div className="flex-1 bg-muted rounded-full h-3">
+                            <div className="h-3 rounded-full bg-green-500" style={{ width: `${Math.min(h.percentage, 100)}%` }} />
+                          </div>
+                          <span className="text-sm text-muted-foreground w-10 text-right">{h.percentage}%</span>
+                        </div>
+                      ))}
                     </div>
-                    <Badge variant="info">Confidence: {turnout?.confidence || 0}%</Badge>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Insights */}
+              {(turnout?.insights || []).length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {turnout.insights.map((insight: any, i: number) => (
+                    <Card key={i}>
+                      <CardContent className="pt-6">
+                        <h4 className="font-medium mb-1">{insight.title}</h4>
+                        <p className="text-sm text-muted-foreground">{insight.description}</p>
+                        {insight.recommendation && (
+                          <p className="text-sm text-blue-600 mt-2 font-medium">Recommendation: {insight.recommendation}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="swing" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UsersIcon className="h-5 w-5 text-blue-600" />
-                  Swing Voter Analysis
-                </CardTitle>
-                <CardDescription>Voters likely to change their voting pattern</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {swingLoading ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : (
-                  <div className="space-y-4">
-                    <div className="text-center py-4">
-                      <div className="text-5xl font-bold text-blue-600">{formatNumber(swing?.totalSwingVoters || 0)}</div>
-                      <p className="text-gray-500 mt-1">Identified Swing Voters</p>
-                      <p className="text-sm text-gray-400">{swing?.swingPercentage || 0}% of total voters</p>
+          {swingLoading ? (
+            <Skeleton className="h-[400px] w-full" />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <UsersIcon className="h-5 w-5 text-blue-600" />
+                      Swing Voter Analysis
+                    </CardTitle>
+                    <CardDescription>Voters likely to change their voting pattern</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="text-center py-4">
+                        <div className="text-5xl font-bold text-blue-600">{formatNumber(swing?.totalSwingVoters || 0)}</div>
+                        <p className="text-muted-foreground mt-1">Identified Swing Voters</p>
+                        <p className="text-sm text-muted-foreground">{swing?.swingPercentage || swing?.percentage || 0}% of total voters</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div className="p-3 bg-green-50 rounded-lg">
+                          <p className="text-xl font-bold text-green-600">{swing?.favorableSwing || 0}%</p>
+                          <p className="text-xs text-muted-foreground">Favorable</p>
+                        </div>
+                        <div className="p-3 bg-muted/50 rounded-lg">
+                          <p className="text-xl font-bold text-muted-foreground">{swing?.neutralSwing || 0}%</p>
+                          <p className="text-xs text-muted-foreground">Neutral</p>
+                        </div>
+                        <div className="p-3 bg-red-50 rounded-lg">
+                          <p className="text-xl font-bold text-red-600">{swing?.unfavorableSwing || 0}%</p>
+                          <p className="text-xs text-muted-foreground">Unfavorable</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="p-3 bg-green-50 rounded-lg">
-                        <p className="text-xl font-bold text-green-600">{swing?.favorableSwing || 0}%</p>
-                        <p className="text-xs text-gray-500">Favorable</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xl font-bold text-gray-600">{swing?.neutralSwing || 0}%</p>
-                        <p className="text-xs text-gray-500">Neutral</p>
-                      </div>
-                      <div className="p-3 bg-red-50 rounded-lg">
-                        <p className="text-xl font-bold text-red-600">{swing?.unfavorableSwing || 0}%</p>
-                        <p className="text-xs text-gray-500">Unfavorable</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Swing Factors</CardTitle>
-                <CardDescription>Key factors influencing swing voters</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {swingLoading ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RadarChart data={swing?.factors || []}>
-                      <PolarGrid />
-                      <PolarAngleAxis dataKey="factor" />
-                      <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                      <Radar name="Impact" dataKey="impact" stroke="#f97316" fill="#f97316" fillOpacity={0.5} />
-                    </RadarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Swing Factors</CardTitle>
+                    <CardDescription>Key factors influencing swing voters</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <RadarChart data={swing?.factors || []}>
+                        <PolarGrid />
+                        <PolarAngleAxis dataKey="factor" />
+                        <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                        <Radar name="Impact" dataKey="impact" stroke="#f97316" fill="#f97316" fillOpacity={0.5} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Swing Voter Hotspots */}
+              {(swing?.hotspots || []).length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Swing Voter Hotspots</CardTitle>
+                    <CardDescription>Parts with highest swing voter concentration</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {swing.hotspots.map((h: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <p className="font-medium">Part {h.partNumber} — {h.boothName}</p>
+                            <p className="text-sm text-muted-foreground">{h.swingCount} swing voters ({h.percentage}%)</p>
+                          </div>
+                          <Badge variant="warning">Hotspot</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="risk" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldAlertIcon className="h-5 w-5 text-red-600" />
-                Booth Risk Assessment
-              </CardTitle>
-              <CardDescription>Booths identified with potential risks</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {riskLoading ? (
-                <Skeleton className="h-[400px] w-full" />
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="text-center p-4 bg-red-50 rounded-lg">
-                      <p className="text-3xl font-bold text-red-600">{risk?.highRiskCount || 0}</p>
-                      <p className="text-sm text-gray-500">High Risk</p>
-                    </div>
-                    <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                      <p className="text-3xl font-bold text-yellow-600">{risk?.mediumRiskCount || 0}</p>
-                      <p className="text-sm text-gray-500">Medium Risk</p>
-                    </div>
-                    <div className="text-center p-4 bg-green-50 rounded-lg">
-                      <p className="text-3xl font-bold text-green-600">{risk?.lowRiskCount || 0}</p>
-                      <p className="text-sm text-gray-500">Low Risk</p>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {(risk?.riskBooths || []).slice(0, 5).map((booth: any, index: number) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-3 border rounded-lg"
-                      >
-                        <div>
-                          <p className="font-medium">Part {booth.partNo}</p>
-                          <p className="text-sm text-gray-500">{booth.reason}</p>
+          {riskLoading ? (
+            <Skeleton className="h-[400px] w-full" />
+          ) : (
+            <>
+              {/* Risk KPI Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-foreground">{risk?.totalBooths || 0}</p>
+                    <p className="text-sm text-muted-foreground">Total Booths</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-red-600">{risk?.highRiskCount || 0}</p>
+                    <p className="text-sm text-muted-foreground">High Risk</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-yellow-600">{risk?.mediumRiskCount || 0}</p>
+                    <p className="text-sm text-muted-foreground">Medium Risk</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-green-600">{risk?.lowRiskCount || 0}</p>
+                    <p className="text-sm text-muted-foreground">Low Risk</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Risk Booths List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldAlertIcon className="h-5 w-5 text-red-600" />
+                    Vulnerable Booths
+                  </CardTitle>
+                  <CardDescription>
+                    {risk?.vulnerableBooths || 0} booths identified with potential risks (Score: {risk?.riskScore || 0}/10)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(risk?.riskBooths || []).length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">No vulnerable booths identified. All booths are safe.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(risk?.riskBooths || []).map((booth: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <p className="font-medium">Part {booth.partNumber} {booth.boothName ? `— ${booth.boothName}` : ''}</p>
+                            <p className="text-sm text-muted-foreground">{booth.reason}</p>
+                          </div>
+                          <Badge
+                            variant={
+                              booth.riskLevel === 'HIGH' ? 'destructive'
+                                : booth.riskLevel === 'MEDIUM' ? 'warning' : 'success'
+                            }
+                          >
+                            {booth.riskLevel}
+                          </Badge>
                         </div>
-                        <Badge
-                          variant={
-                            booth.riskLevel === 'HIGH'
-                              ? 'destructive'
-                              : booth.riskLevel === 'MEDIUM'
-                              ? 'warning'
-                              : 'success'
-                          }
-                        >
-                          {booth.riskLevel}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Risk Insights */}
+              {(risk?.insights || []).length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {risk.insights.map((insight: any, i: number) => (
+                    <Card key={i}>
+                      <CardContent className="pt-6">
+                        <h4 className="font-medium mb-1">{insight.title}</h4>
+                        <p className="text-sm text-muted-foreground">{insight.description}</p>
+                        {insight.recommendation && (
+                          <p className="text-sm text-blue-600 mt-2 font-medium">Recommendation: {insight.recommendation}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="demographics" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PieChartIcon className="h-5 w-5 text-purple-600" />
-                Demographic Insights
-              </CardTitle>
-              <CardDescription>AI-generated demographic analysis and recommendations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {demographicLoading ? (
-                <Skeleton className="h-[400px] w-full" />
-              ) : (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {demographicLoading ? (
+            <Skeleton className="h-[400px] w-full" />
+          ) : (
+            <>
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-purple-600">{formatNumber(demographic?.totalVoters || 0)}</p>
+                    <p className="text-sm text-muted-foreground">Total Voters</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-blue-600">{demographic?.averageAge || 0}</p>
+                    <p className="text-sm text-muted-foreground">Average Age</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-green-600">{(demographic?.religionBreakdown || []).length}</p>
+                    <p className="text-sm text-muted-foreground">Religious Groups</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-3xl font-bold text-brand">{(demographic?.casteBreakdown || []).length}</p>
+                    <p className="text-sm text-muted-foreground">Caste Categories</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Gender Distribution */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Gender Distribution</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {(demographic?.genderRatio || []).map((g: any) => (
+                        <div key={g.gender} className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{g.gender}</span>
+                          <div className="flex items-center gap-3 flex-1 ml-4">
+                            <div className="flex-1 bg-muted rounded-full h-3">
+                              <div
+                                className={`h-3 rounded-full ${g.gender === 'MALE' ? 'bg-blue-500' : g.gender === 'FEMALE' ? 'bg-pink-500' : 'bg-purple-500'}`}
+                                style={{ width: `${Math.min(g.percentage, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-sm text-muted-foreground w-24 text-right">{formatNumber(g.count)} ({g.percentage}%)</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Age Distribution */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Age Distribution</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={demographic?.ageGroups || []}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="label" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="count" fill="#8b5cf6" name="Voters" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Religion Breakdown */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Religion Breakdown</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {(demographic?.religionBreakdown || []).map((r: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{r.religion}</span>
+                          <div className="flex items-center gap-3 flex-1 ml-4">
+                            <div className="flex-1 bg-muted rounded-full h-3">
+                              <div className="h-3 rounded-full bg-brand" style={{ width: `${Math.min(r.percentage, 100)}%` }} />
+                            </div>
+                            <span className="text-sm text-muted-foreground w-24 text-right">{formatNumber(r.count)} ({r.percentage}%)</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Caste Breakdown */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Caste Category Breakdown</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {(demographic?.casteBreakdown || []).map((c: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{c.category}</span>
+                          <div className="flex items-center gap-3 flex-1 ml-4">
+                            <div className="flex-1 bg-muted rounded-full h-3">
+                              <div className="h-3 rounded-full bg-teal-500" style={{ width: `${Math.min(c.percentage, 100)}%` }} />
+                            </div>
+                            <span className="text-sm text-muted-foreground w-24 text-right">{formatNumber(c.count)} ({c.percentage}%)</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* AI Insights */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PieChartIcon className="h-5 w-5 text-purple-600" />
+                    AI Insights & Recommendations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {(demographic?.insights || []).map((insight: any, index: number) => (
                       <div key={index} className="p-4 border rounded-lg">
                         <h4 className="font-medium mb-2">{insight.title}</h4>
-                        <p className="text-sm text-gray-600">{insight.description}</p>
+                        <p className="text-sm text-muted-foreground">{insight.description}</p>
                         {insight.recommendation && (
-                          <p className="text-sm text-blue-600 mt-2">Recommendation: {insight.recommendation}</p>
+                          <p className="text-sm text-blue-600 mt-2 font-medium">
+                            Recommendation: {insight.recommendation}
+                          </p>
                         )}
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="history" className="space-y-6">
@@ -462,7 +683,7 @@ export function AIAnalyticsPage() {
                     ))}
                 </div>
               ) : analyses.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   No analyses run yet. Click "New Analysis" to get started.
                 </div>
               ) : (
@@ -473,8 +694,8 @@ export function AIAnalyticsPage() {
                       className="flex items-center justify-between p-4 border rounded-lg"
                     >
                       <div>
-                        <p className="font-medium">{analysis.analysisName}</p>
-                        <p className="text-sm text-gray-500">
+                        <p className="font-medium">{analysis.analysisName || analysis.analysisType}</p>
+                        <p className="text-sm text-muted-foreground">
                           {analysis.analysisType} • {formatDate(analysis.createdAt)}
                         </p>
                       </div>

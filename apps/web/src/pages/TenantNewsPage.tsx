@@ -14,30 +14,21 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '../components/ui/dialog';
-import {
   NewspaperIcon,
   SearchIcon,
   ExternalLinkIcon,
-  BrainCircuitIcon,
   CalendarIcon,
   TagIcon,
   GlobeIcon,
   MapPinIcon,
-  TrendingUpIcon,
-  AlertCircleIcon,
   LoaderIcon,
+  RefreshCwIcon,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 const NEWS_CATEGORIES = [
-  { value: '', label: 'All Categories' },
+  { value: 'all', label: 'All Categories' },
   { value: 'ELECTION', label: 'Election' },
   { value: 'POLITICAL', label: 'Political' },
   { value: 'POLICY', label: 'Policy' },
@@ -46,10 +37,15 @@ const NEWS_CATEGORIES = [
   { value: 'NATIONAL', label: 'National' },
   { value: 'ECONOMIC', label: 'Economic' },
   { value: 'SOCIAL', label: 'Social' },
+  { value: 'DEVELOPMENT', label: 'Development' },
+  { value: 'INFRASTRUCTURE', label: 'Infrastructure' },
+  { value: 'HEALTH', label: 'Health' },
+  { value: 'EDUCATION', label: 'Education' },
+  { value: 'CONTROVERSY', label: 'Controversy' },
 ];
 
 const NEWS_SCOPES = [
-  { value: '', label: 'All Scopes' },
+  { value: 'all', label: 'All Scopes' },
   { value: 'NATIONAL', label: 'National' },
   { value: 'STATE', label: 'State' },
   { value: 'DISTRICT', label: 'District' },
@@ -58,15 +54,19 @@ const NEWS_SCOPES = [
 
 export function TenantNewsPage() {
   const queryClient = useQueryClient();
+
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
-  const [scope, setScope] = useState('');
-  const [selectedNews, setSelectedNews] = useState<any>(null);
-  const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
+  const [category, setCategory] = useState('all');
+  const [scope, setScope] = useState('all');
 
   const { data: newsData, isLoading } = useQuery({
     queryKey: ['tenant-news', { search, category, scope }],
-    queryFn: () => newsAPI.getAll({ search, category: category || undefined, scope: scope || undefined, limit: 50 }),
+    queryFn: () => newsAPI.getAll({
+      search: search || undefined,
+      category: category !== 'all' ? category : undefined,
+      geographicLevel: scope !== 'all' ? scope : undefined,
+      limit: 50,
+    }),
   });
 
   const { data: categoryStats } = useQuery({
@@ -74,72 +74,87 @@ export function TenantNewsPage() {
     queryFn: () => newsAPI.getCategoryStats(),
   });
 
-  const analysisMutation = useMutation({
-    mutationFn: (newsId: string) => newsAPI.requestAnalysis(newsId),
+  // Fetch news from Google News RSS — passes active filters to get targeted results
+  const fetchNewsMutation = useMutation({
+    mutationFn: () => newsAPI.fetchNews({
+      category: category !== 'all' ? category : undefined,
+      scope: scope !== 'all' ? scope : undefined,
+    }),
     onSuccess: (data) => {
-      toast.success('AI analysis generated');
-      setSelectedNews((prev: any) => ({ ...prev, analysis: data.data?.data }));
+      const result = data.data?.data;
+      toast.success(`Fetched ${result?.created || 0} new articles (${result?.skipped || 0} duplicates skipped)`);
       queryClient.invalidateQueries({ queryKey: ['tenant-news'] });
+      queryClient.invalidateQueries({ queryKey: ['news-category-stats'] });
     },
-    onError: () => {
-      toast.error('Failed to generate analysis');
+    onError: (error: any) => {
+      const msg = error?.response?.data?.error?.message || 'Failed to fetch news';
+      toast.error(msg);
     },
   });
 
-  const news = newsData?.data?.data || [];
-  const stats = categoryStats?.data?.data || [];
+  const news = newsData?.data?.data?.data || newsData?.data?.data || [];
+  const stats = categoryStats?.data?.data?.categories || categoryStats?.data?.data || [];
 
   const getCategoryBadge = (cat: string) => {
     const colors: Record<string, string> = {
       ELECTION: 'bg-purple-100 text-purple-800',
       POLITICAL: 'bg-blue-100 text-blue-800',
       POLICY: 'bg-green-100 text-green-800',
-      GOVERNMENT: 'bg-orange-100 text-orange-800',
+      GOVERNMENT: 'bg-brand-muted text-brand',
       LOCAL: 'bg-yellow-100 text-yellow-800',
       NATIONAL: 'bg-red-100 text-red-800',
       ECONOMIC: 'bg-cyan-100 text-cyan-800',
       SOCIAL: 'bg-pink-100 text-pink-800',
+      DEVELOPMENT: 'bg-emerald-100 text-emerald-800',
+      INFRASTRUCTURE: 'bg-orange-100 text-orange-800',
+      HEALTH: 'bg-rose-100 text-rose-800',
+      EDUCATION: 'bg-indigo-100 text-indigo-800',
+      CONTROVERSY: 'bg-red-100 text-red-800',
     };
-    return colors[cat] || 'bg-gray-100 text-gray-800';
+    return colors[cat] || 'bg-muted text-foreground';
   };
 
   const getScopeBadge = (newsScope: string) => {
     const colors: Record<string, string> = {
       NATIONAL: 'bg-red-100 text-red-800',
-      STATE: 'bg-orange-100 text-orange-800',
+      STATE: 'bg-brand-muted text-brand',
       DISTRICT: 'bg-yellow-100 text-yellow-800',
       CONSTITUENCY: 'bg-green-100 text-green-800',
     };
-    return colors[newsScope] || 'bg-gray-100 text-gray-800';
+    return colors[newsScope] || 'bg-muted text-foreground';
   };
 
-  const handleViewNews = async (item: any) => {
-    setSelectedNews(item);
-    setShowAnalysisDialog(true);
-    // Fetch analysis if not already present
-    if (!item.analysis) {
-      try {
-        const response = await newsAPI.getAnalysis(item.id);
-        setSelectedNews((prev: any) => ({ ...prev, analysis: response.data?.data }));
-      } catch {
-        // Analysis not yet generated
-      }
-    }
-  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header with Fetch Button */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">News & Information</h1>
           <p className="text-muted-foreground">
-            Stay updated with election news and political information relevant to your constituency
+            Stay updated with constituency election news and political information
           </p>
         </div>
+        <Button
+          onClick={() => fetchNewsMutation.mutate()}
+          disabled={fetchNewsMutation.isPending}
+        >
+          {fetchNewsMutation.isPending ? (
+            <>
+              <LoaderIcon className="h-4 w-4 mr-2 animate-spin" />
+              Fetching...
+            </>
+          ) : (
+            <>
+              <RefreshCwIcon className="h-4 w-4 mr-2" />
+              Fetch News
+            </>
+          )}
+        </Button>
       </div>
 
       {/* Category Stats */}
-      {stats.length > 0 && (
+      {Array.isArray(stats) && stats.length > 0 && (
         <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-6">
           {stats.slice(0, 6).map((stat: any) => (
             <Card key={stat.category} className="cursor-pointer hover:shadow-md transition-shadow"
@@ -215,14 +230,16 @@ export function TenantNewsPage() {
                   <CardTitle className="text-base line-clamp-2">{item.title}</CardTitle>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge className={getCategoryBadge(item.category)}>
-                    <TagIcon className="h-3 w-3 mr-1" />
-                    {item.category}
-                  </Badge>
-                  {item.scope && (
-                    <Badge className={getScopeBadge(item.scope)}>
-                      {item.scope === 'NATIONAL' ? <GlobeIcon className="h-3 w-3 mr-1" /> : <MapPinIcon className="h-3 w-3 mr-1" />}
-                      {item.scope}
+                  {item.category && (
+                    <Badge className={getCategoryBadge(item.category)}>
+                      <TagIcon className="h-3 w-3 mr-1" />
+                      {item.category}
+                    </Badge>
+                  )}
+                  {item.geographicLevel && (
+                    <Badge className={getScopeBadge(item.geographicLevel)}>
+                      {item.geographicLevel === 'NATIONAL' ? <GlobeIcon className="h-3 w-3 mr-1" /> : <MapPinIcon className="h-3 w-3 mr-1" />}
+                      {item.geographicLevel}
                     </Badge>
                   )}
                 </div>
@@ -236,30 +253,22 @@ export function TenantNewsPage() {
                     <CalendarIcon className="h-3 w-3" />
                     {item.publishedAt ? format(new Date(item.publishedAt), 'PP') : 'N/A'}
                   </div>
-                  {item.source && (
-                    <span className="truncate max-w-[120px]">{item.source}</span>
+                  {item.sourceName && (
+                    <span className="truncate max-w-[120px]">{item.sourceName}</span>
                   )}
                 </div>
-                <div className="flex gap-2 mt-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleViewNews(item)}
-                  >
-                    <BrainCircuitIcon className="h-4 w-4 mr-1" />
-                    AI Analysis
-                  </Button>
-                  {item.sourceUrl && (
+                {item.sourceUrl && (
+                  <div className="flex gap-2 mt-4">
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => window.open(item.sourceUrl, '_blank')}
                     >
-                      <ExternalLinkIcon className="h-4 w-4" />
+                      <ExternalLinkIcon className="h-4 w-4 mr-1" />
+                      Read Source
                     </Button>
-                  )}
-                </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -269,129 +278,34 @@ export function TenantNewsPage() {
           <CardContent className="py-16 text-center">
             <NewspaperIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No news found</h3>
-            <p className="text-muted-foreground">
-              {search || category || scope
+            <p className="text-muted-foreground mb-4">
+              {search || category !== 'all' || scope !== 'all'
                 ? 'Try adjusting your filters'
-                : 'News articles will appear here once synced'}
+                : 'No news articles yet. Click below to fetch the latest constituency news.'}
             </p>
+            {!search && category === 'all' && scope === 'all' && (
+              <Button
+                onClick={() => fetchNewsMutation.mutate()}
+                disabled={fetchNewsMutation.isPending}
+                size="lg"
+              >
+                {fetchNewsMutation.isPending ? (
+                  <>
+                    <LoaderIcon className="h-4 w-4 mr-2 animate-spin" />
+                    Fetching News...
+                  </>
+                ) : (
+                  <>
+                    <NewspaperIcon className="h-4 w-4 mr-2" />
+                    Fetch Latest News
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Analysis Dialog */}
-      <Dialog open={showAnalysisDialog} onOpenChange={setShowAnalysisDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{selectedNews?.title}</DialogTitle>
-            <DialogDescription>
-              AI-powered analysis and insights
-            </DialogDescription>
-          </DialogHeader>
-          {selectedNews && (
-            <div className="space-y-4">
-              {/* News Details */}
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  <Badge className={getCategoryBadge(selectedNews.category)}>
-                    {selectedNews.category}
-                  </Badge>
-                  {selectedNews.scope && (
-                    <Badge className={getScopeBadge(selectedNews.scope)}>
-                      {selectedNews.scope}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">{selectedNews.summary || selectedNews.content}</p>
-                {selectedNews.publishedAt && (
-                  <p className="text-xs text-muted-foreground">
-                    Published: {format(new Date(selectedNews.publishedAt), 'PPP')}
-                  </p>
-                )}
-              </div>
-
-              {/* AI Analysis Section */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <BrainCircuitIcon className="h-5 w-5 text-purple-600" />
-                    AI Analysis
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedNews.analysis ? (
-                    <div className="space-y-4">
-                      {selectedNews.analysis.sentiment && (
-                        <div className="flex items-center gap-2">
-                          <TrendingUpIcon className="h-4 w-4" />
-                          <span className="text-sm font-medium">Sentiment:</span>
-                          <Badge variant={selectedNews.analysis.sentiment === 'POSITIVE' ? 'default' : selectedNews.analysis.sentiment === 'NEGATIVE' ? 'destructive' : 'secondary'}>
-                            {selectedNews.analysis.sentiment}
-                          </Badge>
-                        </div>
-                      )}
-                      {selectedNews.analysis.impact && (
-                        <div className="flex items-center gap-2">
-                          <AlertCircleIcon className="h-4 w-4" />
-                          <span className="text-sm font-medium">Impact Level:</span>
-                          <Badge>{selectedNews.analysis.impact}</Badge>
-                        </div>
-                      )}
-                      {selectedNews.analysis.summary && (
-                        <div>
-                          <h4 className="text-sm font-medium mb-1">Summary</h4>
-                          <p className="text-sm text-muted-foreground">{selectedNews.analysis.summary}</p>
-                        </div>
-                      )}
-                      {selectedNews.analysis.keyPoints && selectedNews.analysis.keyPoints.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-medium mb-1">Key Points</h4>
-                          <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                            {selectedNews.analysis.keyPoints.map((point: string, i: number) => (
-                              <li key={i}>{point}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {selectedNews.analysis.recommendations && selectedNews.analysis.recommendations.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-medium mb-1">Recommendations</h4>
-                          <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                            {selectedNews.analysis.recommendations.map((rec: string, i: number) => (
-                              <li key={i}>{rec}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4">
-                      <p className="text-sm text-muted-foreground mb-4">
-                        No analysis available yet for this news article.
-                      </p>
-                      <Button
-                        onClick={() => analysisMutation.mutate(selectedNews.id)}
-                        disabled={analysisMutation.isPending}
-                      >
-                        {analysisMutation.isPending ? (
-                          <>
-                            <LoaderIcon className="h-4 w-4 mr-2 animate-spin" />
-                            Generating...
-                          </>
-                        ) : (
-                          <>
-                            <BrainCircuitIcon className="h-4 w-4 mr-2" />
-                            Generate AI Analysis
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { recordAuditLog, auditLog } from '../utils/auditLog.js';
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
@@ -35,6 +36,7 @@ router.post('/login', async (req, res, next) => {
     });
 
     if (!superAdmin) {
+      recordAuditLog({ actorId: 'unknown', action: 'LOGIN_FAILED', entityType: 'super_admin', metadata: { email, reason: 'user_not_found' }, req });
       return res.status(401).json({
         success: false,
         error: {
@@ -45,6 +47,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     if (!superAdmin.isActive) {
+      recordAuditLog({ actorId: superAdmin.id, action: 'LOGIN_FAILED', entityType: 'super_admin', entityId: superAdmin.id, metadata: { email, reason: 'account_disabled' }, req });
       return res.status(403).json({
         success: false,
         error: {
@@ -57,6 +60,7 @@ router.post('/login', async (req, res, next) => {
     const isValidPassword = await bcrypt.compare(password, superAdmin.passwordHash);
 
     if (!isValidPassword) {
+      recordAuditLog({ actorId: superAdmin.id, action: 'LOGIN_FAILED', entityType: 'super_admin', entityId: superAdmin.id, metadata: { email, reason: 'invalid_password' }, req });
       return res.status(401).json({
         success: false,
         error: {
@@ -81,6 +85,8 @@ router.post('/login', async (req, res, next) => {
       JWT_SECRET,
       { expiresIn: '24h' }
     );
+
+    recordAuditLog({ actorId: superAdmin.id, action: 'LOGIN', entityType: 'super_admin', entityId: superAdmin.id, metadata: { email: superAdmin.email }, req });
 
     res.json({
       success: true,
@@ -140,6 +146,8 @@ router.post('/register', async (req, res, next) => {
       JWT_SECRET,
       { expiresIn: '24h' }
     );
+
+    recordAuditLog({ actorId: superAdmin.id, action: 'REGISTER', entityType: 'super_admin', entityId: superAdmin.id, metadata: { email: superAdmin.email }, req });
 
     res.status(201).json({
       success: true,
@@ -236,6 +244,8 @@ router.post('/change-password', superAdminAuthMiddleware, async (req, res, next)
       where: { id: superAdmin.id },
       data: { passwordHash: newPasswordHash },
     });
+
+    auditLog(req, 'CHANGE_PASSWORD', 'super_admin', superAdmin.id);
 
     res.json({
       success: true,

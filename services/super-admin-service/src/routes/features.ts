@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 
@@ -132,6 +133,8 @@ router.post('/', async (req, res, next) => {
       }
     }
 
+    auditLog(req, 'CREATE_FEATURE', 'feature_flag', feature.id, null, { featureKey: data.featureKey });
+
     res.status(201).json({
       success: true,
       data: feature,
@@ -159,6 +162,8 @@ router.put('/:id', async (req, res, next) => {
       data,
     });
 
+    auditLog(req, 'UPDATE_FEATURE', 'feature_flag', req.params.id, null, { fields: Object.keys(data) });
+
     res.json({
       success: true,
       data: feature,
@@ -179,6 +184,8 @@ router.delete('/:id', async (req, res, next) => {
     await prisma.featureFlag.delete({
       where: { id: req.params.id },
     });
+
+    auditLog(req, 'DELETE_FEATURE', 'feature_flag', req.params.id);
 
     res.json({
       success: true,
@@ -239,6 +246,8 @@ router.post('/:id/enable-all', async (req, res, next) => {
       )
     );
 
+    auditLog(req, 'ENABLE_FEATURE_ALL', 'feature_flag', req.params.id, null, { tenantCount: tenants.length });
+
     res.json({
       success: true,
       message: `Feature enabled for ${tenants.length} tenants`,
@@ -275,6 +284,8 @@ router.post('/:id/disable-all', async (req, res, next) => {
       where: { featureId: feature.id },
       data: { isEnabled: false },
     });
+
+    auditLog(req, 'DISABLE_FEATURE_ALL', 'feature_flag', req.params.id);
 
     res.json({
       success: true,
@@ -330,6 +341,8 @@ router.post('/:id/enable-for-tenants', async (req, res, next) => {
       )
     );
 
+    auditLog(req, 'ENABLE_FEATURE_TENANTS', 'feature_flag', req.params.id, null, { tenantIds });
+
     res.json({
       success: true,
       message: `Feature enabled for ${tenantIds.length} tenant(s)`,
@@ -384,6 +397,8 @@ router.post('/:id/disable-for-tenants', async (req, res, next) => {
       )
     );
 
+    auditLog(req, 'DISABLE_FEATURE_TENANTS', 'feature_flag', req.params.id, null, { tenantIds });
+
     res.json({
       success: true,
       message: `Feature disabled for ${tenantIds.length} tenant(s)`,
@@ -420,6 +435,8 @@ router.post('/bulk', async (req, res, next) => {
       });
       created.push(feature);
     }
+
+    auditLog(req, 'BULK_CREATE_FEATURES', 'feature_flag', null, null, { created: created.length, skipped: skipped.length });
 
     res.status(201).json({
       success: true,

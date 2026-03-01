@@ -59,9 +59,8 @@ interface Family {
   address?: string;
   partId: string;
   part?: {
-    partNo?: number;
-    partNumber?: number;
-    partNameEn?: string;
+    partNumber: number;
+    boothName: string;
     partName?: string;
   };
   captainId?: string;
@@ -205,7 +204,7 @@ export function FamilyCaptainPage() {
         [
           f.familyCode || f.familyName || '',
           `"${f.address || ''}"`,
-          f.part?.partNumber || f.part?.partNo || '',
+          f.part?.partNumber || f.part?.partNumber || '',
           f.totalMembers || f._count?.members || f._count?.voters || 0,
           f.captain ? `"${f.captain.voterName || f.captain.voterNameEn}"` : '',
           f.captain?.mobile || '',
@@ -226,9 +225,9 @@ export function FamilyCaptainPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election to manage family captains.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election to manage family captains.</p>
       </div>
     );
   }
@@ -242,7 +241,7 @@ export function FamilyCaptainPage() {
             <CrownIcon className="h-6 w-6" />
             Family Captains
           </h1>
-          <p className="text-gray-500">Assign and manage family captains for voter outreach</p>
+          <p className="text-muted-foreground">Assign and manage family captains for voter outreach</p>
         </div>
         <Button variant="outline" onClick={handleExport}>
           <DownloadIcon className="h-4 w-4 mr-2" />
@@ -259,7 +258,7 @@ export function FamilyCaptainPage() {
                 <Users2Icon className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Families</p>
+                <p className="text-sm text-muted-foreground">Total Families</p>
                 <p className="text-2xl font-bold">{stats.total}</p>
               </div>
             </div>
@@ -273,7 +272,7 @@ export function FamilyCaptainPage() {
                 <UserCheckIcon className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">With Captain</p>
+                <p className="text-sm text-muted-foreground">With Captain</p>
                 <p className="text-2xl font-bold text-green-600">{stats.withCaptain}</p>
               </div>
             </div>
@@ -287,7 +286,7 @@ export function FamilyCaptainPage() {
                 <UserPlusIcon className="h-5 w-5 text-amber-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Without Captain</p>
+                <p className="text-sm text-muted-foreground">Without Captain</p>
                 <p className="text-2xl font-bold text-amber-600">{stats.withoutCaptain}</p>
               </div>
             </div>
@@ -301,7 +300,7 @@ export function FamilyCaptainPage() {
                 <UsersIcon className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Total Members</p>
+                <p className="text-sm text-muted-foreground">Total Members</p>
                 <p className="text-2xl font-bold text-purple-600">{formatNumber(stats.totalMembers)}</p>
               </div>
             </div>
@@ -311,12 +310,12 @@ export function FamilyCaptainPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-full bg-orange-100">
-                <CrownIcon className="h-5 w-5 text-orange-600" />
+              <div className="p-2 rounded-full bg-brand-muted">
+                <CrownIcon className="h-5 w-5 text-brand" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">Coverage</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.coverage}%</p>
+                <p className="text-sm text-muted-foreground">Coverage</p>
+                <p className="text-2xl font-bold text-brand">{stats.coverage}%</p>
               </div>
             </div>
           </CardContent>
@@ -341,7 +340,7 @@ export function FamilyCaptainPage() {
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by family code, address, or captain name..."
                 value={search}
@@ -377,8 +376,8 @@ export function FamilyCaptainPage() {
             </div>
           ) : filteredFamilies.length === 0 ? (
             <div className="p-8 text-center">
-              <Users2Icon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No families found</p>
+              <Users2Icon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No families found</p>
             </div>
           ) : (
             <Table>
@@ -405,13 +404,13 @@ export function FamilyCaptainPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <MapPinIcon className="h-3 w-3 text-gray-400" />
-                        <span>{family.part?.partNumber || family.part?.partNo || '-'}</span>
+                        <MapPinIcon className="h-3 w-3 text-muted-foreground" />
+                        <span>{family.part?.partNumber || family.part?.partNumber || '-'}</span>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <UsersIcon className="h-3 w-3 text-gray-400" />
+                        <UsersIcon className="h-3 w-3 text-muted-foreground" />
                         {family.totalMembers || family._count?.members || family._count?.voters || 0}
                       </div>
                     </TableCell>
@@ -419,13 +418,13 @@ export function FamilyCaptainPage() {
                       {family.captain ? (
                         <div className="flex items-center gap-2">
                           <Avatar className="h-7 w-7">
-                            <AvatarFallback className="bg-orange-100 text-orange-600 text-xs">
+                            <AvatarFallback className="bg-brand-muted text-brand text-xs">
                               {getInitials(family.captain.voterName || family.captain.voterNameEn || '')}
                             </AvatarFallback>
                           </Avatar>
                           <div>
                             <div className="text-sm">{family.captain.voterName || family.captain.voterNameEn}</div>
-                            {family.captain.serialNo && <div className="text-xs text-gray-500">S.No: {family.captain.serialNo}</div>}
+                            {family.captain.serialNo && <div className="text-xs text-muted-foreground">S.No: {family.captain.serialNo}</div>}
                           </div>
                         </div>
                       ) : (
@@ -498,7 +497,7 @@ export function FamilyCaptainPage() {
                   ))}
               </div>
             ) : familyMembers.length === 0 ? (
-              <div className="text-center py-4 text-gray-500">
+              <div className="text-center py-4 text-muted-foreground">
                 No family members found
               </div>
             ) : (
@@ -510,31 +509,31 @@ export function FamilyCaptainPage() {
                     className={cn(
                       'p-3 border rounded-lg cursor-pointer transition-colors',
                       selectedCaptainId === member.id
-                        ? 'border-orange-500 bg-orange-50'
-                        : 'hover:bg-gray-50'
+                        ? 'border-brand bg-brand-muted'
+                        : 'hover:bg-muted/50'
                     )}
                     onClick={() => setSelectedCaptainId(member.id)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10">
-                          <AvatarFallback className="bg-gray-100">
+                          <AvatarFallback className="bg-muted">
                             {getInitials(member.voterName || member.voterNameEn || '')}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <div className="font-medium">{member.voterName || member.voterNameEn}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-muted-foreground">
                             {member.serialNo && `S.No: ${member.serialNo} | `}{member.gender}{member.age && `, ${member.age} yrs`}
                           </div>
                         </div>
                       </div>
                       {selectedCaptainId === member.id && (
-                        <CheckCircle2Icon className="h-5 w-5 text-orange-500" />
+                        <CheckCircle2Icon className="h-5 w-5 text-brand" />
                       )}
                     </div>
                     {member.mobile && (
-                      <div className="mt-2 flex items-center gap-1 text-sm text-gray-600">
+                      <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
                         <PhoneIcon className="h-3 w-3" />
                         {member.mobile}
                       </div>

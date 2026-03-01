@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useElectionStore } from '../store/election';
-import { reportsAPI } from '../services/api';
+import { reportsAPI, caffeAIAPI } from '../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -44,9 +44,15 @@ import {
   MapPinIcon,
   UserCogIcon,
   MessageSquareIcon,
+  SparklesIcon,
+  ExternalLinkIcon,
+  SaveIcon,
+  EyeIcon,
+  ClockIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/utils';
+import { buildReportHTML } from '../utils/report-html';
 
 const reportTypes = [
   { value: 'VOTER_DEMOGRAPHICS', label: 'Voter Demographics', icon: UsersIcon, description: 'Complete demographic breakdown of voters' },
@@ -55,9 +61,24 @@ const reportTypes = [
   { value: 'FEEDBACK_SUMMARY', label: 'Feedback Summary', icon: MessageSquareIcon, description: 'Summary of all feedback received' },
 ];
 
+function openReportInNewTab(data: any) {
+  const html = buildReportHTML(data);
+  const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  // Clean up blob URL after page loads (content stays in the tab)
+  if (win) {
+    win.addEventListener('load', () => URL.revokeObjectURL(url));
+  } else {
+    // If popup blocked, fallback — revoke after a delay
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+}
+
 export function ReportsPage() {
   const { selectedElectionId } = useElectionStore();
   const [createOpen, setCreateOpen] = useState(false);
+  const [reportData, setReportData] = useState<any | null>(null);
   const [formData, setFormData] = useState({
     reportName: '',
     reportType: 'VOTER_DEMOGRAPHICS',
@@ -155,12 +176,76 @@ export function ReportsPage() {
     onError: () => toast.error('Failed to generate report'),
   });
 
+  const generateAIReport = useMutation({
+    mutationFn: () => {
+      const googtrans = document.cookie.match(/googtrans=\/[^/]*\/([^;]*)/);
+      const lang = googtrans?.[1] || undefined;
+      return caffeAIAPI.generateReport(selectedElectionId!, lang);
+    },
+    onSuccess: (response) => {
+      const data = response.data?.data;
+      if (data?.report?.length) {
+        setReportData(data);
+        openReportInNewTab(data);
+        toast.success('AI Strategic Report generated — opened in new tab');
+      } else {
+        toast.error('Report generated but no sections were returned');
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to generate AI report');
+    },
+  });
+
+  // AI Report history
+  const { data: aiReportsData } = useQuery({
+    queryKey: ['ai-reports', selectedElectionId],
+    queryFn: () => caffeAIAPI.getSavedReports(selectedElectionId!),
+    enabled: !!selectedElectionId,
+  });
+  const aiReports: any[] = aiReportsData?.data?.data || [];
+
+  const saveAIReport = useMutation({
+    mutationFn: () => {
+      const title = `AI Strategic Report — ${new Date().toLocaleDateString('en-IN')}`;
+      return caffeAIAPI.saveReport(selectedElectionId!, title, reportData);
+    },
+    onSuccess: () => {
+      toast.success('Report saved');
+      queryClient.invalidateQueries({ queryKey: ['ai-reports'] });
+    },
+    onError: () => toast.error('Failed to save report'),
+  });
+
+  const deleteAIReport = useMutation({
+    mutationFn: (id: string) => caffeAIAPI.deleteSavedReport(id),
+    onSuccess: () => {
+      toast.success('Report deleted');
+      queryClient.invalidateQueries({ queryKey: ['ai-reports'] });
+    },
+    onError: () => toast.error('Failed to delete report'),
+  });
+
+  const viewSavedReport = async (id: string) => {
+    try {
+      const res = await caffeAIAPI.getSavedReport(id);
+      const saved = res.data?.data?.generatedData;
+      if (saved) {
+        openReportInNewTab(saved);
+      } else {
+        toast.error('Report data not found');
+      }
+    } catch {
+      toast.error('Failed to load report');
+    }
+  };
+
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election from the sidebar to view reports.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election from the sidebar to view reports.</p>
       </div>
     );
   }
@@ -197,7 +282,7 @@ export function ReportsPage() {
             <FileTextIcon className="h-7 w-7 text-blue-600" />
             Reports
           </h1>
-          <p className="text-gray-500">Generate and download election reports</p>
+          <p className="text-muted-foreground">Generate and download election reports</p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
@@ -270,6 +355,131 @@ export function ReportsPage() {
         </Dialog>
       </div>
 
+      {/* AI Strategic Report */}
+      <Card
+        style={{
+          borderColor: 'hsl(var(--brand-primary) / 0.3)',
+          background: 'linear-gradient(to right, hsl(var(--brand-primary) / 0.05), transparent)',
+        }}
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg" style={{ background: 'hsl(var(--brand-primary) / 0.1)' }}>
+              <SparklesIcon className="h-5 w-5" style={{ color: 'hsl(var(--brand-primary))' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold">AI Strategic Report</h3>
+              <p className="text-xs text-muted-foreground">
+                AI-powered election strategy analysis with charts and visual insights
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {reportData && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openReportInNewTab(reportData)}
+                  >
+                    <ExternalLinkIcon className="h-4 w-4 mr-1" />
+                    View
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => saveAIReport.mutate()}
+                    disabled={saveAIReport.isPending}
+                  >
+                    <SaveIcon className="h-4 w-4 mr-1" />
+                    {saveAIReport.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                </>
+              )}
+              <Button
+                size="sm"
+                onClick={() => generateAIReport.mutate()}
+                disabled={generateAIReport.isPending}
+                style={{ background: 'hsl(var(--brand-primary))', color: 'hsl(var(--brand-primary-foreground))' }}
+              >
+                {generateAIReport.isPending ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon className="h-4 w-4 mr-2" />
+                    {reportData ? 'Regenerate' : 'Generate'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Saved AI Reports */}
+      {aiReports.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <ClockIcon className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm">Saved AI Reports</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Generated</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {aiReports.map((r: any) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0" style={{ color: 'hsl(var(--brand-primary))' }} />
+                        {r.title}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {formatDate(r.generatedAt || r.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="View report"
+                          onClick={() => viewSavedReport(r.id)}
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Delete report"
+                          onClick={() => {
+                            if (confirm('Delete this saved report?')) {
+                              deleteAIReport.mutate(r.id);
+                            }
+                          }}
+                        >
+                          <TrashIcon className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Quick Generate Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {reportTypes.map((type) => (
@@ -281,7 +491,7 @@ export function ReportsPage() {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-medium">{type.label}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{type.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{type.description}</p>
                   <Button
                     variant="outline"
                     size="sm"
@@ -336,8 +546,8 @@ export function ReportsPage() {
             </div>
           ) : reports.length === 0 ? (
             <div className="p-8 text-center">
-              <FileSpreadsheetIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No reports generated yet</p>
+              <FileSpreadsheetIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No reports generated yet</p>
             </div>
           ) : (
             <Table>
@@ -364,7 +574,33 @@ export function ReportsPage() {
                     <TableCell>
                       <div className="flex gap-1">
                         {report.status === 'COMPLETED' && (
-                          <Button variant="ghost" size="icon">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Download report"
+                            onClick={() => {
+                              switch (report.reportType) {
+                                case 'VOTER_DEMOGRAPHICS':
+                                  generateVoterDemographics.mutate('csv');
+                                  break;
+                                case 'BOOTH_STATISTICS':
+                                  generateBoothStatistics.mutate('csv');
+                                  break;
+                                case 'CADRE_PERFORMANCE':
+                                  generateCadrePerformance.mutate('csv');
+                                  break;
+                                case 'FEEDBACK_SUMMARY':
+                                  generateFeedbackSummary.mutate('csv');
+                                  break;
+                              }
+                            }}
+                            disabled={
+                              generateVoterDemographics.isPending ||
+                              generateBoothStatistics.isPending ||
+                              generateCadrePerformance.isPending ||
+                              generateFeedbackSummary.isPending
+                            }
+                          >
                             <DownloadIcon className="h-4 w-4" />
                           </Button>
                         )}
@@ -388,6 +624,7 @@ export function ReportsPage() {
           )}
         </CardContent>
       </Card>
+
     </div>
   );
 }

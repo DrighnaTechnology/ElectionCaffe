@@ -113,7 +113,7 @@ async function main() {
   console.log('🌱 Starting comprehensive database seed...');
   console.log('📍 This will create sample data for multiple Indian states\n');
 
-  const passwordHash = await bcrypt.hash('admin123', 10);
+  const passwordHash = await bcrypt.hash('Admin@123', 10);
   const superAdminPasswordHash = await bcrypt.hash('SuperAdmin@123', 10);
 
   // ========== Create Super Admin ==========
@@ -1007,7 +1007,7 @@ async function main() {
 
   console.log('\n🔐 Tenant Admin Credentials (for Main App):');
   console.log('   📱 Mobile: 9876543210 (and incrementing for each state)');
-  console.log('   🔑 Password: admin123');
+  console.log('   🔑 Password: Admin@123');
   console.log('   🌐 Portal: http://localhost:5173');
 
   console.log('\n📍 States with data:');

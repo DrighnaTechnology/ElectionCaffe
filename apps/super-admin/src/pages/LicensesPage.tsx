@@ -18,6 +18,7 @@ import {
   RefreshCwIcon,
   SettingsIcon,
   CreditCardIcon,
+  PencilIcon,
 } from 'lucide-react';
 
 type LicenseStatus = 'ACTIVE' | 'TRIAL' | 'SUSPENDED' | 'EXPIRED' | 'CANCELLED' | 'PENDING_PAYMENT';
@@ -37,6 +38,10 @@ export function LicensesPage() {
   const [page, setPage] = useState(1);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingLicense, setEditingLicense] = useState<any>(null);
+  const [editPlanId, setEditPlanId] = useState('');
+  const [editStatus, setEditStatus] = useState('');
 
   // Fetch dashboard stats
   const { data: statsData } = useQuery({
@@ -96,6 +101,21 @@ export function LicensesPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error?.message || 'Failed to activate license');
+    },
+  });
+
+  // Update license mutation
+  const updateLicenseMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => licensesAPI.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['licenses'] });
+      queryClient.invalidateQueries({ queryKey: ['license-stats'] });
+      toast.success('License updated');
+      setShowEditModal(false);
+      setEditingLicense(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || 'Failed to update license');
     },
   });
 
@@ -244,7 +264,7 @@ export function LicensesPage() {
                 const status = statusConfig[license.status as LicenseStatus] || statusConfig.ACTIVE;
                 const StatusIcon = status.icon;
                 const activeSessions = license._count?.sessions || 0;
-                const maxSessions = license.customMaxSessions || license.licensePlan?.maxConcurrentSessions || 0;
+                const maxSessions = license.customMaxSessions || license.plan?.maxConcurrentSessions || 0;
 
                 return (
                   <tr key={license.id} className="hover:bg-gray-50">
@@ -255,9 +275,13 @@ export function LicensesPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded">
-                        {license.licensePlan?.planName}
-                      </span>
+                      {license.plan?.planName ? (
+                        <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded">
+                          {license.plan.planName}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">No plan</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded w-fit ${status.color}`}>
@@ -288,6 +312,18 @@ export function LicensesPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingLicense(license);
+                            setEditPlanId(license.plan?.id || '');
+                            setEditStatus(license.status || 'ACTIVE');
+                            setShowEditModal(true);
+                          }}
+                          className="p-1 text-blue-500 hover:text-blue-700"
+                          title="Edit License"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
                         {license.status === 'SUSPENDED' || license.status === 'EXPIRED' ? (
                           <button
                             onClick={() => activateMutation.mutate(license.id)}
@@ -361,6 +397,104 @@ export function LicensesPage() {
           plans={plans}
           onClose={() => setShowPlansModal(false)}
         />
+      )}
+
+      {/* Edit License Modal */}
+      {showEditModal && editingLicense && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold">
+                Edit License — {editingLicense.tenant?.name}
+              </h2>
+              <button onClick={() => { setShowEditModal(false); setEditingLicense(null); }} className="p-1 hover:bg-gray-100 rounded">
+                <XIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              {/* Plan Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">License Plan</label>
+                <select
+                  value={editPlanId}
+                  onChange={(e) => setEditPlanId(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  <option value="">Select a plan</option>
+                  {plans.map((plan: any) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.planName} ({plan.planType}) — {plan.monthlyPrice > 0 ? `₹${plan.monthlyPrice}/mo` : 'Free'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  <option value="ACTIVE">Active</option>
+                  <option value="TRIAL">Trial</option>
+                  <option value="SUSPENDED">Suspended</option>
+                  <option value="EXPIRED">Expired</option>
+                </select>
+              </div>
+
+              {/* Selected Plan Info */}
+              {editPlanId && (() => {
+                const selectedPlan = plans.find((p: any) => p.id === editPlanId);
+                if (!selectedPlan) return null;
+                return (
+                  <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1">
+                    <p className="font-medium text-gray-700 mb-2">Plan Limits</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-600">
+                      <span>Max Users: <strong>{selectedPlan.maxUsers ?? '—'}</strong></span>
+                      <span>Max Voters: <strong>{selectedPlan.maxVoters === -1 ? 'Unlimited' : selectedPlan.maxVoters ?? '—'}</strong></span>
+                      <span>Max Elections: <strong>{selectedPlan.maxElections === -1 ? 'Unlimited' : selectedPlan.maxElections ?? '—'}</strong></span>
+                      <span>Max Sessions: <strong>{selectedPlan.maxConcurrentSessions ?? '—'}</strong></span>
+                      <span>Storage: <strong>{selectedPlan.maxStorageMB === -1 ? 'Unlimited' : `${selectedPlan.maxStorageMB ?? 0} MB`}</strong></span>
+                      <span>Constituencies: <strong>{selectedPlan.maxConstituencies === -1 ? 'Unlimited' : selectedPlan.maxConstituencies ?? '—'}</strong></span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-lg">
+              <button
+                onClick={() => { setShowEditModal(false); setEditingLicense(null); }}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const updateData: any = {};
+                  if (editPlanId && editPlanId !== editingLicense.plan?.id) {
+                    updateData.planId = editPlanId;
+                  }
+                  if (editStatus && editStatus !== editingLicense.status) {
+                    updateData.status = editStatus;
+                  }
+                  if (Object.keys(updateData).length === 0) {
+                    toast.info('No changes to save');
+                    return;
+                  }
+                  updateLicenseMutation.mutate({ id: editingLicense.id, data: updateData });
+                }}
+                disabled={updateLicenseMutation.isPending}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+              >
+                {updateLicenseMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

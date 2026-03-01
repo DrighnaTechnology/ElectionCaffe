@@ -121,7 +121,7 @@ export const candidatesAPI = {
   getById: (id: string) => api.get(`/candidates/${id}`),
 
   create: (electionId: string, data: any) =>
-    api.post('/candidates', data, { params: { electionId } }),
+    api.post('/candidates', { ...data, electionId }),
 
   update: (id: string, data: any) => api.put(`/candidates/${id}`, data),
 
@@ -171,6 +171,12 @@ export const candidatesAPI = {
 
   // Battle Cards
   getBattleCards: (id: string) => api.get(`/candidates/${id}/battle-cards`),
+
+  getBattleCardById: (candidateId: string, bcId: string) =>
+    api.get(`/candidates/${candidateId}/battle-cards/${bcId}`),
+
+  generateBattleCard: (id: string, opponentId: string) =>
+    api.post(`/candidates/${id}/battle-cards/generate`, { opponentId }),
 
   createBattleCard: (id: string, data: {
     opponentId: string;
@@ -261,6 +267,14 @@ export const votersAPI = {
 
   removeScheme: (id: string, schemeId: string) =>
     api.delete(`/voters/${id}/schemes/${schemeId}`),
+
+  uploadPhoto: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return api.post(`/voters/${id}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // Families API
@@ -380,6 +394,27 @@ export const aiAnalyticsAPI = {
     api.delete(`/ai-analytics/${electionId}/${id}`),
 };
 
+// Surveys API
+export const surveysAPI = {
+  getAll: (electionId: string, params?: { page?: number; limit?: number; search?: string; isActive?: string }) =>
+    api.get('/surveys', { params: { electionId, ...params } }),
+
+  getById: (id: string) => api.get(`/surveys/${id}`),
+
+  create: (electionId: string, data: any) =>
+    api.post('/surveys', data, { params: { electionId } }),
+
+  update: (id: string, data: any) => api.put(`/surveys/${id}`, data),
+
+  delete: (id: string) => api.delete(`/surveys/${id}`),
+
+  getResponses: (id: string, params?: { page?: number; limit?: number }) =>
+    api.get(`/surveys/${id}/responses`, { params }),
+
+  submitResponse: (id: string, data: any) =>
+    api.post(`/surveys/${id}/responses`, data),
+};
+
 // Reports API
 export const reportsAPI = {
   getAll: (electionId: string, params?: { page?: number; limit?: number }) =>
@@ -393,16 +428,16 @@ export const reportsAPI = {
   delete: (id: string) => api.delete(`/reports/${id}`),
 
   generateVoterDemographics: (electionId: string, format?: string) =>
-    api.get(`/reports/generate/voter-demographics/${electionId}`, { params: { format } }),
+    api.get(`/reports/generate/voter-demographics/${electionId}`, { params: { format }, responseType: format === 'csv' ? 'text' : 'json' }),
 
   generateBoothStatistics: (electionId: string, format?: string) =>
-    api.get(`/reports/generate/booth-statistics/${electionId}`, { params: { format } }),
+    api.get(`/reports/generate/booth-statistics/${electionId}`, { params: { format }, responseType: format === 'csv' ? 'text' : 'json' }),
 
   generateCadrePerformance: (electionId: string, format?: string) =>
-    api.get(`/reports/generate/cadre-performance/${electionId}`, { params: { format } }),
+    api.get(`/reports/generate/cadre-performance/${electionId}`, { params: { format }, responseType: format === 'csv' ? 'text' : 'json' }),
 
   generateFeedbackSummary: (electionId: string, format?: string) =>
-    api.get(`/reports/generate/feedback-summary/${electionId}`, { params: { format } }),
+    api.get(`/reports/generate/feedback-summary/${electionId}`, { params: { format }, responseType: format === 'csv' ? 'text' : 'json' }),
 };
 
 // DataCaffe API
@@ -535,6 +570,9 @@ export const invitationsAPI = {
 
 // Tenant API (for tenant admins to manage their settings)
 export const tenantAPI = {
+  // Resolve tenant by slug — public, no auth required
+  resolveBySlug: (slug: string) => api.get(`/tenant/resolve/${slug}`),
+
   // Branding/Display Settings
   getBranding: () => api.get('/tenant/branding'),
 
@@ -578,11 +616,11 @@ export const aiAPI = {
   getAvailableFeatures: () => api.get('/ai/features'),
 
   // Get AI credits balance
-  getCredits: () => api.get('/ai/credits'),
+  getCredits: () => api.get('/ai/features/credits'),
 
   // Get AI usage history
   getUsageHistory: (params?: { page?: number; limit?: number; featureId?: string }) =>
-    api.get('/ai/usage', { params }),
+    api.get('/ai/features/usage/history', { params }),
 
   // Execute an AI feature
   executeFeature: (featureKey: string, input: any) =>
@@ -607,6 +645,21 @@ export const aiAPI = {
 
   // Get AI feature by key
   getFeatureByKey: (featureKey: string) => api.get(`/ai/features/${featureKey}`),
+
+  // Get available credit packages for purchase
+  getCreditPackages: () => api.get('/ai/features/packages'),
+
+  // Create Razorpay order for credit purchase
+  createPurchaseOrder: (packageId: string) =>
+    api.post('/ai/features/purchase/create-order', { packageId }),
+
+  // Verify Razorpay payment and add credits
+  verifyPurchase: (data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    packageId: string;
+  }) => api.post('/ai/features/purchase/verify', data),
 };
 
 // Organization Setup API (for tenant admins to manage role-feature access)
@@ -625,16 +678,65 @@ export const organizationAPI = {
   bulkUpdateRoleFeatures: (updates: { role: string; featureKey: string; isEnabled: boolean }[]) =>
     api.put('/organization/role-features/bulk', { updates }),
 
+  // Get role distribution (aggregate counts)
+  getRoleDistribution: () => api.get('/organization/role-distribution'),
+
   // Get users with their roles (for user management)
   getUsers: (params?: { page?: number; limit?: number; search?: string; role?: string }) =>
     api.get('/organization/users', { params }),
 
-  // Update user role
-  updateUserRole: (userId: string, role: string) =>
-    api.put(`/organization/users/${userId}/role`, { role }),
+  // Create user with temp password
+  createUser: (data: {
+    firstName: string;
+    lastName?: string;
+    email?: string;
+    mobile: string;
+    customRoleId?: string;
+  }) => api.post('/organization/users', data),
+
+  // Update user role (assign custom role)
+  updateUserRole: (userId: string, customRoleId: string | null) =>
+    api.put(`/organization/users/${userId}/role`, { customRoleId }),
+
+  // Update user details (name, email, mobile, customRoleId)
+  updateUser: (userId: string, data: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    mobile?: string;
+    customRoleId?: string | null;
+  }) => api.put(`/organization/users/${userId}`, data),
+
+  // Update user status (ACTIVE, INACTIVE, BLOCKED)
+  updateUserStatus: (userId: string, status: string) =>
+    api.put(`/organization/users/${userId}/status`, { status }),
+
+  // Delete user
+  deleteUser: (userId: string) =>
+    api.delete(`/organization/users/${userId}`),
+
+  // Bulk delete users
+  bulkDeleteUsers: (userIds: string[]) =>
+    api.post('/organization/users/bulk-delete', { userIds }),
+
+  // Get single user detail
+  getUser: (userId: string) => api.get(`/organization/users/${userId}`),
+
+  // Regenerate password for a user
+  regeneratePassword: (userId: string) =>
+    api.post(`/organization/users/${userId}/regenerate-password`),
 
   // Get current user's feature access
   getMyFeatures: () => api.get('/organization/my-features'),
+
+  // Custom roles
+  getCustomRoles: () => api.get('/organization/custom-roles'),
+  createCustomRole: (data: { name: string; description?: string }) =>
+    api.post('/organization/custom-roles', data),
+  deleteCustomRole: (roleId: string) =>
+    api.delete(`/organization/custom-roles/${roleId}`),
+  updateCustomRoleFeatures: (roleId: string, updates: { featureKey: string; isEnabled: boolean }[]) =>
+    api.put(`/organization/custom-roles/${roleId}/features`, { updates }),
 };
 
 // AI Admin API (for tenant admins to manage AI feature access)
@@ -684,7 +786,7 @@ export const ecDataAPI = {
 // News API (for tenant users to view and analyze news)
 export const newsAPI = {
   // Get all news for tenant
-  getAll: (params?: { page?: number; limit?: number; category?: string; scope?: string; search?: string }) =>
+  getAll: (params?: { page?: number; limit?: number; category?: string; geographicLevel?: string; search?: string }) =>
     api.get('/news', { params }),
 
   // Get single news item
@@ -699,6 +801,10 @@ export const newsAPI = {
   // Request AI analysis for a news item
   requestAnalysis: (id: string, analysisType?: string) =>
     api.post(`/news/${id}/analyze`, { analysisType }),
+
+  // Fetch news from external sources (backend auto-resolves constituency from tenant's election)
+  fetchNews: (params?: { category?: string; scope?: string }) =>
+    api.post('/news/fetch', params || {}),
 };
 
 // Actions API (for tenant users to manage tasks and actions)
@@ -890,7 +996,30 @@ export const nbAPI = {
     priority?: string;
   }) => api.post('/nb/broadcasts', data),
 
+  updateBroadcast: (id: string, data: { title?: string; content?: string; channels?: string[] }) =>
+    api.patch(`/nb/broadcasts/${id}`, data),
+
   sendBroadcast: (id: string) => api.post(`/nb/broadcasts/${id}/send`),
+
+  updateAndSendBroadcast: async (id: string, data: { title?: string; content?: string; channels?: string[] }) => {
+    await api.patch(`/nb/broadcasts/${id}`, data);
+    return api.post(`/nb/broadcasts/${id}/send`);
+  },
+
+  generateBroadcast: (analysisId: string) =>
+    api.post(`/nb/generate-broadcast/${analysisId}`),
+
+  generateAITheme: (prompt: string) =>
+    api.post('/nb/generate-theme', { prompt }),
+
+  getSavedThemes: () =>
+    api.get('/nb/themes'),
+
+  saveTheme: (data: { name: string; description?: string; tokens: object }) =>
+    api.post('/nb/themes', data),
+
+  deleteTheme: (id: string) =>
+    api.delete(`/nb/themes/${id}`),
 };
 
 // Fund Management API
@@ -923,7 +1052,7 @@ export const fundsAPI = {
     page?: number;
     limit?: number;
     accountId?: string;
-    status?: string;
+    paymentMode?: string;
     startDate?: string;
     endDate?: string;
     search?: string;
@@ -958,7 +1087,7 @@ export const fundsAPI = {
     limit?: number;
     accountId?: string;
     status?: string;
-    expenseCategory?: string;
+    category?: string;
     startDate?: string;
     endDate?: string;
     search?: string;
@@ -998,6 +1127,19 @@ export const fundsAPI = {
   }) => api.get('/funds/transactions', { params }),
 
   getTransactionById: (id: string) => api.get(`/funds/transactions/${id}`),
+
+  // Bulk Import
+  bulkImportDonations: (data: { accountId: string; donations: any[] }) =>
+    api.post('/funds/donations/bulk', data),
+
+  bulkImportExpenses: (data: { accountId: string; expenses: any[] }) =>
+    api.post('/funds/expenses/bulk', data),
+
+  getDonationTemplate: () => '/api/funds/donations/template',
+  getExpenseTemplate: () => '/api/funds/expenses/template',
+
+  // Overview metrics with period filter
+  getOverview: (params?: { period?: string }) => api.get('/funds/overview', { params }),
 
   // Summary/Dashboard
   getSummary: (params?: { accountId?: string }) => api.get('/funds/summary', { params }),
@@ -1150,6 +1292,96 @@ export const inventoryAPI = {
     endDate?: string;
     format?: string;
   }) => api.get('/inventory/reports', { params }),
+};
+
+// ── CaffeAI ───────────────────────────────────────────────────────────────────
+export const campaignsAPI = {
+  getAll: (electionId: string, params?: Record<string, any>) =>
+    api.get('/campaigns', { params: { electionId, ...params } }),
+  getById: (id: string) =>
+    api.get(`/campaigns/${id}`),
+  getStats: (electionId: string) =>
+    api.get('/campaigns/stats', { params: { electionId } }),
+  getProviderStatus: () =>
+    api.get('/campaigns/provider-status'),
+  create: (electionId: string, data: any) =>
+    api.post('/campaigns', data, { params: { electionId } }),
+  update: (id: string, data: any) =>
+    api.put(`/campaigns/${id}`, data),
+  delete: (id: string) =>
+    api.delete(`/campaigns/${id}`),
+  send: (id: string) =>
+    api.post(`/campaigns/${id}/send`),
+  getMessages: (campaignId: string, params?: Record<string, any>) =>
+    api.get(`/campaigns/${campaignId}/messages`, { params }),
+};
+
+export const messagingSettingsAPI = {
+  getAll: () =>
+    api.get('/messaging-settings'),
+  getSupported: () =>
+    api.get('/messaging-settings/supported'),
+  create: (data: { channel: string; provider: string; config: any; providerName?: string }) =>
+    api.post('/messaging-settings', data),
+  update: (id: string, data: any) =>
+    api.put(`/messaging-settings/${id}`, data),
+  setDefault: (id: string) =>
+    api.put(`/messaging-settings/${id}/set-default`),
+  test: (id: string, testDestination: string) =>
+    api.post(`/messaging-settings/${id}/test`, { testDestination }),
+  delete: (id: string) =>
+    api.delete(`/messaging-settings/${id}`),
+};
+
+export const caffeAIAPI = {
+  chat: (
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    context?: {
+      electionName?: string;
+      electionType?: string;
+      constituency?: string;
+      state?: string;
+      status?: string;
+      totalVoters?: number;
+      totalBooths?: number;
+      pollDate?: string;
+    },
+    guidedStep?: number,
+    lang?: string
+  ) => api.post('/caffe-ai/chat', { messages, context, guidedStep, lang }),
+
+  generateReport: (electionId: string, lang?: string) =>
+    api.get(`/caffe-ai/report/${electionId}`, { params: lang ? { lang } : undefined }),
+
+  saveReport: (electionId: string, title: string, generatedData: any) =>
+    api.post('/caffe-ai/report/save', { electionId, title, generatedData }),
+
+  getSavedReports: (electionId: string) =>
+    api.get(`/caffe-ai/reports/${electionId}`),
+
+  getSavedReport: (id: string) =>
+    api.get(`/caffe-ai/report/saved/${id}`),
+
+  deleteSavedReport: (id: string) =>
+    api.delete(`/caffe-ai/report/saved/${id}`),
+
+  generateSurvey: (electionId: string, prompt: string, lang?: string) =>
+    api.post('/caffe-ai/survey/generate', { electionId, prompt, lang }),
+
+  analyzeSurvey: (surveyId: string, electionId: string, lang?: string) =>
+    api.get(`/caffe-ai/survey/analyze/${surveyId}`, { params: { electionId, lang } }),
+
+  composeCampaignMessage: (data: { intent: string; channel: string; language: string; tone: string; electionId: string }) =>
+    api.post('/caffe-ai/campaign/compose', data),
+
+  suggestAudience: (data: { goal: string; electionId: string }) =>
+    api.post('/caffe-ai/campaign/audience', data),
+
+  getDashboardNarrative: (electionId: string, lang?: string) =>
+    api.get(`/caffe-ai/dashboard-narrative/${electionId}`, { params: lang ? { lang } : undefined }),
+
+  computePulseScores: (electionId: string) =>
+    api.post('/caffe-ai/voter/pulse-score', { electionId }),
 };
 
 export default api;

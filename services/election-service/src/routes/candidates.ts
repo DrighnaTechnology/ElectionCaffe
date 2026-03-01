@@ -27,6 +27,8 @@ router.delete('/:id/social-media/:smId', candidateController.deleteCandidateSoci
 
 // Battle Cards
 router.get('/:id/battle-cards', candidateController.getCandidateBattleCards);
+router.get('/:id/battle-cards/:bcId', candidateController.getBattleCardById);
+router.post('/:id/battle-cards/generate', candidateController.generateBattleCard);
 router.post('/:id/battle-cards', candidateController.createBattleCard);
 router.put('/:id/battle-cards/:bcId', candidateController.updateBattleCard);
 router.delete('/:id/battle-cards/:bcId', candidateController.deleteBattleCard);

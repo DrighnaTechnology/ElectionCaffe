@@ -235,7 +235,7 @@ async function createTenantInCore(config: TenantConfig): Promise<string> {
   const tenant = await corePrisma.tenant.upsert({
     where: { slug: config.slug },
     update: {
-      databaseType: 'DEDICATED_MANAGED',
+      databaseType: 'DEDICATED_PLATFORM',
       databaseStatus: 'READY',
       databaseName: config.databaseName,
       databaseHost: 'localhost',
@@ -257,7 +257,7 @@ async function createTenantInCore(config: TenantConfig): Promise<string> {
       tenantType: config.tenantType,
 
       // Database configuration
-      databaseType: 'DEDICATED_MANAGED',
+      databaseType: 'DEDICATED_PLATFORM',
       databaseStatus: 'READY',
       databaseName: config.databaseName,
       databaseHost: 'localhost',

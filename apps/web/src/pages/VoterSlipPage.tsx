@@ -31,30 +31,24 @@ import { formatNumber, cn } from '../lib/utils';
 
 interface Voter {
   id: string;
-  serialNo?: number;
-  slNo?: number;
   slNumber?: number;
-  voterNameEn?: string;
-  voterName?: string;
   name?: string;
-  voterNameLocal?: string;
   nameLocal?: string;
-  epicNo?: string;
   epicNumber?: string;
-  relativeName?: string;
+  fatherName?: string;
+  motherName?: string;
+  husbandName?: string;
   relationType?: string;
   age?: number;
   gender?: string;
-  houseNo?: string;
+  houseNumber?: string;
   address?: string;
   mobile?: string;
   partId: string;
   part?: {
-    partNo?: number;
-    partNumber?: number;
-    partNameEn?: string;
-    partName?: string;
-    boothAddress?: string;
+    partNumber: number;
+    boothName: string;
+    address?: string;
   };
 }
 
@@ -113,7 +107,7 @@ export function VoterSlipPage() {
     queryFn: () =>
       votersAPI.getAll(selectedElectionId!, {
         partId: selectedPartId !== 'all' ? selectedPartId : undefined,
-        limit: 500,
+        limit: selectedPartId !== 'all' ? 2000 : 500,
       }),
     enabled: !!selectedElectionId,
   });
@@ -121,6 +115,7 @@ export function VoterSlipPage() {
   const election = electionData?.data?.data;
   const parts = partsData?.data?.data || [];
   const voters: Voter[] = votersData?.data?.data || [];
+  const totalVoterCount: number = votersData?.data?.meta?.total || voters.length;
 
   // Filter voters
   const filteredVoters = useMemo(() => {
@@ -128,9 +123,10 @@ export function VoterSlipPage() {
     const lowerSearch = search.toLowerCase();
     return voters.filter(
       (v) =>
-        (v.name || v.voterName || v.voterNameEn)?.toLowerCase().includes(lowerSearch) ||
-        (v.epicNumber || v.epicNo)?.toLowerCase().includes(lowerSearch) ||
-        (v.slNumber || v.serialNo || v.slNo)?.toString().includes(search)
+        v.name?.toLowerCase().includes(lowerSearch) ||
+        v.nameLocal?.toLowerCase().includes(lowerSearch) ||
+        v.epicNumber?.toLowerCase().includes(lowerSearch) ||
+        v.slNumber?.toString().includes(search)
     );
   }, [voters, search]);
 
@@ -172,18 +168,23 @@ export function VoterSlipPage() {
 
   // Export as CSV
   const handleExport = () => {
+    const getRelativeName = (v: Voter) => {
+      if (v.relationType === 'HUSBAND' || v.relationType === 'WIFE') return v.husbandName || '';
+      return v.fatherName || v.motherName || '';
+    };
+
     const csvContent = [
-      ['S.No', 'Name', 'EPIC No', 'Father/Husband', 'Age', 'Gender', 'Part No', 'Booth Address'].join(','),
+      ['S.No', 'Name', 'EPIC No', 'Father/Husband', 'Age', 'Gender', 'Part No', 'Booth Name'].join(','),
       ...selectedVotersData.map((v) =>
         [
-          v.serialNo,
-          `"${v.voterNameEn}"`,
-          v.epicNo || '',
-          `"${v.relativeName || ''}"`,
+          v.slNumber || '',
+          `"${v.name || ''}"`,
+          v.epicNumber || '',
+          `"${getRelativeName(v)}"`,
           v.age || '',
           v.gender || '',
-          v.part?.partNo || '',
-          `"${v.part?.boothAddress || ''}"`,
+          v.part?.partNumber || '',
+          `"${v.part?.boothName || ''}"`,
         ].join(',')
       ),
     ].join('\n');
@@ -202,9 +203,9 @@ export function VoterSlipPage() {
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election to generate voter slips.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election to generate voter slips.</p>
       </div>
     );
   }
@@ -218,7 +219,7 @@ export function VoterSlipPage() {
             <FileTextIcon className="h-6 w-6" />
             Voter Slips
           </h1>
-          <p className="text-gray-500">Generate and print voter slips for poll day distribution</p>
+          <p className="text-muted-foreground">Generate and print voter slips for poll day distribution</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -240,7 +241,7 @@ export function VoterSlipPage() {
       </div>
 
       {/* Template Selection */}
-      <Card>
+      <Card className="hover:shadow-sm hover:translate-y-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <LayoutTemplateIcon className="h-5 w-5" />
@@ -253,15 +254,15 @@ export function VoterSlipPage() {
               <div
                 key={t.id}
                 className={cn(
-                  'p-4 border-2 rounded-lg cursor-pointer transition-all',
+                  'p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 bg-card',
                   selectedTemplate === t.id
-                    ? 'border-orange-500 bg-orange-50'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? 'border-brand bg-brand-muted shadow-md ring-1 ring-brand/20'
+                    : 'border-border hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5'
                 )}
                 onClick={() => setSelectedTemplate(t.id)}
               >
                 <div className="font-medium">{t.name}</div>
-                <p className="text-sm text-gray-500 mt-1">{t.description}</p>
+                <p className="text-sm text-muted-foreground mt-1">{t.description}</p>
               </div>
             ))}
           </div>
@@ -273,7 +274,7 @@ export function VoterSlipPage() {
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
-              <Label className="text-sm text-gray-500 mb-1 block">Part / Booth</Label>
+              <Label className="text-sm text-muted-foreground mb-1 block">Part / Booth</Label>
               <Select value={selectedPartId} onValueChange={setSelectedPartId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select part" />
@@ -282,16 +283,16 @@ export function VoterSlipPage() {
                   <SelectItem value="all">All Parts</SelectItem>
                   {parts.map((part: any) => (
                     <SelectItem key={part.id} value={part.id}>
-                      Part {part.partNumber || part.partNo} - {part.partName || part.partNameEn || '-'}
+                      Part {part.partNumber} - {part.boothName || '-'}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex-1">
-              <Label className="text-sm text-gray-500 mb-1 block">Search Voter</Label>
+              <Label className="text-sm text-muted-foreground mb-1 block">Search Voter</Label>
               <div className="relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by name, EPIC, or S.No..."
                   value={search}
@@ -309,26 +310,29 @@ export function VoterSlipPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <UsersIcon className="h-5 w-5 text-gray-400" />
-              <span className="text-sm text-gray-500">Total Voters</span>
+              <UsersIcon className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Total Voters</span>
             </div>
-            <p className="text-2xl font-bold">{formatNumber(filteredVoters.length)}</p>
+            <p className="text-2xl font-bold">{formatNumber(totalVoterCount)}</p>
+            {voters.length < totalVoterCount && (
+              <p className="text-xs text-muted-foreground">Showing {formatNumber(voters.length)} of {formatNumber(totalVoterCount)}</p>
+            )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <FileTextIcon className="h-5 w-5 text-orange-500" />
-              <span className="text-sm text-gray-500">Selected</span>
+              <FileTextIcon className="h-5 w-5 text-brand" />
+              <span className="text-sm text-muted-foreground">Selected</span>
             </div>
-            <p className="text-2xl font-bold text-orange-600">{selectedVoters.size}</p>
+            <p className="text-2xl font-bold text-brand">{selectedVoters.size}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <MapPinIcon className="h-5 w-5 text-gray-400" />
-              <span className="text-sm text-gray-500">Parts</span>
+              <MapPinIcon className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Parts</span>
             </div>
             <p className="text-2xl font-bold">{parts.length}</p>
           </CardContent>
@@ -336,8 +340,8 @@ export function VoterSlipPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <PrinterIcon className="h-5 w-5 text-gray-400" />
-              <span className="text-sm text-gray-500">Template</span>
+              <PrinterIcon className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Template</span>
             </div>
             <p className="text-lg font-bold">{template.name}</p>
           </CardContent>
@@ -372,13 +376,13 @@ export function VoterSlipPage() {
             </div>
           ) : filteredVoters.length === 0 ? (
             <div className="p-8 text-center">
-              <UsersIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No voters found</p>
+              <UsersIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No voters found</p>
             </div>
           ) : (
             <div className="max-h-[400px] overflow-y-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 sticky top-0">
+                <thead className="bg-muted/50 sticky top-0">
                   <tr>
                     <th className="text-left p-3 w-[50px]"></th>
                     <th className="text-left p-3">S.No</th>
@@ -394,8 +398,8 @@ export function VoterSlipPage() {
                     <tr
                       key={voter.id}
                       className={cn(
-                        'hover:bg-gray-50',
-                        selectedVoters.has(voter.id) && 'bg-orange-50'
+                        'hover:bg-muted/50',
+                        selectedVoters.has(voter.id) && 'bg-brand-muted'
                       )}
                     >
                       <td className="p-3">
@@ -404,29 +408,30 @@ export function VoterSlipPage() {
                           onCheckedChange={(checked) => handleSelectVoter(voter.id, !!checked)}
                         />
                       </td>
-                      <td className="p-3 font-medium">{voter.slNumber || voter.serialNo || voter.slNo || '-'}</td>
+                      <td className="p-3 font-medium">{voter.slNumber || '-'}</td>
                       <td className="p-3">
-                        <div>{voter.name || voter.voterName || voter.voterNameEn || '-'}</div>
-                        {(voter.nameLocal || voter.voterNameLocal) && (
-                          <div className="text-sm text-gray-500">{voter.nameLocal || voter.voterNameLocal}</div>
+                        <div>{voter.name || '-'}</div>
+                        {voter.nameLocal && (
+                          <div className="text-sm text-muted-foreground">{voter.nameLocal}</div>
                         )}
                       </td>
-                      <td className="p-3 font-mono text-sm">{voter.epicNumber || voter.epicNo || '-'}</td>
+                      <td className="p-3 font-mono text-sm">{voter.epicNumber || '-'}</td>
                       <td className="p-3 text-sm">
-                        {voter.relativeName && (
+                        {(voter.fatherName || voter.husbandName) && (
                           <span>
-                            {voter.relationType === 'FATHER' ? 'S/O ' : 'W/O '}
-                            {voter.relativeName}
+                            {voter.relationType === 'HUSBAND' || voter.relationType === 'WIFE' ? 'W/O ' :
+                             voter.relationType === 'MOTHER' ? 'D/O ' : 'S/O '}
+                            {voter.fatherName || voter.husbandName || voter.motherName}
                           </span>
                         )}
                       </td>
                       <td className="p-3">
                         <span>{voter.age}</span>
-                        <span className="text-gray-400"> / </span>
+                        <span className="text-muted-foreground"> / </span>
                         <span>{voter.gender}</span>
                       </td>
                       <td className="p-3">
-                        <Badge variant="outline">Part {voter.part?.partNumber || voter.part?.partNo || '-'}</Badge>
+                        <Badge variant="outline">Part {voter.part?.partNumber || '-'}</Badge>
                       </td>
                     </tr>
                   ))}
@@ -463,33 +468,33 @@ export function VoterSlipPage() {
               <div className="text-center border-b pb-2 mb-2">
                 <h2 className="font-bold text-lg">{election?.electionName}</h2>
                 <p className="text-sm">{election?.constituency?.name}</p>
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-muted-foreground">
                   Poll Date: {election?.pollDate ? new Date(election.pollDate).toLocaleDateString() : '-'}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="font-semibold text-sm text-gray-600">Serial No</div>
-                  <div className="text-2xl font-bold">{voter.serialNo || voter.slNo || '-'}</div>
+                  <div className="font-semibold text-sm text-muted-foreground">Serial No</div>
+                  <div className="text-2xl font-bold">{voter.slNumber || '-'}</div>
                 </div>
                 <div>
-                  <div className="font-semibold text-sm text-gray-600">Part No</div>
-                  <div className="text-2xl font-bold">{voter.part?.partNumber || voter.part?.partNo || '-'}</div>
+                  <div className="font-semibold text-sm text-muted-foreground">Part No</div>
+                  <div className="text-2xl font-bold">{voter.part?.partNumber || '-'}</div>
                 </div>
               </div>
 
               <div className="mt-4 space-y-2">
                 <div>
                   <span className="font-semibold">Name: </span>
-                  <span className="text-lg">{voter.voterName || voter.voterNameEn || '-'}</span>
-                  {voter.voterNameLocal && <span className="ml-2">({voter.voterNameLocal})</span>}
+                  <span className="text-lg">{voter.name || '-'}</span>
+                  {voter.nameLocal && <span className="ml-2">({voter.nameLocal})</span>}
                 </div>
                 <div>
                   <span className="font-semibold">
-                    {voter.relationType === 'FATHER' ? "Father's Name: " : "Husband's Name: "}
+                    {voter.relationType === 'HUSBAND' || voter.relationType === 'WIFE' ? "Husband's Name: " : "Father's Name: "}
                   </span>
-                  <span>{voter.relativeName || '-'}</span>
+                  <span>{voter.fatherName || voter.husbandName || voter.motherName || '-'}</span>
                 </div>
                 <div className="flex gap-4">
                   <div>
@@ -503,13 +508,13 @@ export function VoterSlipPage() {
                 </div>
                 <div>
                   <span className="font-semibold">EPIC No: </span>
-                  <span className="font-mono">{voter.epicNo || voter.epicNumber || '-'}</span>
+                  <span className="font-mono">{voter.epicNumber || '-'}</span>
                 </div>
                 {template.layout === 'detailed' && (
                   <>
                     <div>
                       <span className="font-semibold">House No: </span>
-                      <span>{voter.houseNo || '-'}</span>
+                      <span>{voter.houseNumber || '-'}</span>
                     </div>
                     <div>
                       <span className="font-semibold">Address: </span>
@@ -520,17 +525,17 @@ export function VoterSlipPage() {
               </div>
 
               <div className="mt-4 pt-2 border-t">
-                <div className="font-semibold text-sm text-gray-600">Polling Booth</div>
-                <div>{voter.part?.partName || voter.part?.partNameEn || '-'}</div>
-                <div className="text-sm text-gray-600">{voter.part?.boothAddress || '-'}</div>
+                <div className="font-semibold text-sm text-muted-foreground">Polling Booth</div>
+                <div>{voter.part?.boothName || '-'}</div>
+                <div className="text-sm text-muted-foreground">{voter.part?.address || voter.address || '-'}</div>
               </div>
 
               {template.layout === 'detailed' && (
                 <div className="mt-4 flex justify-between items-end">
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     Generated on: {new Date().toLocaleDateString()}
                   </div>
-                  <div className="w-16 h-16 border-2 border-dashed border-gray-400 flex items-center justify-center text-xs text-gray-400">
+                  <div className="w-16 h-16 border-2 border-dashed border-gray-400 flex items-center justify-center text-xs text-muted-foreground">
                     QR Code
                   </div>
                 </div>

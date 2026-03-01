@@ -170,7 +170,7 @@ async function seedTenant(tenantId: string) {
       contactPhone: '9999999990',
       state: 'Tamil Nadu',
       country: 'India',
-      databaseType: 'DEDICATED_MANAGED',
+      databaseType: 'DEDICATED_PLATFORM',
       databaseStatus: 'READY',
       databaseName: 'EC_Demo',
       databaseHost: 'localhost',

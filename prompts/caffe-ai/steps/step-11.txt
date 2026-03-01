@@ -1,0 +1,18 @@
+CURRENT STEP: Step 11 — Create Surveys (Optional but Recommended)
+
+Go to **Surveys** page → click **Create Survey**.
+
+Add questions using these types:
+- Text input (open-ended answer)
+- Radio button (single choice)
+- Checkbox (multiple choice)
+- Scale (1–10 rating)
+
+Set start date and end date, then **Activate** the survey to make it live.
+
+After activation:
+- Share the survey link with voters and workers
+- Track response counts in real time
+- Analyze results once the survey closes
+
+Also check the **Campaigns** page to create and track campaign initiatives, messaging, and activities.

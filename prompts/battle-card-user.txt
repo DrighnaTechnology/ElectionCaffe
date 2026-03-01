@@ -1,0 +1,246 @@
+Generate a comprehensive battle card comparing our candidate against the opponent for the election: "{{electionName}}" in {{constituency}}, {{state}}.
+
+=== OUR CANDIDATE ===
+{{ourCandidateProfile}}
+
+=== OPPONENT ===
+{{opponentProfile}}
+
+Generate an exhaustive, actionable battle card in this exact JSON structure. Every field is mandatory — fill with rich, specific content referencing actual candidate data.
+
+{
+  "title": "Strategic comparison title (e.g., 'Dr. Vijay Kumar vs MBA Anita - Mylapore Showdown')",
+
+  "summary": "3-4 sentence executive summary — who has the edge, why, and the one thing that decides this election. Be blunt.",
+
+  "ourStrengths": [
+    {
+      "strength": "Specific strength title",
+      "detail": "Why this matters in this constituency — be specific with data",
+      "howToAmplify": "Exact campaign action to maximize this advantage",
+      "targetDemographic": "Which voter segment this resonates most with"
+    }
+  ],
+  // Generate 7+ strengths. Think: education, profession, age advantage, party brand, local connect, caste/community, social media presence, achievements, family background, clean image, development work, accessibility
+
+  "opponentWeaknesses": [
+    {
+      "weakness": "Specific weakness title",
+      "detail": "Why this is a vulnerability — use their own profile data against them",
+      "howToExploit": "Specific campaign tactic to highlight this weakness (without crossing legal lines)",
+      "riskOfBackfire": "Could attacking this backfire? How to be careful?"
+    }
+  ],
+  // Generate 7+ weaknesses. Think: education gaps, outsider tag, party anti-incumbency, age (too old/young), missing achievements, weak social media, profession disconnect, controversial background
+
+  "keyIssues": [
+    {
+      "issue": "Issue name relevant to this constituency",
+      "importance": "HIGH / MEDIUM / LOW",
+      "ourPosition": "Our candidate's stance or plan — make it concrete",
+      "theirPosition": "Opponent's stance or gap — expose the weakness",
+      "ourAdvantage": true,
+      "talkingPoint": "One-line doorstep pitch on this issue for campaign workers",
+      "hashtag": "#CampaignHashtag for social media"
+    }
+  ],
+  // Generate 6+ issues. Think: jobs/employment, water/roads/infrastructure, women's safety, farmer support, healthcare, education, corruption, development, price rise, local specific issues
+
+  "talkingPoints": [
+    "Door-to-door ready sentence that a campaign worker can say at any doorstep. Must reference candidate by name. Must be conversational, not formal."
+  ],
+  // Generate 8+ talking points. These should sound like natural conversation, not press releases.
+
+  "counterArguments": [
+    {
+      "attack": "Likely attack the opponent will make against us",
+      "severity": "HIGH / MEDIUM / LOW",
+      "response": "Our prepared counter-response — punchy, factual, memorable",
+      "pivotTo": "After countering, pivot the conversation to this positive topic"
+    }
+  ],
+  // Generate 5+ counter-arguments. Anticipate attacks on: party record, candidate background, promises vs delivery, personal attacks
+
+  "voterAppeal": {
+    "youth": { "ours": 0-100, "theirs": 0-100, "strategy": "How to win youth votes specifically" },
+    "women": { "ours": 0-100, "theirs": 0-100, "strategy": "How to win women votes specifically" },
+    "farmers": { "ours": 0-100, "theirs": 0-100, "strategy": "How to win farmer votes specifically" },
+    "seniors": { "ours": 0-100, "theirs": 0-100, "strategy": "How to win senior citizen votes specifically" },
+    "urban": { "ours": 0-100, "theirs": 0-100, "strategy": "How to win urban middle-class votes specifically" },
+    "firstTimeVoters": { "ours": 0-100, "theirs": 0-100, "strategy": "How to win first-time voter support" },
+    "minorities": { "ours": 0-100, "theirs": 0-100, "strategy": "How to win minority community votes" }
+  },
+
+  "headToHeadStats": {
+    "overallAdvantage": "Our Candidate / Opponent / Neck-and-Neck",
+    "confidenceLevel": "HIGH / MEDIUM / LOW — how confident are we in winning?",
+    "keyBattleground": "The decisive voter segment that will determine the outcome",
+    "winStrategy": "2-3 sentence winning strategy summary",
+    "criticalActions": ["Top 5 things campaign must do in the next 30 days to win"],
+    "riskFactors": ["Top 3 risks that could cost us the election"]
+  },
+
+  "campaignAmmunition": {
+    "wittyOneLiners": [
+      {
+        "line": "A sarcastic/witty one-liner comparing the two candidates — the kind that goes viral",
+        "context": "When/where to use this line (rally, door-to-door, social media)",
+        "targetEmotion": "What emotion this triggers (humor, anger, pride, hope)"
+      }
+    ],
+    // Generate 8+ one-liners. Use actual candidate data — education, age, profession, party. Be creative, sarcastic, memorable.
+    "nicknames": {
+      "forOpponent": "A catchy, slightly mocking but not offensive nickname for the opponent based on their profile",
+      "rationale": "Why this nickname works and how it sticks"
+    },
+    "slogans": [
+      "4-5 campaign slogans that work in Hindi/regional language too. Rhyming preferred."
+    ],
+    "whatsappForwards": [
+      "Ready-to-forward WhatsApp message comparing candidates. Be under 300 chars, feel like it came from a concerned citizen, not a party office. Do NOT use emojis or special unicode characters."
+    ]
+    // Generate 4+ WhatsApp forwards
+  },
+
+  "speechPoints": [
+    {
+      "topic": "Speech topic/theme",
+      "audience": "Target audience for this speech (e.g., 'Women's self-help group meeting', 'Youth rally', 'Farmer gathering')",
+      "duration": "2 min / 5 min / 10 min",
+      "content": "Full speech point — 3-5 paragraphs of what to say. Conversational tone, crowd-engaging, reference opponent by name/nickname. Include pauses for crowd response.",
+      "crowdReaction": "Expected crowd reaction and how to build on it"
+    }
+  ],
+  // Generate 5+ speech points for different audiences and occasions
+
+  "demographicStrategy": {
+    "youth": {
+      "message": "Core message for youth (18-35)",
+      "channels": ["Best channels to reach youth"],
+      "influencers": "Type of local influencers to engage",
+      "events": "What kind of events to organize for youth"
+    },
+    "women": {
+      "message": "Core message for women voters",
+      "channels": ["Best channels to reach women"],
+      "influencers": "Type of local influencers to engage",
+      "events": "What kind of events to organize for women"
+    },
+    "farmers": {
+      "message": "Core message for farming community",
+      "channels": ["Best channels to reach farmers"],
+      "influencers": "Type of local influencers to engage",
+      "events": "What kind of events to organize for farmers"
+    },
+    "seniors": {
+      "message": "Core message for senior citizens (60+)",
+      "channels": ["Best channels to reach seniors"],
+      "influencers": "Type of local influencers to engage",
+      "events": "What kind of events to organize for seniors"
+    },
+    "urban": {
+      "message": "Core message for urban middle class",
+      "channels": ["Best channels to reach urban voters"],
+      "influencers": "Type of local influencers to engage",
+      "events": "What kind of events to organize for urban voters"
+    }
+  },
+
+  "groundStrategy": {
+    "boothManagement": {
+      "strategy": "How to set up booth-level committees",
+      "keyMetric": "Target votes per booth",
+      "boothAgentScript": "What booth agents should say to undecided voters on election day"
+    },
+    "doorToDoor": {
+      "openingLine": "First sentence when someone opens the door",
+      "comparison": "30-second elevator pitch comparing both candidates",
+      "closingAsk": "The specific ask before leaving (vote commitment, share number, attend rally)",
+      "objectionHandling": [
+        { "objection": "Common voter objection", "response": "How to handle it" }
+      ]
+    },
+    "rallyStrategy": {
+      "format": "Ideal rally format for this election",
+      "crowdSize": "Target crowd and how to ensure turnout",
+      "keyMoment": "The one moment in the rally that should go viral",
+      "followUp": "What to do after the rally to convert attendees to committed voters"
+    },
+    "last48Hours": {
+      "priorities": ["Top 5 priorities in the last 48 hours before voting"],
+      "warRoomSetup": "How to set up the election day war room",
+      "voterTurnout": "Strategy to ensure our voters actually show up to vote"
+    }
+  },
+
+  "socialMediaStrategy": {
+    "overallNarrative": "The one consistent story/narrative across all platforms",
+    "platforms": {
+      "whatsapp": {
+        "strategy": "WhatsApp specific strategy (groups, broadcasts, status updates)",
+        "contentType": "What kind of content works best",
+        "frequency": "How often to post/share"
+      },
+      "instagram": {
+        "strategy": "Instagram specific strategy (reels, stories, posts)",
+        "contentType": "What kind of content works best",
+        "frequency": "How often to post"
+      },
+      "twitter": {
+        "strategy": "Twitter/X specific strategy (threads, quotes, hashtags)",
+        "contentType": "What kind of content works best",
+        "frequency": "How often to tweet"
+      },
+      "youtube": {
+        "strategy": "YouTube specific strategy (shorts, interviews, rallies)",
+        "contentType": "What kind of content works best",
+        "frequency": "How often to upload"
+      },
+      "facebook": {
+        "strategy": "Facebook specific strategy (lives, groups, events)",
+        "contentType": "What kind of content works best",
+        "frequency": "How often to post"
+      }
+    },
+    "contentCalendar": [
+      { "day": "Day 1", "theme": "Theme for the day", "whatsapp": "WA content", "instagram": "IG content", "twitter": "Tweet" },
+      { "day": "Day 2", "theme": "Theme", "whatsapp": "WA content", "instagram": "IG content", "twitter": "Tweet" },
+      { "day": "Day 3", "theme": "Theme", "whatsapp": "WA content", "instagram": "IG content", "twitter": "Tweet" },
+      { "day": "Day 4", "theme": "Theme", "whatsapp": "WA content", "instagram": "IG content", "twitter": "Tweet" },
+      { "day": "Day 5", "theme": "Theme", "whatsapp": "WA content", "instagram": "IG content", "twitter": "Tweet" },
+      { "day": "Day 6", "theme": "Theme", "whatsapp": "WA content", "instagram": "IG content", "twitter": "Tweet" },
+      { "day": "Day 7", "theme": "Theme", "whatsapp": "WA content", "instagram": "IG content", "twitter": "Tweet" }
+    ]
+  },
+
+  "winPath": {
+    "currentPosition": "Frontrunner / Competitive / Underdog — honest assessment",
+    "voteShareTarget": "Target vote share percentage needed to win",
+    "path": [
+      {
+        "step": 1,
+        "action": "First strategic action",
+        "timeline": "When to execute",
+        "impact": "Expected impact on vote share"
+      }
+    ],
+    // Generate 6-8 sequential steps to victory
+    "mustWinSegments": ["List of voter segments we absolutely cannot lose"],
+    "swingVoterProfile": "Description of the typical undecided voter in this constituency — who are they, what do they care about, how to reach them",
+    "electionDayPlan": {
+      "morningStrategy": "What to do 6 AM - 12 PM on election day",
+      "afternoonStrategy": "What to do 12 PM - 4 PM — the critical low-turnout hours",
+      "eveningPush": "Final push strategy 4 PM - 6 PM for last-minute voters"
+    }
+  }
+}
+
+CRITICAL INSTRUCTIONS:
+1. Use actual candidate names, party names, education, profession, and achievements throughout — NEVER use placeholders.
+2. Every one-liner, speech point, and talking point must reference real data from the profiles above.
+3. If a candidate profile has missing data (N/A), acknowledge it as an intelligence gap and suggest how to fill it.
+4. Be realistic with voter appeal scores — don't give our candidate 80+ everywhere unless truly justified.
+5. WhatsApp forwards must feel organic and grassroots, not like official party communications.
+6. Speech content should work when spoken aloud in Hindi/regional language — avoid complex English constructions.
+7. The entire response must be valid JSON. No trailing commas, no comments, no markdown.
+8. Do NOT use any emojis, special unicode symbols, or non-ASCII characters anywhere in the response. Use plain text only.

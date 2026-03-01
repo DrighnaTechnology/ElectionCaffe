@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 220 20% 97%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
@@ -24,14 +24,36 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+
+    /* Brand colors (orange by default, overridden by tenant branding) */
+    --brand-primary: 24.6 95% 53.1%;
+    --brand-primary-foreground: 0 0% 100%;
+    --brand-muted: 33.3 100% 96.5%;
+    --brand-secondary: 24.6 95% 53.1%;
+
+    /* Sidebar — deep navy for light mode (high contrast vs white main) */
+    --sidebar-bg: 224 40% 10%;
+    --sidebar-foreground: 218 20% 62%;
+    --sidebar-foreground-active: 210 40% 98%;
+    --sidebar-border: 224 30% 18%;
+    --sidebar-active-bg: 224 32% 22%;
+    --sidebar-hover-bg: 224 28% 16%;
+    --sidebar-group-label: 218 18% 48%;
+
+    /* UI Theme — card & font tokens with defaults */
+    --card-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --card-border-width: 1px;
+    --card-radius: var(--radius);
+    --font-family: 'Inter', system-ui, sans-serif;
+    --density: 1;
   }
 
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 223 47.4% 11.2%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 223 47.4% 11.2%;
     --popover-foreground: 210 40% 98%;
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 47.4% 11.2%;
@@ -46,6 +68,21 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
+
+    /* Brand colors for dark mode */
+    --brand-primary: 20.5 90.2% 48.2%;
+    --brand-primary-foreground: 0 0% 100%;
+    --brand-muted: 217.2 32.6% 17.5%;
+    --brand-secondary: 20.5 90.2% 48.2%;
+
+    /* Sidebar — VERY distinct from dark main bg (much lighter, purple-shifted) */
+    --sidebar-bg: 232 18% 24%;
+    --sidebar-foreground: 225 15% 68%;
+    --sidebar-foreground-active: 0 0% 96%;
+    --sidebar-border: 232 14% 32%;
+    --sidebar-active-bg: 232 18% 32%;
+    --sidebar-hover-bg: 232 16% 28%;
+    --sidebar-group-label: 225 12% 55%;
   }
 }
 
@@ -59,23 +96,43 @@
   }
 }
 
-/* Custom scrollbar */
+/* Thin auto-hiding scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 4px;
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* Smooth transitions for interactive elements */
+@layer utilities {
+  .glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+/* Focus-visible for accessibility */
+:focus-visible {
+  outline: 2px solid hsl(var(--brand-primary));
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Leaflet map fixes */
@@ -83,4 +140,10 @@
   height: 100%;
   width: 100%;
   z-index: 0;
+}
+
+/* CaffeAI typing indicator bounce */
+@keyframes caffeai-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }
+  40% { transform: translateY(-4px); opacity: 1; }
 }

@@ -27,6 +27,16 @@ import {
   AccordionTrigger,
 } from '../components/ui/accordion';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
+import {
   CheckCircleIcon,
   ListTodoIcon,
   NewspaperIcon,
@@ -44,6 +54,7 @@ import {
   ZapIcon,
   TrendingUpIcon,
   LayoutDashboardIcon,
+  EyeIcon,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -65,9 +76,23 @@ const SPEECH_POINT_TYPES = [
   { value: 'FACT_STAT', label: 'Fact & Stats', color: 'bg-yellow-100 text-yellow-800' },
 ];
 
+const BROADCAST_CHANNELS = [
+  { value: 'APP', label: 'App Notification', icon: '📱' },
+  { value: 'SMS', label: 'SMS', icon: '💬' },
+  { value: 'WHATSAPP', label: 'WhatsApp', icon: '🟢' },
+  { value: 'CALL', label: 'Call Script', icon: '📞' },
+];
+
 export function TenantActionsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [broadcastEditor, setBroadcastEditor] = useState<{
+    open: boolean;
+    broadcast: any | null;
+    title: string;
+    content: string;
+    channels: string[];
+  }>({ open: false, broadcast: null, title: '', content: '', channels: ['APP'] });
 
   // Queries
   const { data: nbDashboard, isLoading: dashboardLoading } = useQuery({
@@ -128,7 +153,7 @@ export function TenantActionsPage() {
       queryClient.invalidateQueries({ queryKey: ['nb-analyses'] });
       queryClient.invalidateQueries({ queryKey: ['nb-dashboard'] });
     },
-    onError: () => toast.error('Failed to start analysis'),
+    onError: (err: any) => toast.error(`Failed to start analysis: ${err?.response?.data?.error?.message || err?.message || 'Unknown error'}`),
   });
 
   const generateActionPlansMutation = useMutation({
@@ -189,12 +214,41 @@ export function TenantActionsPage() {
   });
 
   const sendBroadcastMutation = useMutation({
-    mutationFn: (id: string) => nbAPI.sendBroadcast(id),
+    mutationFn: ({ id, title, content, channels }: { id: string; title: string; content: string; channels: string[] }) =>
+      nbAPI.updateAndSendBroadcast(id, { title, content, channels }),
     onSuccess: () => {
       toast.success('Broadcast sent successfully');
       queryClient.invalidateQueries({ queryKey: ['nb-broadcasts'] });
+      setBroadcastEditor({ open: false, broadcast: null, title: '', content: '', channels: ['APP'] });
     },
     onError: () => toast.error('Failed to send broadcast'),
+  });
+
+  const openBroadcastEditor = (broadcast: any) => {
+    const audience = (broadcast.targetAudience as any) || {};
+    const existingChannels = Array.isArray(broadcast.channels) && broadcast.channels.length > 0
+      ? broadcast.channels
+      : ['APP'];
+    setBroadcastEditor({
+      open: true,
+      broadcast,
+      title: broadcast.title || '',
+      content: broadcast.content || audience.summary || '',
+      channels: existingChannels,
+    });
+  };
+
+  const generateBroadcastMutation = useMutation({
+    mutationFn: (analysisId: string) => nbAPI.generateBroadcast(analysisId),
+    onSuccess: (res: any) => {
+      const msg = res?.data?.data?.message || 'AI broadcast suggestion generated';
+      toast.success(msg);
+      queryClient.invalidateQueries({ queryKey: ['nb-broadcasts'] });
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || 'Failed to generate broadcast';
+      toast.error(msg);
+    },
   });
 
   // Data extraction
@@ -214,34 +268,34 @@ export function TenantActionsPage() {
       PROCESSING: 'bg-blue-100 text-blue-800',
       COMPLETED: 'bg-green-100 text-green-800',
       FAILED: 'bg-red-100 text-red-800',
-      DRAFT: 'bg-gray-100 text-gray-800',
+      DRAFT: 'bg-muted text-foreground',
       APPROVED: 'bg-green-100 text-green-800',
       IN_PROGRESS: 'bg-blue-100 text-blue-800',
-      CANCELLED: 'bg-gray-100 text-gray-800',
+      CANCELLED: 'bg-muted text-foreground',
       SENT: 'bg-green-100 text-green-800',
       SCHEDULED: 'bg-purple-100 text-purple-800',
     };
-    return styles[status] || 'bg-gray-100 text-gray-800';
+    return styles[status] || 'bg-muted text-foreground';
   };
 
   const getSentimentBadge = (sentiment: string) => {
     const styles: Record<string, string> = {
       POSITIVE: 'bg-green-100 text-green-800',
       NEGATIVE: 'bg-red-100 text-red-800',
-      NEUTRAL: 'bg-gray-100 text-gray-800',
+      NEUTRAL: 'bg-muted text-foreground',
       MIXED: 'bg-yellow-100 text-yellow-800',
     };
-    return styles[sentiment] || 'bg-gray-100 text-gray-800';
+    return styles[sentiment] || 'bg-muted text-foreground';
   };
 
   const getPriorityBadge = (priority: string) => {
     const styles: Record<string, string> = {
-      LOW: 'bg-gray-100 text-gray-800',
+      LOW: 'bg-muted text-foreground',
       MEDIUM: 'bg-blue-100 text-blue-800',
-      HIGH: 'bg-orange-100 text-orange-800',
+      HIGH: 'bg-brand-muted text-brand',
       URGENT: 'bg-red-100 text-red-800',
     };
-    return styles[priority] || 'bg-gray-100 text-gray-800';
+    return styles[priority] || 'bg-muted text-foreground';
   };
 
   const getLevelIcon = (level: string) => {
@@ -365,8 +419,8 @@ export function TenantActionsPage() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
-                      <div className="p-3 bg-orange-100 rounded-lg">
-                        <RadioIcon className="h-6 w-6 text-orange-600" />
+                      <div className="p-3 bg-brand-muted rounded-lg">
+                        <RadioIcon className="h-6 w-6 text-brand" />
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{dashboard.stats?.broadcasts?.sent || 0}</p>
@@ -423,7 +477,7 @@ export function TenantActionsPage() {
                     </div>
                     <ChevronRightIcon className="h-5 w-5 text-muted-foreground hidden md:block" />
                     <div className="flex items-center gap-2">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-orange-100 text-orange-600 font-bold">5</div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-brand-muted text-brand font-bold">5</div>
                       <div>
                         <p className="font-medium">Broadcast</p>
                         <p className="text-xs text-muted-foreground">Send to team members</p>
@@ -507,7 +561,7 @@ export function TenantActionsPage() {
               ) : (
                 <div className="space-y-3">
                   {news.map((item: any) => (
-                    <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                    <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50">
                       <div className="flex-1 min-w-0 mr-4">
                         <p className="font-medium">{item.title}</p>
                         <p className="text-sm text-muted-foreground line-clamp-1">{item.summary}</p>
@@ -595,7 +649,7 @@ export function TenantActionsPage() {
                           <Button
                             size="sm"
                             onClick={() => triggerAnalysisMutation.mutate(item.id)}
-                            disabled={item.status !== 'PENDING' && item.status !== 'COMPLETED' || triggerAnalysisMutation.isPending}
+                            disabled={triggerAnalysisMutation.isPending}
                           >
                             <BrainCircuitIcon className="h-4 w-4 mr-1" />
                             Analyze
@@ -686,10 +740,31 @@ export function TenantActionsPage() {
                   ))}
                 </TableBody>
               </Table>
-              {analyses.length === 0 && (
+              {analyses.length === 0 && parsedNews.length > 0 && (
+                <div className="space-y-3 pt-4">
+                  <p className="text-sm text-muted-foreground font-medium">Click Analyze to run AI analysis on your parsed news:</p>
+                  {parsedNews.map((item: any) => (
+                    <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">{item.parsedTitle}</p>
+                        <p className="text-xs text-muted-foreground">{item.category} • {item.sentiment}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => triggerAnalysisMutation.mutate(item.id)}
+                        disabled={triggerAnalysisMutation.isPending}
+                      >
+                        <BrainCircuitIcon className="h-4 w-4 mr-1" />
+                        {triggerAnalysisMutation.isPending ? 'Analyzing...' : 'Analyze'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {analyses.length === 0 && parsedNews.length === 0 && (
                 <div className="text-center py-12">
                   <BrainCircuitIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No analyses yet. Trigger analysis from parsed news.</p>
+                  <p className="text-muted-foreground">No analyses yet. Go to the News tab to parse news first.</p>
                 </div>
               )}
             </CardContent>
@@ -799,7 +874,7 @@ export function TenantActionsPage() {
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Badge className={line.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                  <Badge className={line.isActive ? 'bg-green-100 text-green-800' : 'bg-muted text-foreground'}>
                                     {line.isActive ? 'Published' : 'Draft'}
                                   </Badge>
                                   {!line.isActive && (
@@ -950,7 +1025,7 @@ export function TenantActionsPage() {
                           <p className="font-medium">{point.title}</p>
                         </TableCell>
                         <TableCell>
-                          <Badge className={typeInfo?.color || 'bg-gray-100'}>
+                          <Badge className={typeInfo?.color || 'bg-muted'}>
                             {typeInfo?.label || point.pointType}
                           </Badge>
                         </TableCell>
@@ -1003,31 +1078,44 @@ export function TenantActionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Message</TableHead>
-                    <TableHead>Channel</TableHead>
-                    <TableHead>Target Level</TableHead>
+                    <TableHead>Broadcast</TableHead>
+                    <TableHead>Channels</TableHead>
+                    <TableHead>Urgency</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Scheduled</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {broadcasts.map((broadcast: any) => (
+                  {broadcasts.map((broadcast: any) => {
+                    const audience = (broadcast.targetAudience as any) || {};
+                    const urgency = audience.urgency;
+                    const summary = audience.summary;
+                    const isAI = !!audience.analysisId;
+                    return (
                     <TableRow key={broadcast.id}>
                       <TableCell>
-                        <p className="font-medium line-clamp-2">{broadcast.message?.substring(0, 100)}...</p>
-                        <p className="text-xs text-muted-foreground">
-                          From: {broadcast.partyLine?.topic || 'N/A'}
+                        <div className="flex items-center gap-1 mb-1">
+                          {isAI && <Badge className="text-xs bg-purple-100 text-purple-800 border-purple-200"><SparklesIcon className="h-3 w-3 mr-1 inline" />AI</Badge>}
+                          <p className="font-medium line-clamp-1">{broadcast.title || 'Campaign Broadcast'}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {summary || broadcast.content?.substring(0, 100) || 'N/A'}
                         </p>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{broadcast.channel}</Badge>
+                        <div className="flex flex-wrap gap-1">
+                          {(Array.isArray(broadcast.channels) ? broadcast.channels : [broadcast.channel]).filter(Boolean).map((ch: string) => (
+                            <Badge key={ch} variant="outline" className="text-xs">{ch}</Badge>
+                          ))}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          {getLevelIcon(broadcast.targetLevel)}
-                          <span className="text-sm">{broadcast.targetLevel?.replace(/_/g, ' ')}</span>
-                        </div>
+                        {urgency ? (
+                          <Badge className={urgency === 'CRITICAL' ? 'bg-red-100 text-red-800' : urgency === 'HIGH' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}>
+                            {urgency}
+                          </Badge>
+                        ) : <span className="text-muted-foreground text-sm">—</span>}
                       </TableCell>
                       <TableCell>
                         <Badge className={getStatusBadge(broadcast.status)}>{broadcast.status}</Badge>
@@ -1036,21 +1124,27 @@ export function TenantActionsPage() {
                         {broadcast.scheduledAt ? format(new Date(broadcast.scheduledAt), 'PPp') : 'N/A'}
                       </TableCell>
                       <TableCell>
-                        {broadcast.status === 'PENDING' && (
-                          <Button
-                            size="sm"
-                            onClick={() => sendBroadcastMutation.mutate(broadcast.id)}
-                          >
-                            <SendIcon className="h-4 w-4 mr-1" />
-                            Send Now
-                          </Button>
+                        {(broadcast.status === 'draft' || broadcast.status === 'PENDING') && (
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openBroadcastEditor(broadcast)}
+                            >
+                              <EyeIcon className="h-4 w-4 mr-1" />
+                              Review
+                            </Button>
+                          </div>
                         )}
-                        {broadcast.status === 'SENT' && (
-                          <span className="text-green-600 text-sm">Sent</span>
+                        {(broadcast.status === 'sent' || broadcast.status === 'SENT') && (
+                          <span className="text-green-600 text-sm flex items-center gap-1">
+                            <CheckCircleIcon className="h-4 w-4" /> Sent
+                          </span>
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
               {broadcasts.length === 0 && (
@@ -1060,6 +1154,64 @@ export function TenantActionsPage() {
                   <p className="text-muted-foreground">
                     Create broadcasts from published party lines to push guidelines to your team
                   </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* AI Generate Broadcast */}
+          <Card className="border-brand/30 bg-gradient-to-br from-brand-muted/30 to-transparent">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <SparklesIcon className="h-5 w-5 text-brand" />
+                AI Broadcast Suggestion
+              </CardTitle>
+              <CardDescription>
+                Generate a complete broadcast message based on AI research — news analysis, action plans, and party lines
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analyses.length === 0 ? (
+                <div className="text-center py-8">
+                  <BrainCircuitIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground text-sm">No AI analyses available. Go to the Analysis tab to generate analysis first.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Select an analysis to generate a broadcast message combining news insights, action plans, and party messaging guidelines.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {analyses.slice(0, 6).map((analysis: any) => (
+                      <div key={analysis.id} className="flex items-center justify-between p-3 border rounded-lg bg-background">
+                        <div className="flex-1 min-w-0 mr-3">
+                          <p className="font-medium text-sm line-clamp-1">
+                            {analysis.parsedNews?.parsedTitle || analysis.parsedNews?.title || 'News Analysis'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {analysis.parsedNews?.category || 'Analysis'}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {analysis.createdAt ? format(new Date(analysis.createdAt), 'MMM d') : ''}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => generateBroadcastMutation.mutate(analysis.id)}
+                          disabled={generateBroadcastMutation.isPending}
+                          className="shrink-0"
+                        >
+                          <SparklesIcon className="h-3 w-3 mr-1" />
+                          Generate
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  {analyses.length > 6 && (
+                    <p className="text-xs text-muted-foreground text-center">Showing latest 6 analyses</p>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -1114,6 +1266,166 @@ export function TenantActionsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Broadcast Editor Dialog */}
+      <Dialog
+        open={broadcastEditor.open}
+        onOpenChange={(open) => setBroadcastEditor((s) => ({ ...s, open }))}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RadioIcon className="h-5 w-5 text-brand" />
+              Review & Send Broadcast
+            </DialogTitle>
+            <DialogDescription>
+              Review and edit your broadcast before sending. Choose which channels to use.
+            </DialogDescription>
+          </DialogHeader>
+
+          {broadcastEditor.broadcast && (() => {
+            const audience = (broadcastEditor.broadcast.targetAudience as any) || {};
+            const urgency = audience.urgency;
+            const callToAction = audience.callToAction;
+            const isAI = !!audience.analysisId;
+            return (
+              <div className="space-y-5 pt-2">
+                {/* AI badge + urgency */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isAI && (
+                    <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+                      <SparklesIcon className="h-3 w-3 mr-1 inline" /> AI Generated
+                    </Badge>
+                  )}
+                  {urgency && (
+                    <Badge className={urgency === 'CRITICAL' ? 'bg-red-100 text-red-800' : urgency === 'HIGH' ? 'bg-orange-100 text-orange-800' : urgency === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}>
+                      {urgency} URGENCY
+                    </Badge>
+                  )}
+                  <Badge variant="outline">{broadcastEditor.broadcast.broadcastType || 'CAMPAIGN_UPDATE'}</Badge>
+                </div>
+
+                {/* Call to action */}
+                {callToAction && (
+                  <div className="p-3 bg-brand-muted/40 rounded-lg border border-brand/20">
+                    <p className="text-xs font-medium text-brand mb-1">Call to Action</p>
+                    <p className="text-sm font-medium">{callToAction}</p>
+                  </div>
+                )}
+
+                {/* Title */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="bc-title">Broadcast Title</Label>
+                  <Input
+                    id="bc-title"
+                    value={broadcastEditor.title}
+                    onChange={(e) => setBroadcastEditor((s) => ({ ...s, title: e.target.value }))}
+                    placeholder="Enter broadcast title"
+                  />
+                </div>
+
+                {/* Content */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="bc-content">Message / Content</Label>
+                  <Textarea
+                    id="bc-content"
+                    value={broadcastEditor.content}
+                    onChange={(e) => setBroadcastEditor((s) => ({ ...s, content: e.target.value }))}
+                    placeholder="Enter broadcast message"
+                    className="min-h-[160px] resize-y"
+                  />
+                  <p className="text-xs text-muted-foreground">{broadcastEditor.content.length} characters</p>
+                </div>
+
+                {/* Channel selection */}
+                <div className="space-y-2">
+                  <Label>Send Via (select channels)</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {BROADCAST_CHANNELS.map((ch) => {
+                      const checked = broadcastEditor.channels.includes(ch.value);
+                      return (
+                        <button
+                          key={ch.value}
+                          type="button"
+                          onClick={() =>
+                            setBroadcastEditor((s) => ({
+                              ...s,
+                              channels: s.channels.includes(ch.value)
+                                ? s.channels.filter((c) => c !== ch.value)
+                                : [...s.channels, ch.value],
+                            }))
+                          }
+                          className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors select-none text-left w-full ${checked ? 'border-brand bg-brand/10' : 'border-border hover:bg-muted/50'}`}
+                        >
+                          <div className={`h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors ${checked ? 'bg-brand border-brand' : 'border-border bg-background'}`}>
+                            {checked && <CheckCircleIcon className="h-3 w-3 text-white" />}
+                          </div>
+                          <span className="text-xl">{ch.icon}</span>
+                          <div>
+                            <p className="font-medium text-sm">{ch.label}</p>
+                            {ch.value === 'SMS' && <p className="text-xs text-muted-foreground">160 chars max recommended</p>}
+                            {ch.value === 'WHATSAPP' && <p className="text-xs text-muted-foreground">Rich message with media</p>}
+                            {ch.value === 'APP' && <p className="text-xs text-muted-foreground">Push notification to app</p>}
+                            {ch.value === 'CALL' && <p className="text-xs text-muted-foreground">Use as call script</p>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Target audience */}
+                {Array.isArray(audience.segments) && audience.segments.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label>Target Audience</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {audience.segments.map((seg: string) => (
+                        <Badge key={seg} variant="outline" className="text-xs">
+                          {PARTY_LINE_LEVELS.find((l) => l.value === seg)?.icon} {seg.replace(/_/g, ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* SMS preview */}
+                {broadcastEditor.channels.includes('SMS') && (
+                  <div className="p-3 bg-muted rounded-lg space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">SMS Preview (first 160 chars)</p>
+                    <p className="text-sm font-mono break-words">{broadcastEditor.content.substring(0, 160)}</p>
+                    {broadcastEditor.content.length > 160 && (
+                      <p className="text-xs text-orange-600">⚠ SMS will be split into {Math.ceil(broadcastEditor.content.length / 160)} parts</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-2 border-t">
+                  <Button
+                    className="flex-1"
+                    disabled={broadcastEditor.channels.length === 0 || sendBroadcastMutation.isPending}
+                    onClick={() => sendBroadcastMutation.mutate({
+                      id: broadcastEditor.broadcast.id,
+                      title: broadcastEditor.title,
+                      content: broadcastEditor.content,
+                      channels: broadcastEditor.channels,
+                    })}
+                  >
+                    <SendIcon className="h-4 w-4 mr-2" />
+                    {sendBroadcastMutation.isPending ? 'Sending...' : `Send via ${broadcastEditor.channels.join(' + ')}`}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setBroadcastEditor((s) => ({ ...s, open: false }))}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

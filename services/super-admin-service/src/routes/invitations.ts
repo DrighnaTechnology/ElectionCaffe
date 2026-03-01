@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { getNotificationProvider } from '@electioncaffe/shared';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 
@@ -54,18 +55,6 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    // Check if user already exists in this tenant
-    const existingUser = await (prisma as any).user.findFirst({
-      where: { tenantId: data.tenantId, mobile: data.mobile },
-    });
-
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        error: { code: 'E3002', message: 'User with this mobile already exists in this tenant' },
-      });
-    }
-
     // Check for existing pending invitation
     const existingInvitation = await prisma.invitation.findFirst({
       where: {
@@ -85,12 +74,8 @@ router.post('/', async (req, res, next) => {
     // Generate unique token
     const token = crypto.randomBytes(32).toString('hex');
 
-    // Determine role based on tenant type
-    const role = tenant.tenantType === 'POLITICAL_PARTY'
-      ? 'CENTRAL_ADMIN'
-      : tenant.tenantType === 'ELECTION_MANAGEMENT'
-        ? 'EMC_ADMIN'
-        : 'CANDIDATE_ADMIN';
+    // All tenants use CENTRAL_ADMIN
+    const role = 'CENTRAL_ADMIN';
 
     // Create invitation
     const invitation = await prisma.invitation.create({
@@ -126,6 +111,8 @@ router.post('/', async (req, res, next) => {
     if (invitation.email) {
       await notifier.sendEmail(invitation.email, 'Admin Invitation - ElectionCaffe', `Hi ${invitation.firstName || ''},\n\nYou've been invited as an admin for ${invitation.tenant?.name || 'a tenant'} on ElectionCaffe.\n\nAccept your invitation: ${inviteLink}`);
     }
+
+    auditLog(req, 'CREATE_INVITATION', 'invitation', invitation.id, data.tenantId, { mobile: data.mobile, email: data.email, role });
 
     res.status(201).json({
       success: true,
@@ -269,6 +256,8 @@ router.post('/:id/resend', async (req, res, next) => {
       await notifier.sendEmail(invitation.email, 'Invitation Reminder - ElectionCaffe', `Hi ${invitation.firstName || ''},\n\nThis is a reminder that you've been invited to ElectionCaffe.\n\nAccept your invitation: ${inviteLink}`);
     }
 
+    auditLog(req, 'RESEND_INVITATION', 'invitation', req.params.id, invitation.tenantId, { resentCount: updated.resentCount });
+
     res.json({
       success: true,
       data: {
@@ -311,6 +300,8 @@ router.post('/:id/cancel', async (req, res, next) => {
         cancelledAt: new Date(),
       },
     });
+
+    auditLog(req, 'CANCEL_INVITATION', 'invitation', req.params.id, invitation.tenantId);
 
     res.json({
       success: true,

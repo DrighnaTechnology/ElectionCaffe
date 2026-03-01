@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { coreDb as prisma } from '@electioncaffe/database';
 import { superAdminAuthMiddleware } from '../middleware/superAdminAuth.js';
+import { auditLog } from '../utils/auditLog.js';
 
 const router = Router();
 
@@ -80,15 +81,9 @@ router.get('/', async (req, res, next) => {
               providerName: true,
               displayName: true,
               providerType: true,
-            } as any,
-          },
-          _count: {
-            select: {
-              tenantSubscriptions: true,
-              userAccess: true,
             },
           },
-        } as any,
+        },
       }),
       prisma.aIFeature.count({ where }),
     ]);
@@ -121,26 +116,9 @@ router.get('/:id', async (req, res, next) => {
             displayName: true,
             providerType: true,
             status: true,
-          } as any,
-        },
-        subscriptions: {
-          include: {
-            tenant: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-              },
-            },
           },
         },
-        _count: {
-          select: {
-            subscriptions: true,
-            usageLogs: true,
-          },
-        },
-      } as any,
+      },
     });
 
     if (!feature) {
@@ -199,20 +177,36 @@ router.post('/', async (req, res, next) => {
 
     const feature = await prisma.aIFeature.create({
       data: {
-        ...data,
-        featureName: data.displayName, // featureName is a required field in Prisma schema
+        providerId: data.providerId,
+        featureKey: data.featureKey,
+        featureName: data.displayName,
+        displayName: data.displayName,
+        description: data.description,
+        category: data.category,
+        modelName: data.modelName,
+        systemPrompt: data.systemPrompt,
+        userPromptTemplate: data.userPromptTemplate,
+        outputFormat: data.outputFormat,
+        outputSchema: data.outputSchema,
+        acceptedFileTypes: data.acceptedFileTypes,
+        maxFileSize: data.maxFileSize,
+        maxPagesPerRequest: data.maxPagesPerRequest,
+        creditsPerPage: data.creditsPerPage,
+        creditsPerImage: data.creditsPerImage,
+        creditsPerRequest: data.creditsPerRequest,
+        minCreditsRequired: data.minCreditsRequired,
+        isCustomTrained: data.isCustomTrained,
+        trainingData: data.trainingData,
+        trainingNotes: data.trainingNotes,
+        isAddon: data.isAddon,
+        isPublic: data.isPublic,
+        displayOrder: data.displayOrder,
+        iconUrl: data.iconUrl,
         status: 'DRAFT',
-      } as any,
-      include: {
-        provider: {
-          select: {
-            id: true,
-            providerName: true,
-            displayName: true,
-          } as any,
-        },
-      } as any,
+      },
     });
+
+    auditLog(req, 'CREATE_AI_FEATURE', 'ai_feature', feature.id, null, { featureKey: data.featureKey, category: data.category });
 
     res.status(201).json({
       success: true,
@@ -277,16 +271,9 @@ router.put('/:id', async (req, res, next) => {
     const feature = await prisma.aIFeature.update({
       where: { id: req.params.id },
       data: data as any,
-      include: {
-        provider: {
-          select: {
-            id: true,
-            providerName: true,
-            displayName: true,
-          } as any,
-        },
-      } as any,
     });
+
+    auditLog(req, 'UPDATE_AI_FEATURE', 'ai_feature', req.params.id);
 
     res.json({
       success: true,
@@ -300,16 +287,8 @@ router.put('/:id', async (req, res, next) => {
 // Delete AI feature
 router.delete('/:id', async (req, res, next) => {
   try {
-    const feature: any = await prisma.aIFeature.findUnique({
+    const feature = await prisma.aIFeature.findUnique({
       where: { id: req.params.id },
-      include: {
-        _count: {
-          select: {
-            subscriptions: true,
-            usageLogs: true,
-          },
-        },
-      } as any,
     });
 
     if (!feature) {
@@ -322,11 +301,16 @@ router.delete('/:id', async (req, res, next) => {
       });
     }
 
-    // If feature has subscriptions or usage, don't delete, just archive
-    if (feature._count.subscriptions > 0 || feature._count.usageLogs > 0) {
+    // Check for subscriptions or usage
+    const [subCount, usageCount] = await Promise.all([
+      prisma.tenantAISubscription.count({ where: { featureId: req.params.id } }),
+      prisma.aIUsageLog.count({ where: { featureId: req.params.id } }),
+    ]);
+
+    if (subCount > 0 || usageCount > 0) {
       await prisma.aIFeature.update({
         where: { id: req.params.id },
-        data: { status: 'ARCHIVED', isActive: false } as any,
+        data: { status: 'ARCHIVED', isActive: false },
       });
 
       return res.json({
@@ -338,6 +322,8 @@ router.delete('/:id', async (req, res, next) => {
     await prisma.aIFeature.delete({
       where: { id: req.params.id },
     });
+
+    auditLog(req, 'DELETE_AI_FEATURE', 'ai_feature', req.params.id, null, { featureKey: feature.featureKey });
 
     res.json({
       success: true,
@@ -369,7 +355,7 @@ router.post('/:id/publish', async (req, res, next) => {
     }
 
     // Check if provider is active
-    if ((feature.provider as any).status !== 'ACTIVE') {
+    if (feature.provider.status !== 'ACTIVE') {
       return res.status(400).json({
         success: false,
         error: {
@@ -385,8 +371,10 @@ router.post('/:id/publish', async (req, res, next) => {
       data: {
         status: 'PUBLISHED',
         publishedAt: new Date(),
-      } as any,
+      },
     });
+
+    auditLog(req, 'PUBLISH_AI_FEATURE', 'ai_feature', req.params.id);
 
     res.json({
       success: true,
@@ -420,8 +408,10 @@ router.post('/:id/deprecate', async (req, res, next) => {
       data: {
         status: 'DEPRECATED',
         deprecatedAt: new Date(),
-      } as any,
+      },
     });
+
+    auditLog(req, 'DEPRECATE_AI_FEATURE', 'ai_feature', req.params.id);
 
     res.json({
       success: true,
@@ -462,7 +452,7 @@ router.post('/:id/assign', async (req, res, next) => {
       });
     }
 
-    if ((feature as any).status !== 'PUBLISHED') {
+    if (feature.status !== 'PUBLISHED') {
       return res.status(400).json({
         success: false,
         error: {
@@ -490,7 +480,7 @@ router.post('/:id/assign', async (req, res, next) => {
     // Create subscriptions for each tenant
     const subscriptions = await Promise.all(
       data.tenantIds.map(async (tenantId) => {
-        return (prisma as any).tenantAISubscription.upsert({
+        return prisma.tenantAISubscription.upsert({
           where: {
             tenantId_featureId: {
               tenantId,
@@ -519,6 +509,8 @@ router.post('/:id/assign', async (req, res, next) => {
       })
     );
 
+    auditLog(req, 'ASSIGN_AI_FEATURE', 'ai_feature', req.params.id, null, { tenantIds: data.tenantIds });
+
     res.json({
       success: true,
       data: subscriptions,
@@ -538,12 +530,14 @@ router.post('/:id/unassign', async (req, res, next) => {
 
     const { tenantIds } = schema.parse(req.body);
 
-    await (prisma as any).tenantAISubscription.deleteMany({
+    await prisma.tenantAISubscription.deleteMany({
       where: {
         featureId: req.params.id,
         tenantId: { in: tenantIds },
       },
     });
+
+    auditLog(req, 'UNASSIGN_AI_FEATURE', 'ai_feature', req.params.id, null, { tenantIds });
 
     res.json({
       success: true,
@@ -575,79 +569,33 @@ router.get('/:id/stats', async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const [totalUsage, subscriptionCount, topTenants] = await Promise.all([
-      (prisma as any).aIUsageLog.aggregate({
+    const [usageCount, subscriptionCount] = await Promise.all([
+      prisma.aIUsageLog.count({
         where: {
           featureId: req.params.id,
           createdAt: { gte: thirtyDaysAgo },
         },
-        _sum: {
-          creditsUsed: true,
-          inputTokens: true,
-          outputTokens: true,
-          totalCost: true,
-        },
-        _count: true,
-        _avg: {
-          processingTimeMs: true,
-        },
       }),
-      (prisma as any).tenantAISubscription.count({
+      prisma.tenantAISubscription.count({
         where: { featureId: req.params.id, isEnabled: true },
       }),
-      (prisma as any).aIUsageLog.groupBy({
-        by: ['tenantId'],
-        where: {
-          featureId: req.params.id,
-          createdAt: { gte: thirtyDaysAgo },
-        },
-        _sum: {
-          creditsUsed: true,
-        },
-        _count: true,
-        orderBy: {
-          _count: {
-            tenantId: 'desc',
-          },
-        },
-        take: 5,
-      }),
     ]);
-
-    // Get tenant names for top users
-    const tenantIds = topTenants.map((t: any) => t.tenantId);
-    const tenants = await prisma.tenant.findMany({
-      where: { id: { in: tenantIds } },
-      select: { id: true, name: true },
-    });
-    const tenantMap = new Map(tenants.map(t => [t.id, t.name]));
 
     res.json({
       success: true,
       data: {
         feature: {
           id: feature.id,
-          displayName: (feature as any).displayName,
-          status: (feature as any).status,
+          displayName: feature.displayName,
+          status: feature.status,
           category: feature.category,
         },
         usage: {
-          totalRequests: totalUsage._count,
-          totalCreditsUsed: totalUsage._sum.creditsUsed || 0,
-          totalInputTokens: totalUsage._sum.inputTokens || 0,
-          totalOutputTokens: totalUsage._sum.outputTokens || 0,
-          totalCost: totalUsage._sum.totalCost || 0,
-          avgProcessingTimeMs: Math.round(totalUsage._avg.processingTimeMs || 0),
+          totalRequests: usageCount,
         },
         subscriptions: {
           activeCount: subscriptionCount,
         },
-        topTenants: topTenants.map((t: any) => ({
-          tenantId: t.tenantId,
-          tenantName: tenantMap.get(t.tenantId) || 'Unknown',
-          requestCount: t._count,
-          creditsUsed: t._sum.creditsUsed || 0,
-        })),
         period: {
           from: thirtyDaysAgo.toISOString(),
           to: new Date().toISOString(),
@@ -701,6 +649,8 @@ router.post('/:id/test', async (req, res, next) => {
       where: { id: req.params.id },
       data: { status: 'TESTING' } as any,
     });
+
+    auditLog(req, 'TEST_AI_FEATURE', 'ai_feature', req.params.id, null, { featureName: feature.featureName, providerName: feature.provider.providerName });
 
     // AI provider integration not yet implemented
     res.status(503).json({

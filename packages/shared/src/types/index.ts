@@ -28,17 +28,13 @@ export interface UserPayload {
   email?: string;
   mobile: string;
   role: UserRole;
+  customRoleId?: string;
   permissions?: string[];
 }
 
 export type UserRole =
   | 'SUPER_ADMIN'
-  | 'TENANT_ADMIN'
-  | 'CAMPAIGN_MANAGER'
-  | 'COORDINATOR'
-  | 'BOOTH_INCHARGE'
-  | 'VOLUNTEER'
-  | 'AGENT';
+  | 'CENTRAL_ADMIN';
 
 export interface LoginRequest {
   mobile: string;
@@ -51,6 +47,7 @@ export interface LoginResponse {
   refreshToken: string;
   user: UserPayload;
   expiresIn: number;
+  mustChangePassword?: boolean;
 }
 
 // Election Types

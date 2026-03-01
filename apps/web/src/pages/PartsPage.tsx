@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { partsAPI } from '../services/api';
 import { useElectionStore } from '../store/election';
 import { Button } from '../components/ui/button';
@@ -17,7 +18,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
-// Select imports removed - not currently used
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import {
   Table,
   TableBody,
@@ -26,65 +33,68 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../components/ui/dropdown-menu';
 import { Skeleton } from '../components/ui/skeleton';
 import { Spinner } from '../components/ui/spinner';
 import {
   PlusIcon,
   SearchIcon,
-  MoreVerticalIcon,
-  EditIcon,
   TrashIcon,
   MapPinIcon,
   AlertTriangleIcon,
   UsersIcon,
+  LoaderIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatNumber } from '../lib/utils';
 
-// Template columns for bulk upload
+// Template columns for bulk upload — field names match backend createPartSchema
 const partsTemplateColumns: TemplateColumn[] = [
-  { key: 'partNo', label: 'Part Number', required: true, type: 'number', description: 'Unique part/booth number', example: 1 },
-  { key: 'partNameEn', label: 'Part Name (English)', required: true, type: 'string', description: 'Part name in English', example: 'Government School' },
-  { key: 'partNameLocal', label: 'Part Name (Local)', type: 'string', description: 'Part name in local language', example: '' },
-  { key: 'boothAddress', label: 'Booth Address', type: 'string', description: 'Complete booth address', example: '123 Main Street' },
-  { key: 'totalVoters', label: 'Total Voters', type: 'number', description: 'Total number of voters', example: 1500 },
-  { key: 'maleVoters', label: 'Male Voters', type: 'number', description: 'Number of male voters', example: 750 },
-  { key: 'femaleVoters', label: 'Female Voters', type: 'number', description: 'Number of female voters', example: 750 },
+  { key: 'partNumber', label: 'Part Number', required: true, type: 'number', description: 'Unique part/booth number', example: 1 },
+  { key: 'boothName', label: 'Booth Name (English)', required: true, type: 'string', description: 'Booth name in English', example: 'Government School' },
+  { key: 'boothNameLocal', label: 'Booth Name (Local)', type: 'string', description: 'Booth name in local language', example: '' },
+  { key: 'address', label: 'Address', type: 'string', description: 'Complete booth address', example: '123 Main Street' },
+  { key: 'partType', label: 'Part Type', type: 'string', description: 'URBAN or RURAL', example: 'URBAN' },
+  { key: 'landmark', label: 'Landmark', type: 'string', description: 'Nearby landmark', example: 'Near Bus Stand' },
+  { key: 'pincode', label: 'Pincode', type: 'string', description: '6-digit pincode', example: '600001' },
 ];
 
+const PAGE_SIZE = 20;
+
 export function PartsPage() {
+  const navigate = useNavigate();
   const { selectedElectionId } = useElectionStore();
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [formData, setFormData] = useState({
-    partNo: '',
-    partNameEn: '',
-    partNameLocal: '',
-    boothAddress: '',
-    totalVoters: '',
-    maleVoters: '',
-    femaleVoters: '',
+    partNumber: '',
+    boothName: '',
+    boothNameLocal: '',
+    address: '',
+    partType: 'URBAN',
+    landmark: '',
+    pincode: '',
   });
 
   const queryClient = useQueryClient();
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const handleBulkUpload = async (data: Record<string, unknown>[]) => {
     try {
       const parts = data.map(row => ({
-        partNo: Number(row.partNo),
-        partNameEn: String(row.partNameEn || ''),
-        partNameLocal: row.partNameLocal ? String(row.partNameLocal) : undefined,
-        boothAddress: row.boothAddress ? String(row.boothAddress) : undefined,
-        totalVoters: row.totalVoters ? Number(row.totalVoters) : undefined,
-        maleVoters: row.maleVoters ? Number(row.maleVoters) : undefined,
-        femaleVoters: row.femaleVoters ? Number(row.femaleVoters) : undefined,
+        partNumber: Number(row.partNumber),
+        boothName: String(row.boothName || ''),
+        boothNameLocal: row.boothNameLocal ? String(row.boothNameLocal) : undefined,
+        address: row.address ? String(row.address) : undefined,
+        partType: row.partType ? String(row.partType).toUpperCase() : 'URBAN',
+        landmark: row.landmark ? String(row.landmark) : undefined,
+        pincode: row.pincode ? String(row.pincode) : undefined,
       }));
 
       const response = await partsAPI.bulkCreate(selectedElectionId!, parts);
@@ -101,37 +111,74 @@ export function PartsPage() {
     }
   };
 
-  const { data: partsData, isLoading } = useQuery({
-    queryKey: ['parts', selectedElectionId, search, page],
-    queryFn: () =>
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['parts', selectedElectionId, debouncedSearch],
+    queryFn: ({ pageParam = 1 }) =>
       partsAPI.getAll(selectedElectionId!, {
-        page,
-        limit: 20,
-        search: search || undefined,
+        page: pageParam,
+        limit: PAGE_SIZE,
+        search: debouncedSearch || undefined,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const meta = lastPage?.data?.meta;
+      if (!meta) return undefined;
+      return meta.page < meta.totalPages ? meta.page + 1 : undefined;
+    },
     enabled: !!selectedElectionId,
   });
+
+  // Flatten all pages into a single parts array
+  const parts = data?.pages.flatMap((page) => page?.data?.data || []) || [];
+  const totalCount = data?.pages[0]?.data?.meta?.total;
+
+  // IntersectionObserver for infinite scroll
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries;
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [fetchNextPage, hasNextPage, isFetchingNextPage]
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleObserver, { threshold: 0.1 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleObserver]);
 
   const createMutation = useMutation({
     mutationFn: () =>
       partsAPI.create(selectedElectionId!, {
-        ...formData,
-        partNo: parseInt(formData.partNo),
-        totalVoters: formData.totalVoters ? parseInt(formData.totalVoters) : undefined,
-        maleVoters: formData.maleVoters ? parseInt(formData.maleVoters) : undefined,
-        femaleVoters: formData.femaleVoters ? parseInt(formData.femaleVoters) : undefined,
+        partNumber: parseInt(formData.partNumber),
+        boothName: formData.boothName,
+        boothNameLocal: formData.boothNameLocal || undefined,
+        address: formData.address || undefined,
+        partType: formData.partType || 'URBAN',
+        landmark: formData.landmark || undefined,
+        pincode: formData.pincode || undefined,
       }),
     onSuccess: () => {
       toast.success('Part created successfully');
       setCreateOpen(false);
       setFormData({
-        partNo: '',
-        partNameEn: '',
-        partNameLocal: '',
-        boothAddress: '',
-        totalVoters: '',
-        maleVoters: '',
-        femaleVoters: '',
+        partNumber: '',
+        boothName: '',
+        boothNameLocal: '',
+        address: '',
+        partType: 'URBAN',
+        landmark: '',
+        pincode: '',
       });
       queryClient.invalidateQueries({ queryKey: ['parts'] });
     },
@@ -151,23 +198,20 @@ export function PartsPage() {
     },
   });
 
-  const parts = partsData?.data?.data || [];
-  const pagination = partsData?.data?.meta;
-
   if (!selectedElectionId) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-        <AlertTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700">No Election Selected</h2>
-        <p className="text-gray-500 mt-2">Please select an election from the sidebar to view parts.</p>
+        <AlertTriangleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold text-foreground">No Election Selected</h2>
+        <p className="text-muted-foreground mt-2">Please select an election from the sidebar to view parts.</p>
       </div>
     );
   }
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.partNo || !formData.partNameEn) {
-      toast.error('Please fill in required fields');
+    if (!formData.partNumber || !formData.boothName) {
+      toast.error('Please fill in required fields (Part Number and Booth Name)');
       return;
     }
     createMutation.mutate();
@@ -191,8 +235,8 @@ export function PartsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Parts / Booths</h1>
-          <p className="text-gray-500">
-            Manage polling booths {pagination && `(${pagination.total} total)`}
+          <p className="text-muted-foreground">
+            Manage polling booths {totalCount != null && `(${totalCount} total)`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -217,65 +261,73 @@ export function PartsPage() {
               <div className="space-y-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="partNo">Part Number *</Label>
+                    <Label htmlFor="partNumber">Part Number *</Label>
                     <Input
-                      id="partNo"
+                      id="partNumber"
                       type="number"
-                      value={formData.partNo}
-                      onChange={(e) => setFormData({ ...formData, partNo: e.target.value })}
+                      value={formData.partNumber}
+                      onChange={(e) => setFormData({ ...formData, partNumber: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="totalVoters">Total Voters</Label>
-                    <Input
-                      id="totalVoters"
-                      type="number"
-                      value={formData.totalVoters}
-                      onChange={(e) => setFormData({ ...formData, totalVoters: e.target.value })}
-                    />
+                    <Label htmlFor="partType">Part Type</Label>
+                    <Select
+                      value={formData.partType}
+                      onValueChange={(value) => setFormData({ ...formData, partType: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="URBAN">Urban</SelectItem>
+                        <SelectItem value="RURAL">Rural</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="partNameEn">Part Name (English) *</Label>
+                  <Label htmlFor="boothName">Booth Name (English) *</Label>
                   <Input
-                    id="partNameEn"
-                    value={formData.partNameEn}
-                    onChange={(e) => setFormData({ ...formData, partNameEn: e.target.value })}
+                    id="boothName"
+                    value={formData.boothName}
+                    onChange={(e) => setFormData({ ...formData, boothName: e.target.value })}
+                    placeholder="e.g., Government School"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="partNameLocal">Part Name (Local)</Label>
+                  <Label htmlFor="boothNameLocal">Booth Name (Local)</Label>
                   <Input
-                    id="partNameLocal"
-                    value={formData.partNameLocal}
-                    onChange={(e) => setFormData({ ...formData, partNameLocal: e.target.value })}
+                    id="boothNameLocal"
+                    value={formData.boothNameLocal}
+                    onChange={(e) => setFormData({ ...formData, boothNameLocal: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="boothAddress">Booth Address</Label>
+                  <Label htmlFor="address">Address</Label>
                   <Input
-                    id="boothAddress"
-                    value={formData.boothAddress}
-                    onChange={(e) => setFormData({ ...formData, boothAddress: e.target.value })}
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="Full booth address"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="maleVoters">Male Voters</Label>
+                    <Label htmlFor="landmark">Landmark</Label>
                     <Input
-                      id="maleVoters"
-                      type="number"
-                      value={formData.maleVoters}
-                      onChange={(e) => setFormData({ ...formData, maleVoters: e.target.value })}
+                      id="landmark"
+                      value={formData.landmark}
+                      onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                      placeholder="Near Bus Stand"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="femaleVoters">Female Voters</Label>
+                    <Label htmlFor="pincode">Pincode</Label>
                     <Input
-                      id="femaleVoters"
-                      type="number"
-                      value={formData.femaleVoters}
-                      onChange={(e) => setFormData({ ...formData, femaleVoters: e.target.value })}
+                      id="pincode"
+                      value={formData.pincode}
+                      onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                      placeholder="6-digit code"
                     />
                   </div>
                 </div>
@@ -296,17 +348,14 @@ export function PartsPage() {
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="hover:shadow-sm hover:translate-y-0">
         <CardContent className="p-4">
           <div className="relative max-w-md">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search parts..."
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
@@ -314,7 +363,7 @@ export function PartsPage() {
       </Card>
 
       {/* Parts Table */}
-      <Card>
+      <Card className="hover:shadow-sm hover:translate-y-0">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-4 space-y-4">
@@ -326,96 +375,82 @@ export function PartsPage() {
             </div>
           ) : parts.length === 0 ? (
             <div className="p-8 text-center">
-              <MapPinIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No parts found</p>
+              <MapPinIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No parts found</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Part No</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Total Voters</TableHead>
-                  <TableHead>Male</TableHead>
-                  <TableHead>Female</TableHead>
-                  <TableHead>Vulnerability</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {parts.map((part: any) => (
-                  <TableRow key={part.id}>
-                    <TableCell className="font-medium">{part.partNumber || part.partNo || '-'}</TableCell>
-                    <TableCell>{part.boothName || part.boothNameLocal || part.partName || part.partNameEn || '-'}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{part.address || part.boothAddress || '-'}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-1">
-                        <UsersIcon className="h-3 w-3" />
-                        {formatNumber(part.totalVoters ?? 0)}
-                      </span>
-                    </TableCell>
-                    <TableCell>{formatNumber(part.maleVoters ?? 0)}</TableCell>
-                    <TableCell>{formatNumber(part.femaleVoters ?? 0)}</TableCell>
-                    <TableCell>{getVulnerabilityBadge(part.vulnerability)}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreVerticalIcon className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <EditIcon className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-red-600"
-                            onClick={() => {
-                              if (confirm('Are you sure you want to delete this part?')) {
-                                deleteMutation.mutate(part.id);
-                              }
-                            }}
-                          >
-                            <TrashIcon className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Part No</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Total Voters</TableHead>
+                    <TableHead>Male</TableHead>
+                    <TableHead>Female</TableHead>
+                    <TableHead>Vulnerability</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {parts.map((part: any) => (
+                    <TableRow
+                      key={part.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/parts/${part.id}`)}
+                    >
+                      <TableCell className="font-medium">{part.partNumber ?? '-'}</TableCell>
+                      <TableCell>{part.boothName || part.boothNameLocal || '-'}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{part.address || '-'}</TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-1">
+                          <UsersIcon className="h-3 w-3" />
+                          {formatNumber(part.totalVoters ?? 0)}
+                        </span>
+                      </TableCell>
+                      <TableCell>{formatNumber(part.maleVoters ?? 0)}</TableCell>
+                      <TableCell>{formatNumber(part.femaleVoters ?? 0)}</TableCell>
+                      <TableCell>{getVulnerabilityBadge(part.vulnerability)}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Are you sure you want to delete this part?')) {
+                              deleteMutation.mutate(part.id);
+                            }
+                          }}
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="p-4 flex justify-center">
+                {isFetchingNextPage ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <LoaderIcon className="h-4 w-4 animate-spin" />
+                    Loading more...
+                  </div>
+                ) : hasNextPage ? (
+                  <p className="text-sm text-muted-foreground">Scroll for more</p>
+                ) : parts.length > PAGE_SIZE ? (
+                  <p className="text-sm text-muted-foreground">
+                    Showing all {parts.length} parts
+                  </p>
+                ) : null}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
-
-      {/* Pagination */}
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-          >
-            Previous
-          </Button>
-          <span className="flex items-center px-4 text-sm text-gray-600">
-            Page {page} of {pagination.totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === pagination.totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

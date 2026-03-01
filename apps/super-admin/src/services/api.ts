@@ -71,7 +71,7 @@ export const authAPI = {
 };
 
 // Database type options
-export type DatabaseType = 'NONE' | 'SHARED' | 'DEDICATED_MANAGED' | 'DEDICATED_SELF';
+export type DatabaseType = 'SHARED' | 'DEDICATED_PLATFORM' | 'DEDICATED_EXTERNAL';
 
 // Tenants API
 export const tenantsAPI = {
@@ -109,25 +109,13 @@ export const tenantsAPI = {
     adminPassword: string;
     enabledFeatures?: string[];
   }) => api.post('/tenants', data),
-  update: (
-    id: string,
-    data: {
-      name?: string;
-      description?: string;
-      logoUrl?: string;
-      primaryColor?: string;
-      isActive?: boolean;
-      limits?: {
-        maxVoters?: number;
-        maxCadres?: number;
-        maxElections?: number;
-        maxUsers?: number;
-        maxConstituencies?: number;
-      };
-    }
-  ) => api.put(`/tenants/${id}`, data),
+  update: (id: string, data: Record<string, any>) => api.put(`/tenants/${id}`, data),
   delete: (id: string) => api.delete(`/tenants/${id}`),
   getStats: (id: string) => api.get(`/tenants/${id}/stats`),
+  syncCounts: (id: string) => api.post(`/tenants/${id}/sync-counts`),
+  getAdminInfo: (id: string) => api.get(`/tenants/${id}/admin`),
+  resetAdminPassword: (id: string) => api.post(`/tenants/${id}/admin/reset-password`),
+  regenerateUrl: (id: string) => api.post(`/tenants/${id}/regenerate-url`),
   getFeatures: (id: string) => api.get(`/tenants/${id}/features`),
   updateFeature: (tenantId: string, featureId: string, isEnabled: boolean) =>
     api.put(`/tenants/${tenantId}/features/${featureId}`, { isEnabled }),
@@ -366,28 +354,35 @@ export const aiCreditsAPI = {
   deletePackage: (id: string) => api.delete(`/ai/credits/packages/${id}`),
 
   // Tenant Credits
-  getTenantCredits: (tenantId: string) => api.get(`/ai/credits/tenant/${tenantId}`),
+  getTenantCredits: (tenantId: string) => api.get(`/ai/credits/tenants/${tenantId}`),
   addCredits: (tenantId: string, data: {
     credits: number;
     reason?: string;
     packageId?: string;
     paymentReference?: string;
-  }) => api.post(`/ai/credits/tenant/${tenantId}/add`, data),
+  }) => api.post(`/ai/credits/tenants/${tenantId}/add`, data),
   deductCredits: (tenantId: string, data: {
     credits: number;
     reason: string;
-  }) => api.post(`/ai/credits/tenant/${tenantId}/deduct`, data),
+  }) => api.post(`/ai/credits/tenants/${tenantId}/deduct`, data),
   getTransactions: (tenantId: string, params?: { page?: number; limit?: number }) =>
-    api.get(`/ai/credits/tenant/${tenantId}/transactions`, { params }),
+    api.get(`/ai/credits/tenants/${tenantId}/transactions`, { params }),
 
   // Alerts
   getAlerts: (params?: { isRead?: boolean; isResolved?: boolean }) =>
     api.get('/ai/credits/alerts', { params }),
   markAlertRead: (id: string) => api.put(`/ai/credits/alerts/${id}/read`),
-  resolveAlert: (id: string) => api.put(`/ai/credits/alerts/${id}/resolve`),
+  resolveAlert: (id: string) => api.post(`/ai/credits/alerts/${id}/resolve`, {}),
 
   // Dashboard
   getSummary: () => api.get('/ai/credits/summary'),
+
+  // Commission
+  getCommission: () => api.get('/ai/credits/commission'),
+  updateCommission: (commissionPercent: number) =>
+    api.put('/ai/credits/commission', { commissionPercent }),
+  calculatePricing: (data: { providerCostPerCredit: number; credits: number }) =>
+    api.post('/ai/credits/calculate-pricing', data),
 };
 
 // System API
@@ -397,6 +392,7 @@ export const systemAPI = {
   setConfig: (key: string, configValue: any, description?: string) =>
     api.put(`/system/config/${key}`, { configValue, description }),
   getDashboard: () => api.get('/system/dashboard'),
+  syncCounts: (tenantId?: string) => api.post('/system/sync-counts', tenantId ? { tenantId } : {}),
   getAdmins: () => api.get('/system/admins'),
   createAdmin: (data: {
     firstName: string;
@@ -408,6 +404,9 @@ export const systemAPI = {
   deactivateAdmin: (id: string) => api.put(`/system/admins/${id}/deactivate`),
   activateAdmin: (id: string) => api.put(`/system/admins/${id}/activate`),
   getHealth: () => api.get('/system/health'),
+  getServicesHealth: () => api.get('/system/services-health'),
+  getLogs: (params?: { page?: number; limit?: number; entityType?: string; action?: string; tenantId?: string }) =>
+    api.get('/system/logs', { params }),
 };
 
 // EC Integration API

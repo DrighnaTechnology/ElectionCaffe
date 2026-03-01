@@ -1,10 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { coreDb, getTenantClientBySlug } from '@electioncaffe/database';
 import { createLogger } from '@electioncaffe/shared';
 
 const logger = createLogger('gateway');
-
-const prisma = new PrismaClient();
 
 interface LicenseCheckResult {
   valid: boolean;
@@ -80,7 +78,7 @@ export async function licenseEnforcementMiddleware(
  * Check if tenant has a valid license
  */
 async function checkTenantLicense(tenantId: string): Promise<LicenseCheckResult> {
-  const license = await prisma.tenantLicense.findUnique({
+  const license = await coreDb.tenantLicense.findUnique({
     where: { tenantId },
     include: {
       licensePlan: true,
@@ -124,7 +122,7 @@ async function checkTenantLicense(tenantId: string): Promise<LicenseCheckResult>
   // Check expiry
   if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
     // Update license status to expired
-    await prisma.tenantLicense.update({
+    await coreDb.tenantLicense.update({
       where: { id: license.id },
       data: { status: 'EXPIRED' },
     });
@@ -199,13 +197,18 @@ async function checkLimitWarnings(
   license: any,
   limits: any
 ): Promise<{ type: string; message: string } | undefined> {
-  // Check user count
-  const userCount = await prisma.user.count({
-    where: {
-      tenantId,
-      status: { in: ['ACTIVE', 'PENDING'] },
-    },
+  // Check user count (in tenant's own database)
+  let userCount = 0;
+  const tenantForUserCount = await coreDb.tenant.findUnique({
+    where: { id: tenantId },
+    select: { slug: true, databaseConnectionUrl: true, databaseHost: true, databaseName: true, databaseUser: true, databasePassword: true, databasePort: true, databaseSSL: true },
   });
+  if (tenantForUserCount) {
+    const tenantClient = await getTenantClientBySlug(tenantForUserCount.slug, tenantForUserCount, tenantId);
+    userCount = await tenantClient.user.count({
+      where: { status: { in: ['ACTIVE', 'PENDING'] } },
+    });
+  }
 
   const userPercent = (userCount / limits.maxUsers) * 100;
   if (userPercent >= 90) {
@@ -259,7 +262,7 @@ export async function apiRateLimitMiddleware(
       return next();
     }
 
-    const license = await prisma.tenantLicense.findUnique({
+    const license = await coreDb.tenantLicense.findUnique({
       where: { tenantId },
       include: { licensePlan: true },
     });
@@ -279,7 +282,7 @@ export async function apiRateLimitMiddleware(
     const currentHour = now.getHours();
 
     // Get today's metrics
-    const todayMetrics = await prisma.tenantUsageMetrics.findFirst({
+    const todayMetrics = await coreDb.tenantUsageMetrics.findFirst({
       where: {
         tenantLicenseId: license.id,
         metricDate: today,
@@ -288,7 +291,7 @@ export async function apiRateLimitMiddleware(
     });
 
     // Get current hour metrics
-    const hourMetrics = await prisma.tenantUsageMetrics.findFirst({
+    const hourMetrics = await coreDb.tenantUsageMetrics.findFirst({
       where: {
         tenantLicenseId: license.id,
         metricDate: today,
@@ -359,7 +362,7 @@ async function incrementApiCounters(
 ) {
   try {
     // Update daily metrics
-    await prisma.tenantUsageMetrics.upsert({
+    await coreDb.tenantUsageMetrics.upsert({
       where: {
         tenantLicenseId_metricDate_metricHour: {
           tenantLicenseId,
@@ -379,7 +382,7 @@ async function incrementApiCounters(
     });
 
     // Update hourly metrics
-    await prisma.tenantUsageMetrics.upsert({
+    await coreDb.tenantUsageMetrics.upsert({
       where: {
         tenantLicenseId_metricDate_metricHour: {
           tenantLicenseId,
@@ -412,7 +415,7 @@ export async function checkUserLimit(tenantId: string): Promise<{
   max: number;
   message?: string;
 }> {
-  const license = await prisma.tenantLicense.findUnique({
+  const license = await coreDb.tenantLicense.findUnique({
     where: { tenantId },
     include: { licensePlan: true },
   });
@@ -425,12 +428,17 @@ export async function checkUserLimit(tenantId: string): Promise<{
     maxUsers = license.customMaxUsers ?? license.licensePlan.maxUsers;
   }
 
-  const currentUsers = await prisma.user.count({
-    where: {
-      tenantId,
-      status: { in: ['ACTIVE', 'PENDING'] },
-    },
+  let currentUsers = 0;
+  const tenantForUsers = await coreDb.tenant.findUnique({
+    where: { id: tenantId },
+    select: { slug: true, databaseConnectionUrl: true, databaseHost: true, databaseName: true, databaseUser: true, databasePassword: true, databasePort: true, databaseSSL: true },
   });
+  if (tenantForUsers) {
+    const tenantClient = await getTenantClientBySlug(tenantForUsers.slug, tenantForUsers, tenantId);
+    currentUsers = await tenantClient.user.count({
+      where: { status: { in: ['ACTIVE', 'PENDING'] } },
+    });
+  }
 
   if (currentUsers >= maxUsers) {
     // Check if soft limit mode
@@ -470,7 +478,7 @@ export async function checkDataProcessingLimit(
   max: number;
   message?: string;
 }> {
-  const license = await prisma.tenantLicense.findUnique({
+  const license = await coreDb.tenantLicense.findUnique({
     where: { tenantId },
     include: { licensePlan: true },
   });
@@ -487,7 +495,7 @@ export async function checkDataProcessingLimit(
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
-  const monthlyMetrics = await prisma.tenantUsageMetrics.aggregate({
+  const monthlyMetrics = await coreDb.tenantUsageMetrics.aggregate({
     where: {
       tenantLicenseId: license.id,
       metricDate: { gte: startOfMonth },

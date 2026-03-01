@@ -1,0 +1,14 @@
+CURRENT STEP: Step 3 — Create an Election
+
+Go to the **Elections** page and click **Create Election**.
+
+Fill in:
+- Election Name (e.g. "Bihar Assembly 2025")
+- Election Type: Assembly / Parliament / Municipal / Panchayat / By-Election
+- Constituency Name
+- State & District
+- Poll Date
+
+After saving, the election starts in **Draft** status.
+
+IMPORTANT: Once created, you must SELECT it — click it from the list or use the **header dropdown** at the top. All data pages (voters, booths, cadres) only work after an election is selected.

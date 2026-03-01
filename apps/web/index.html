@@ -5,10 +5,65 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ElectionCaffe - Election Management Platform</title>
+    <script>
+      // Anti-FOUC: Apply theme class before React loads
+      try {
+        var stored = JSON.parse(localStorage.getItem('electioncaffe-theme') || '{}');
+        var theme = (stored.state && stored.state.theme) || 'light';
+        var resolved = theme === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : theme;
+        document.documentElement.classList.add(resolved);
+      } catch(e) { document.documentElement.classList.add('light'); }
+    </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+      /* Force hide Google Translate top banner bar (iframe) */
+      .goog-te-banner-frame, #goog-gt-tt, .goog-te-balloon-frame { display: none !important; }
+      .goog-te-menu-value:hover { text-decoration: none !important; }
+      body { top: 0 !important; position: static !important; }
+      /* Hide the "Translated into" bar that Google injects at top */
+      .skiptranslate { display: none !important; }
+      body > .skiptranslate { display: none !important; }
+      /* Restore body visibility (Google adds style to body) */
+      body { margin-top: 0 !important; }
+      /* Keep the translate element rendered but off-screen (select must remain functional) */
+      #google_translate_element {
+        position: fixed;
+        top: -200px;
+        left: -200px;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+      /* Hide Google Translate tooltip/highlight on translated text */
+      .goog-tooltip, .goog-tooltip:hover { display: none !important; }
+      .goog-text-highlight { background: none !important; box-shadow: none !important; }
+    </style>
   </head>
   <body>
+    <div id="google_translate_element"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      function googleTranslateElementInit() {
+        new google.translate.TranslateElement({
+          pageLanguage: 'en',
+          includedLanguages: 'hi,bn,ta,te,kn,ml,mr,gu,pa,or,ur,as,en',
+          layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+          autoDisplay: false
+        }, 'google_translate_element');
+      }
+    </script>
+    <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+    <script>
+      // Remove the inline style Google Translate adds to body (top: 40px)
+      const observer = new MutationObserver(function() {
+        if (document.body.style.top) {
+          document.body.style.top = '';
+        }
+      });
+      observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+    </script>
   </body>
 </html>

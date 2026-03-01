@@ -116,7 +116,7 @@ function ReligionsTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Religions</h3>
-          <p className="text-sm text-gray-500">Manage religions for voter categorization</p>
+          <p className="text-sm text-muted-foreground">Manage religions for voter categorization</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
@@ -186,7 +186,7 @@ function ReligionsTab({ electionId }: { electionId: string }) {
           ))}
           {religions.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="text-center py-8 text-gray-500">No religions found. Add your first religion.</TableCell>
+              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No religions found. Add your first religion.</TableCell>
             </TableRow>
           )}
         </TableBody>
@@ -227,7 +227,7 @@ function CasteCategoriesTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Caste Categories</h3>
-          <p className="text-sm text-gray-500">Categories like OC, BC, MBC, SC, ST</p>
+          <p className="text-sm text-muted-foreground">Categories like OC, BC, MBC, SC, ST</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -278,7 +278,7 @@ function CasteCategoriesTab({ electionId }: { electionId: string }) {
             </TableRow>
           ))}
           {categories.length === 0 && (
-            <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-500">No caste categories found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No caste categories found.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
@@ -324,7 +324,7 @@ function CastesTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Castes</h3>
-          <p className="text-sm text-gray-500">Individual castes under each category</p>
+          <p className="text-sm text-muted-foreground">Individual castes under each category</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -388,7 +388,7 @@ function CastesTab({ electionId }: { electionId: string }) {
             </TableRow>
           ))}
           {castes.length === 0 && (
-            <TableRow><TableCell colSpan={5} className="text-center py-8 text-gray-500">No castes found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No castes found.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
@@ -434,7 +434,7 @@ function SubCastesTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Sub-Castes</h3>
-          <p className="text-sm text-gray-500">Sub-divisions of castes</p>
+          <p className="text-sm text-muted-foreground">Sub-divisions of castes</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -494,7 +494,7 @@ function SubCastesTab({ electionId }: { electionId: string }) {
             </TableRow>
           ))}
           {subCastes.length === 0 && (
-            <TableRow><TableCell colSpan={5} className="text-center py-8 text-gray-500">No sub-castes found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No sub-castes found.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
@@ -533,7 +533,7 @@ function LanguagesTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Languages</h3>
-          <p className="text-sm text-gray-500">Languages spoken by voters</p>
+          <p className="text-sm text-muted-foreground">Languages spoken by voters</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -592,7 +592,7 @@ function LanguagesTab({ electionId }: { electionId: string }) {
             </TableRow>
           ))}
           {languages.length === 0 && (
-            <TableRow><TableCell colSpan={6} className="text-center py-8 text-gray-500">No languages found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No languages found.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
@@ -631,7 +631,7 @@ function PartiesTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Political Parties</h3>
-          <p className="text-sm text-gray-500">Political parties for voter affiliation</p>
+          <p className="text-sm text-muted-foreground">Political parties for voter affiliation</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -697,7 +697,7 @@ function PartiesTab({ electionId }: { electionId: string }) {
             </TableRow>
           ))}
           {parties.length === 0 && (
-            <TableRow><TableCell colSpan={6} className="text-center py-8 text-gray-500">No parties found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No parties found.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
@@ -736,7 +736,7 @@ function SchemesTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Government Schemes</h3>
-          <p className="text-sm text-gray-500">Central, State, and Local body schemes</p>
+          <p className="text-sm text-muted-foreground">Central, State, and Local body schemes</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -827,7 +827,7 @@ function SchemesTab({ electionId }: { electionId: string }) {
             </TableRow>
           ))}
           {schemes.length === 0 && (
-            <TableRow><TableCell colSpan={6} className="text-center py-8 text-gray-500">No schemes found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No schemes found.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
@@ -866,7 +866,7 @@ function VoterCategoriesTab({ electionId }: { electionId: string }) {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Voter Categories</h3>
-          <p className="text-sm text-gray-500">Special voter categories (VIP, Key Influencer, etc.)</p>
+          <p className="text-sm text-muted-foreground">Special voter categories (VIP, Key Influencer, etc.)</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -928,7 +928,7 @@ function VoterCategoriesTab({ electionId }: { electionId: string }) {
             </TableRow>
           ))}
           {categories.length === 0 && (
-            <TableRow><TableCell colSpan={6} className="text-center py-8 text-gray-500">No voter categories found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No voter categories found.</TableCell></TableRow>
           )}
         </TableBody>
       </Table>
@@ -944,9 +944,9 @@ export function MasterDataPage() {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16">
-          <AlertCircleIcon className="h-12 w-12 text-orange-500 mb-4" />
+          <AlertCircleIcon className="h-12 w-12 text-brand mb-4" />
           <h2 className="text-xl font-semibold mb-2">No Election Selected</h2>
-          <p className="text-gray-500">Please select an election from the sidebar to manage master data.</p>
+          <p className="text-muted-foreground">Please select an election from the sidebar to manage master data.</p>
         </CardContent>
       </Card>
     );
@@ -956,7 +956,7 @@ export function MasterDataPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Master Data</h1>
-        <p className="text-gray-500">Manage religions, castes, parties, languages, schemes, and more</p>
+        <p className="text-muted-foreground">Manage religions, castes, parties, languages, schemes, and more</p>
       </div>
 
       <Tabs defaultValue="religions" className="space-y-4">

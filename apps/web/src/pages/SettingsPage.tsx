@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth';
 import { useTenantStore } from '../store/tenant';
-import { authAPI, tenantAPI, aiAdminAPI } from '../services/api';
+import { useThemeStore } from '../store/theme';
+import { authAPI, tenantAPI, aiAdminAPI, messagingSettingsAPI } from '../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -46,6 +47,16 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   AlertTriangleIcon,
+  MessageSquareIcon,
+  SendIcon,
+  MailIcon,
+  MicIcon,
+  PlusIcon,
+  TrashIcon,
+  TestTubeIcon,
+  Loader2Icon,
+  WifiIcon,
+  WifiOffIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -72,7 +83,7 @@ export function SettingsPage() {
   });
 
   // Check if user is admin (can edit branding)
-  const isAdmin = ['TENANT_ADMIN', 'CENTRAL_ADMIN', 'CANDIDATE_ADMIN', 'EMC_ADMIN'].includes(user?.role || '');
+  const isAdmin = user?.role === 'CENTRAL_ADMIN';
 
   // Initialize branding form data when branding loads
   useEffect(() => {
@@ -103,8 +114,8 @@ export function SettingsPage() {
     voterAlerts: true,
     reportReady: true,
   });
+  const { theme, setTheme } = useThemeStore();
   const [appearance, setAppearance] = useState({
-    theme: 'system',
     language: 'en',
   });
   const [slipSettings, setSlipSettings] = useState({
@@ -198,7 +209,7 @@ export function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-gray-500">Manage your account and preferences</p>
+        <p className="text-muted-foreground">Manage your account and preferences</p>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
@@ -246,6 +257,12 @@ export function SettingsPage() {
             </TabsTrigger>
           )}
           {isAdmin && (
+            <TabsTrigger value="messaging" className="flex items-center gap-2">
+              <MessageSquareIcon className="h-4 w-4" />
+              Messaging
+            </TabsTrigger>
+          )}
+          {isAdmin && (
             <TabsTrigger value="branding" className="flex items-center gap-2">
               <BuildingIcon className="h-4 w-4" />
               Branding
@@ -263,15 +280,15 @@ export function SettingsPage() {
               </CardHeader>
               <CardContent className="flex flex-col items-center text-center">
                 <Avatar className="h-24 w-24 mb-4">
-                  <AvatarFallback className="bg-orange-100 text-orange-600 text-2xl">
+                  <AvatarFallback className="bg-brand-muted text-brand text-2xl">
                     {profile ? getInitials(`${profile.firstName} ${profile.lastName || ''}`) : 'U'}
                   </AvatarFallback>
                 </Avatar>
                 <h3 className="text-lg font-semibold">
                   {profile?.firstName} {profile?.lastName}
                 </h3>
-                <p className="text-gray-500">{profile?.mobile}</p>
-                {profile?.email && <p className="text-sm text-gray-400">{profile.email}</p>}
+                <p className="text-muted-foreground">{profile?.mobile}</p>
+                {profile?.email && <p className="text-sm text-muted-foreground">{profile.email}</p>}
                 <Badge variant="outline" className="mt-2">
                   {profile?.role}
                 </Badge>
@@ -316,7 +333,7 @@ export function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="mobile">Mobile Number</Label>
                     <Input id="mobile" value={profile?.mobile || ''} disabled />
-                    <p className="text-xs text-gray-500">Mobile number cannot be changed</p>
+                    <p className="text-xs text-muted-foreground">Mobile number cannot be changed</p>
                   </div>
                   <Button type="submit" disabled={updateProfileMutation.isPending}>
                     {updateProfileMutation.isPending ? (
@@ -361,7 +378,7 @@ export function SettingsPage() {
                     value={passwordData.newPassword}
                     onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
                   />
-                  <p className="text-xs text-gray-500">Must be at least 8 characters</p>
+                  <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Confirm New Password</Label>
@@ -396,14 +413,14 @@ export function SettingsPage() {
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
                     <p className="font-medium">SMS Authentication</p>
-                    <p className="text-sm text-gray-500">Receive a code via SMS when logging in</p>
+                    <p className="text-sm text-muted-foreground">Receive a code via SMS when logging in</p>
                   </div>
                   <Switch checked={false} />
                 </div>
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
                     <p className="font-medium">Authenticator App</p>
-                    <p className="text-sm text-gray-500">Use an authenticator app like Google Authenticator</p>
+                    <p className="text-sm text-muted-foreground">Use an authenticator app like Google Authenticator</p>
                   </div>
                   <Switch checked={false} />
                 </div>
@@ -445,14 +462,14 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-orange-100 rounded-full">
-                      <ShieldIcon className="h-6 w-6 text-orange-600" />
+                    <div className="p-2 bg-brand-muted rounded-full">
+                      <ShieldIcon className="h-6 w-6 text-brand" />
                     </div>
                     <div>
                       <p className="font-semibold text-lg">{profile?.role || 'User'}</p>
-                      <p className="text-sm text-gray-500">Your current role</p>
+                      <p className="text-sm text-muted-foreground">Your current role</p>
                     </div>
                   </div>
                 </div>
@@ -461,7 +478,7 @@ export function SettingsPage() {
                   <h4 className="font-medium mb-3">Permissions</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {['View Dashboard', 'Manage Voters', 'Manage Parts', 'View Reports', 'Manage Cadres', 'View Analytics'].map((permission) => (
-                      <div key={permission} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                      <div key={permission} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
                         <div className="w-2 h-2 bg-green-500 rounded-full" />
                         <span className="text-sm">{permission}</span>
                       </div>
@@ -469,7 +486,7 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   Contact your administrator to request role changes or additional permissions.
                 </p>
               </div>
@@ -523,7 +540,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">Show Voter Photo</p>
-                        <p className="text-sm text-gray-500">Include voter photo placeholder on slip</p>
+                        <p className="text-sm text-muted-foreground">Include voter photo placeholder on slip</p>
                       </div>
                       <Switch
                         checked={slipSettings.showPhoto}
@@ -533,7 +550,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">Show QR Code</p>
-                        <p className="text-sm text-gray-500">Include scannable QR code</p>
+                        <p className="text-sm text-muted-foreground">Include scannable QR code</p>
                       </div>
                       <Switch
                         checked={slipSettings.showQRCode}
@@ -543,7 +560,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">Show Full Address</p>
-                        <p className="text-sm text-gray-500">Include complete voter address</p>
+                        <p className="text-sm text-muted-foreground">Include complete voter address</p>
                       </div>
                       <Switch
                         checked={slipSettings.showAddress}
@@ -577,7 +594,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
                         <p className="font-medium">Email Notifications</p>
-                        <p className="text-sm text-gray-500">Receive updates via email</p>
+                        <p className="text-sm text-muted-foreground">Receive updates via email</p>
                       </div>
                       <Switch
                         checked={notifications.email}
@@ -587,7 +604,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
                         <p className="font-medium">Push Notifications</p>
-                        <p className="text-sm text-gray-500">Receive browser notifications</p>
+                        <p className="text-sm text-muted-foreground">Receive browser notifications</p>
                       </div>
                       <Switch
                         checked={notifications.push}
@@ -597,7 +614,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
                         <p className="font-medium">SMS Notifications</p>
-                        <p className="text-sm text-gray-500">Receive important updates via SMS</p>
+                        <p className="text-sm text-muted-foreground">Receive important updates via SMS</p>
                       </div>
                       <Switch
                         checked={notifications.sms}
@@ -613,7 +630,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
                         <p className="font-medium">Campaign Updates</p>
-                        <p className="text-sm text-gray-500">Updates about campaign activities</p>
+                        <p className="text-sm text-muted-foreground">Updates about campaign activities</p>
                       </div>
                       <Switch
                         checked={notifications.campaignUpdates}
@@ -623,7 +640,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
                         <p className="font-medium">Voter Alerts</p>
-                        <p className="text-sm text-gray-500">Important alerts about voter data</p>
+                        <p className="text-sm text-muted-foreground">Important alerts about voter data</p>
                       </div>
                       <Switch
                         checked={notifications.voterAlerts}
@@ -633,7 +650,7 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
                         <p className="font-medium">Report Ready</p>
-                        <p className="text-sm text-gray-500">Notifications when reports are generated</p>
+                        <p className="text-sm text-muted-foreground">Notifications when reports are generated</p>
                       </div>
                       <Switch
                         checked={notifications.reportReady}
@@ -658,16 +675,16 @@ export function SettingsPage() {
               <div className="space-y-6">
                 <div>
                   <Label className="text-base">Theme</Label>
-                  <p className="text-sm text-gray-500 mb-3">Select your preferred theme</p>
+                  <p className="text-sm text-muted-foreground mb-3">Select your preferred theme</p>
                   <div className="grid grid-cols-3 gap-4 max-w-lg">
                     <div
                       className={cn(
-                        'p-4 border-2 rounded-lg cursor-pointer transition-all bg-white',
-                        appearance.theme === 'light' ? 'border-orange-500' : 'border-gray-200 hover:border-orange-300'
+                        'p-4 border-2 rounded-lg cursor-pointer transition-all bg-card',
+                        theme === 'light' ? 'border-brand' : 'border-border hover:border-brand/30'
                       )}
-                      onClick={() => setAppearance({ ...appearance, theme: 'light' })}
+                      onClick={() => setTheme('light')}
                     >
-                      <div className="h-16 bg-gray-100 rounded mb-2 flex items-center justify-center">
+                      <div className="h-16 bg-muted rounded mb-2 flex items-center justify-center">
                         <SunIcon className="h-6 w-6 text-yellow-500" />
                       </div>
                       <p className="text-sm font-medium text-center">Light</p>
@@ -675,24 +692,24 @@ export function SettingsPage() {
                     <div
                       className={cn(
                         'p-4 border-2 rounded-lg cursor-pointer transition-all bg-gray-900',
-                        appearance.theme === 'dark' ? 'border-orange-500' : 'border-gray-700 hover:border-orange-300'
+                        theme === 'dark' ? 'border-brand' : 'border-gray-700 hover:border-brand/30'
                       )}
-                      onClick={() => setAppearance({ ...appearance, theme: 'dark' })}
+                      onClick={() => setTheme('dark')}
                     >
                       <div className="h-16 bg-gray-700 rounded mb-2 flex items-center justify-center">
-                        <MoonIcon className="h-6 w-6 text-gray-300" />
+                        <MoonIcon className="h-6 w-6 text-muted-foreground" />
                       </div>
                       <p className="text-sm font-medium text-center text-white">Dark</p>
                     </div>
                     <div
                       className={cn(
                         'p-4 border-2 rounded-lg cursor-pointer transition-all',
-                        appearance.theme === 'system' ? 'border-orange-500' : 'border-gray-200 hover:border-orange-300'
+                        theme === 'system' ? 'border-brand' : 'border-border hover:border-brand/30'
                       )}
-                      onClick={() => setAppearance({ ...appearance, theme: 'system' })}
+                      onClick={() => setTheme('system')}
                     >
                       <div className="h-16 bg-gradient-to-b from-gray-100 to-gray-700 rounded mb-2 flex items-center justify-center">
-                        <MonitorIcon className="h-6 w-6 text-gray-600" />
+                        <MonitorIcon className="h-6 w-6 text-muted-foreground" />
                       </div>
                       <p className="text-sm font-medium text-center">System</p>
                     </div>
@@ -701,7 +718,7 @@ export function SettingsPage() {
 
                 <div>
                   <Label className="text-base">Language</Label>
-                  <p className="text-sm text-gray-500 mb-3">Select your preferred language</p>
+                  <p className="text-sm text-muted-foreground mb-3">Select your preferred language</p>
                   <Select value={appearance.language} onValueChange={(v) => setAppearance({ ...appearance, language: v })}>
                     <SelectTrigger className="w-full max-w-xs">
                       <SelectValue />
@@ -734,8 +751,8 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="text-center py-8 text-gray-500">
-                  <DownloadIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <div className="text-center py-8 text-muted-foreground">
+                  <DownloadIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <p>No downloads yet</p>
                   <p className="text-sm">Generated reports and exports will appear here</p>
                 </div>
@@ -756,7 +773,7 @@ export function SettingsPage() {
                 <div className="p-4 border rounded-lg">
                   <FileTextIcon className="h-8 w-8 text-green-600 mb-2" />
                   <h4 className="font-medium">Voter Data</h4>
-                  <p className="text-sm text-gray-500 mb-3">Export all voter records</p>
+                  <p className="text-sm text-muted-foreground mb-3">Export all voter records</p>
                   <Button variant="outline" size="sm">
                     <DownloadIcon className="h-4 w-4 mr-2" />
                     Export CSV
@@ -765,7 +782,7 @@ export function SettingsPage() {
                 <div className="p-4 border rounded-lg">
                   <FileTextIcon className="h-8 w-8 text-blue-600 mb-2" />
                   <h4 className="font-medium">Parts Data</h4>
-                  <p className="text-sm text-gray-500 mb-3">Export all booth/part records</p>
+                  <p className="text-sm text-muted-foreground mb-3">Export all booth/part records</p>
                   <Button variant="outline" size="sm">
                     <DownloadIcon className="h-4 w-4 mr-2" />
                     Export CSV
@@ -774,7 +791,7 @@ export function SettingsPage() {
                 <div className="p-4 border rounded-lg">
                   <FileTextIcon className="h-8 w-8 text-purple-600 mb-2" />
                   <h4 className="font-medium">Cadre Data</h4>
-                  <p className="text-sm text-gray-500 mb-3">Export all cadre records</p>
+                  <p className="text-sm text-muted-foreground mb-3">Export all cadre records</p>
                   <Button variant="outline" size="sm">
                     <DownloadIcon className="h-4 w-4 mr-2" />
                     Export CSV
@@ -797,14 +814,14 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                <div className="p-6 bg-gray-50 rounded-lg">
+                <div className="p-6 bg-muted/50 rounded-lg">
                   <div className="flex items-start gap-4">
-                    <div className="p-3 bg-orange-100 rounded-full">
-                      <DatabaseIcon className="h-8 w-8 text-orange-600" />
+                    <div className="p-3 bg-brand-muted rounded-full">
+                      <DatabaseIcon className="h-8 w-8 text-brand" />
                     </div>
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold mb-2">Database Settings</h3>
-                      <p className="text-gray-600 mb-4">
+                      <p className="text-muted-foreground mb-4">
                         Configure your PostgreSQL database connection settings. You can set up your own dedicated database
                         or use the platform's shared database infrastructure.
                       </p>
@@ -821,21 +838,21 @@ export function SettingsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 border rounded-lg">
                     <h4 className="font-medium mb-2">Dedicated Database</h4>
-                    <p className="text-sm text-gray-500 mb-3">
+                    <p className="text-sm text-muted-foreground mb-3">
                       Set up your own PostgreSQL database for complete data isolation and control.
                     </p>
                     <Badge variant="outline">Self-Managed</Badge>
                   </div>
                   <div className="p-4 border rounded-lg">
                     <h4 className="font-medium mb-2">Shared Database</h4>
-                    <p className="text-sm text-gray-500 mb-3">
+                    <p className="text-sm text-muted-foreground mb-3">
                       Use the platform's shared database with logical separation (schema-based).
                     </p>
                     <Badge variant="outline">Platform Managed</Badge>
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   Note: Database configuration changes may require administrator approval depending on your organization's settings.
                 </p>
               </div>
@@ -847,6 +864,13 @@ export function SettingsPage() {
         {isAdmin && (
           <TabsContent value="ai-features">
             <AIFeaturesTab />
+          </TabsContent>
+        )}
+
+        {/* Messaging Tab */}
+        {isAdmin && (
+          <TabsContent value="messaging">
+            <MessagingSettingsTab />
           </TabsContent>
         )}
 
@@ -872,7 +896,7 @@ export function SettingsPage() {
                         value={brandingData.displayName}
                         onChange={(e) => setBrandingData({ ...brandingData, displayName: e.target.value })}
                       />
-                      <p className="text-xs text-gray-500">This name appears in the header of the application</p>
+                      <p className="text-xs text-muted-foreground">This name appears in the header of the application</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="organizationName">Organization Name</Label>
@@ -899,7 +923,7 @@ export function SettingsPage() {
                             id="tenantUrl"
                             value={branding?.tenantUrl || 'Not assigned'}
                             disabled
-                            className="bg-gray-100 text-gray-600"
+                            className="bg-muted text-muted-foreground"
                           />
                           {branding?.tenantUrl && (
                             <Button
@@ -907,7 +931,7 @@ export function SettingsPage() {
                               variant="outline"
                               size="icon"
                               onClick={() => {
-                                navigator.clipboard.writeText(`https://${branding.tenantUrl}`);
+                                navigator.clipboard.writeText(branding.tenantUrl);
                                 toast.success('URL copied to clipboard');
                               }}
                             >
@@ -915,7 +939,7 @@ export function SettingsPage() {
                             </Button>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500">This URL is automatically assigned by the system and cannot be changed</p>
+                        <p className="text-xs text-muted-foreground">This URL is automatically assigned by the system and cannot be changed</p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="customDomain">Custom Domain (Alias)</Label>
@@ -925,7 +949,7 @@ export function SettingsPage() {
                           value={brandingData.customDomain}
                           onChange={(e) => setBrandingData({ ...brandingData, customDomain: e.target.value })}
                         />
-                        <p className="text-xs text-gray-500">Set your own domain to use as an alias for the tenant URL</p>
+                        <p className="text-xs text-muted-foreground">Set your own domain to use as an alias for the tenant URL</p>
                       </div>
                     </div>
                   </div>
@@ -939,7 +963,7 @@ export function SettingsPage() {
                         value={brandingData.logoUrl}
                         onChange={(e) => setBrandingData({ ...brandingData, logoUrl: e.target.value })}
                       />
-                      <p className="text-xs text-gray-500">URL to your organization's logo image</p>
+                      <p className="text-xs text-muted-foreground">URL to your organization's logo image</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="faviconUrl">Favicon URL</Label>
@@ -1011,9 +1035,9 @@ export function SettingsPage() {
                   </div>
 
                   {/* Preview Section */}
-                  <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+                  <div className="mt-6 p-4 border rounded-lg bg-muted/50">
                     <h4 className="font-medium mb-3">Preview</h4>
-                    <div className="flex items-center gap-3 p-3 bg-white rounded-lg border">
+                    <div className="flex items-center gap-3 p-3 bg-card rounded-lg border">
                       {brandingData.logoUrl ? (
                         <img
                           src={brandingData.logoUrl}
@@ -1022,8 +1046,8 @@ export function SettingsPage() {
                           onError={(e) => (e.currentTarget.style.display = 'none')}
                         />
                       ) : (
-                        <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
-                          <BuildingIcon className="h-5 w-5 text-orange-600" />
+                        <div className="h-10 w-10 rounded-full bg-brand-muted flex items-center justify-center">
+                          <BuildingIcon className="h-5 w-5 text-brand" />
                         </div>
                       )}
                       <span className="text-lg font-semibold">
@@ -1089,7 +1113,7 @@ function AIFeaturesTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CoinsIcon className="h-5 w-5 text-orange-500" />
+            <CoinsIcon className="h-5 w-5 text-brand" />
             AI Credits Balance
           </CardTitle>
           <CardDescription>
@@ -1099,11 +1123,11 @@ function AIFeaturesTab() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="p-4 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg">
-              <div className="text-sm text-orange-600 font-medium">Available Credits</div>
+              <div className="text-sm text-brand font-medium">Available Credits</div>
               <div className="text-3xl font-bold text-orange-700 mt-1">
                 {subscription?.credits?.toLocaleString() || 0}
               </div>
-              <div className="text-xs text-orange-500 mt-1">
+              <div className="text-xs text-brand mt-1">
                 {subscription?.lowCreditsWarning && (
                   <span className="flex items-center gap-1">
                     <AlertTriangleIcon className="h-3 w-3" />
@@ -1112,21 +1136,21 @@ function AIFeaturesTab() {
                 )}
               </div>
             </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-600 font-medium">Credits Used (This Month)</div>
-              <div className="text-3xl font-bold text-gray-700 mt-1">
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <div className="text-sm text-muted-foreground font-medium">Credits Used (This Month)</div>
+              <div className="text-3xl font-bold text-foreground mt-1">
                 {usage?.thisMonth?.toLocaleString() || 0}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 Total: {usage?.allTime?.toLocaleString() || 0} all time
               </div>
             </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-600 font-medium">Active AI Features</div>
-              <div className="text-3xl font-bold text-gray-700 mt-1">
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <div className="text-sm text-muted-foreground font-medium">Active AI Features</div>
+              <div className="text-3xl font-bold text-foreground mt-1">
                 {features.filter((f: any) => f.isActive).length}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 of {features.length} available
               </div>
             </div>
@@ -1160,9 +1184,9 @@ function AIFeaturesTab() {
         <CardContent>
           {features.length === 0 ? (
             <div className="text-center py-8">
-              <BrainIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No AI features available</p>
-              <p className="text-sm text-gray-400 mt-1">
+              <BrainIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No AI features available</p>
+              <p className="text-sm text-muted-foreground mt-1">
                 Contact your administrator to enable AI features for your organization.
               </p>
             </div>
@@ -1171,7 +1195,7 @@ function AIFeaturesTab() {
               {features.map((feature: any) => (
                 <div
                   key={feature.id}
-                  className="border rounded-lg p-4 hover:border-orange-200 transition-colors"
+                  className="border rounded-lg p-4 hover:border-brand/30 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -1189,10 +1213,10 @@ function AIFeaturesTab() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-500 mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         {feature.description || 'No description available'}
                       </p>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <CoinsIcon className="h-3 w-3" />
                           {feature.creditsPerUse} credits/use
@@ -1266,10 +1290,10 @@ function UserAccessModal({ feature, onClose }: { feature: any; onClose: () => vo
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+      <div className="bg-card rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
         <div className="p-6 border-b">
           <h2 className="text-xl font-bold">Manage User Access</h2>
-          <p className="text-gray-500 text-sm mt-1">
+          <p className="text-muted-foreground text-sm mt-1">
             Control which users can access "{feature.name}"
           </p>
         </div>
@@ -1289,7 +1313,7 @@ function UserAccessModal({ feature, onClose }: { feature: any; onClose: () => vo
               <Spinner size="md" />
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-muted-foreground">
               {searchQuery ? 'No users found matching your search' : 'No users available'}
             </div>
           ) : (
@@ -1297,11 +1321,11 @@ function UserAccessModal({ feature, onClose }: { feature: any; onClose: () => vo
               {filteredUsers.map((user: any) => (
                 <div
                   key={user.id}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
                 >
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-orange-100 text-orange-600">
+                      <AvatarFallback className="bg-brand-muted text-brand">
                         {getInitials(`${user.firstName} ${user.lastName || ''}`)}
                       </AvatarFallback>
                     </Avatar>
@@ -1309,7 +1333,7 @@ function UserAccessModal({ feature, onClose }: { feature: any; onClose: () => vo
                       <div className="font-medium">
                         {user.firstName} {user.lastName}
                       </div>
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-muted-foreground">
                         {user.mobile} {user.email && `• ${user.email}`}
                       </div>
                     </div>
@@ -1321,7 +1345,7 @@ function UserAccessModal({ feature, onClose }: { feature: any; onClose: () => vo
                     {user.hasAccess ? (
                       <CheckCircleIcon className="h-5 w-5 text-green-500" />
                     ) : (
-                      <XCircleIcon className="h-5 w-5 text-gray-300" />
+                      <XCircleIcon className="h-5 w-5 text-muted-foreground" />
                     )}
                     <Switch
                       checked={user.hasAccess}
@@ -1343,6 +1367,571 @@ function UserAccessModal({ feature, onClose }: { feature: any; onClose: () => vo
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Channel icon helper
+const CHANNEL_ICONS: Record<string, React.ReactNode> = {
+  SMS: <SendIcon className="h-5 w-5" />,
+  WHATSAPP: <MessageSquareIcon className="h-5 w-5" />,
+  EMAIL: <MailIcon className="h-5 w-5" />,
+  VOICE: <MicIcon className="h-5 w-5" />,
+};
+
+const CHANNEL_COLORS: Record<string, string> = {
+  SMS: 'text-blue-600 bg-blue-50',
+  WHATSAPP: 'text-green-600 bg-green-50',
+  EMAIL: 'text-purple-600 bg-purple-50',
+  VOICE: 'text-orange-600 bg-orange-50',
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  SMS: 'SMS',
+  WHATSAPP: 'WhatsApp',
+  EMAIL: 'Email',
+  VOICE: 'Voice Call',
+};
+
+// Messaging Settings Tab Component
+function MessagingSettingsTab() {
+  const queryClient = useQueryClient();
+  const [addingChannel, setAddingChannel] = useState<string | null>(null);
+  const [newProvider, setNewProvider] = useState<{ provider: string; config: Record<string, string>; providerName: string }>({
+    provider: '',
+    config: {},
+    providerName: '',
+  });
+  const [testDestination, setTestDestination] = useState('');
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editConfig, setEditConfig] = useState<Record<string, string>>({});
+
+  // Fetch all configured providers
+  const { data: providersResponse, isLoading: providersLoading } = useQuery({
+    queryKey: ['messaging-providers'],
+    queryFn: () => messagingSettingsAPI.getAll(),
+  });
+
+  // Fetch supported providers per channel
+  const { data: supportedResponse, isLoading: supportedLoading } = useQuery({
+    queryKey: ['messaging-supported'],
+    queryFn: () => messagingSettingsAPI.getSupported(),
+  });
+
+  const providers: any[] = providersResponse?.data?.data || [];
+  const supported: Record<string, any[]> = supportedResponse?.data?.data || {};
+
+  // Create provider mutation
+  const createMutation = useMutation({
+    mutationFn: (data: { channel: string; provider: string; config: any; providerName: string }) =>
+      messagingSettingsAPI.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messaging-providers'] });
+      toast.success('Messaging provider added');
+      setAddingChannel(null);
+      setNewProvider({ provider: '', config: {}, providerName: '' });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || 'Failed to add provider');
+    },
+  });
+
+  // Update provider mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      messagingSettingsAPI.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messaging-providers'] });
+      toast.success('Provider updated');
+      setEditingId(null);
+      setEditConfig({});
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || 'Failed to update provider');
+    },
+  });
+
+  // Delete provider mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => messagingSettingsAPI.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messaging-providers'] });
+      toast.success('Provider removed');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || 'Failed to remove provider');
+    },
+  });
+
+  // Set default mutation
+  const setDefaultMutation = useMutation({
+    mutationFn: (id: string) => messagingSettingsAPI.setDefault(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messaging-providers'] });
+      toast.success('Default provider updated');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || 'Failed to set default');
+    },
+  });
+
+  // Test provider mutation
+  const testMutation = useMutation({
+    mutationFn: ({ id, testDestination }: { id: string; testDestination: string }) =>
+      messagingSettingsAPI.test(id, testDestination),
+    onSuccess: () => {
+      toast.success('Test message sent successfully!');
+      setTestingId(null);
+      setTestDestination('');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || 'Test failed');
+    },
+  });
+
+  // Toggle active mutation
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      messagingSettingsAPI.update(id, { isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messaging-providers'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || 'Failed to update provider');
+    },
+  });
+
+  const isLoading = providersLoading || supportedLoading;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  const channels = ['SMS', 'WHATSAPP', 'EMAIL', 'VOICE'];
+
+  const getProvidersForChannel = (channel: string) =>
+    providers.filter((p: any) => p.channel === channel);
+
+  const handleAddProvider = (channel: string) => {
+    if (!newProvider.provider) {
+      toast.error('Please select a provider');
+      return;
+    }
+    const channelProviders = supported[channel] || [];
+    const providerDef = channelProviders.find((p: any) => p.value === newProvider.provider);
+    const requiredFields = providerDef?.fields?.filter((f: any) => f.required) || [];
+    const missingFields = requiredFields.filter((f: any) => !newProvider.config[f.key]);
+    if (missingFields.length > 0) {
+      toast.error(`Please fill in: ${missingFields.map((f: any) => f.label).join(', ')}`);
+      return;
+    }
+    createMutation.mutate({
+      channel,
+      provider: newProvider.provider,
+      config: newProvider.config,
+      providerName: newProvider.providerName || newProvider.provider,
+    });
+  };
+
+  const handleStartEdit = (provider: any) => {
+    setEditingId(provider.id);
+    // Pre-fill with existing config (masked values will be shown)
+    setEditConfig({ ...provider.config });
+  };
+
+  const handleSaveEdit = (id: string) => {
+    updateMutation.mutate({ id, data: { config: editConfig } });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Overview Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquareIcon className="h-5 w-5 text-brand" />
+            Messaging Providers
+          </CardTitle>
+          <CardDescription>
+            Configure SMS, WhatsApp, Email, and Voice providers for campaign messaging.
+            Add your API keys to start sending real messages to voters.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {channels.map((channel) => {
+              const channelProviders = getProvidersForChannel(channel);
+              const hasActive = channelProviders.some((p: any) => p.isActive);
+              return (
+                <div
+                  key={channel}
+                  className={cn(
+                    'p-4 rounded-lg border text-center',
+                    hasActive ? 'border-green-200 bg-green-50/50' : 'border-dashed border-muted-foreground/30'
+                  )}
+                >
+                  <div className={cn('inline-flex p-2 rounded-full mb-2', CHANNEL_COLORS[channel])}>
+                    {CHANNEL_ICONS[channel]}
+                  </div>
+                  <div className="font-medium text-sm">{CHANNEL_LABELS[channel]}</div>
+                  <div className="mt-1">
+                    {hasActive ? (
+                      <Badge variant="success" className="text-xs">
+                        <WifiIcon className="h-3 w-3 mr-1" />
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs">
+                        <WifiOffIcon className="h-3 w-3 mr-1" />
+                        Mock Mode
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {channelProviders.length} provider{channelProviders.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Per-Channel Configuration */}
+      {channels.map((channel) => {
+        const channelProviders = getProvidersForChannel(channel);
+        const channelSupported = supported[channel] || [];
+
+        return (
+          <Card key={channel}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={cn('p-2 rounded-full', CHANNEL_COLORS[channel])}>
+                    {CHANNEL_ICONS[channel]}
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">{CHANNEL_LABELS[channel]}</CardTitle>
+                    <CardDescription>
+                      {channelProviders.length === 0
+                        ? `No ${CHANNEL_LABELS[channel]} provider configured. Messages will be logged to console (mock mode).`
+                        : `${channelProviders.length} provider${channelProviders.length !== 1 ? 's' : ''} configured`}
+                    </CardDescription>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setAddingChannel(addingChannel === channel ? null : channel);
+                    setNewProvider({ provider: '', config: {}, providerName: '' });
+                  }}
+                >
+                  <PlusIcon className="h-4 w-4 mr-1" />
+                  Add Provider
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              {/* Existing Providers */}
+              {channelProviders.map((prov: any) => (
+                <div
+                  key={prov.id}
+                  className={cn(
+                    'border rounded-lg p-4',
+                    prov.isDefault && 'border-brand/50 bg-brand-muted/10'
+                  )}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{prov.providerName || prov.provider}</span>
+                        {prov.isDefault && (
+                          <Badge variant="default" className="text-xs">Default</Badge>
+                        )}
+                        <Badge
+                          variant={prov.isActive ? 'success' : 'secondary'}
+                          className="text-xs"
+                        >
+                          {prov.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Provider: {prov.provider}
+                      </p>
+
+                      {/* Config display (masked) */}
+                      {editingId === prov.id ? (
+                        <div className="mt-3 space-y-3">
+                          {Object.keys(prov.config).map((key: string) => (
+                            <div key={key} className="space-y-1">
+                              <Label className="text-xs">{key}</Label>
+                              <Input
+                                size={1}
+                                placeholder={`Enter ${key}`}
+                                value={editConfig[key] || ''}
+                                onChange={(e) => setEditConfig({ ...editConfig, [key]: e.target.value })}
+                                className="text-sm"
+                              />
+                            </div>
+                          ))}
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveEdit(prov.id)}
+                              disabled={updateMutation.isPending}
+                            >
+                              {updateMutation.isPending ? <Loader2Icon className="h-4 w-4 animate-spin mr-1" /> : <SaveIcon className="h-4 w-4 mr-1" />}
+                              Save
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                          {Object.entries(prov.config).map(([key, value]: [string, any]) => (
+                            <div key={key} className="flex items-center gap-1">
+                              <span className="text-muted-foreground">{key}:</span>
+                              <span className="font-mono truncate max-w-[150px]">{String(value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-4">
+                      <Switch
+                        checked={prov.isActive}
+                        onCheckedChange={(checked) =>
+                          toggleActiveMutation.mutate({ id: prov.id, isActive: checked })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  {editingId !== prov.id && (
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                      {!prov.isDefault && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDefaultMutation.mutate(prov.id)}
+                          disabled={setDefaultMutation.isPending}
+                        >
+                          Set as Default
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleStartEdit(prov)}
+                      >
+                        Edit Config
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setTestingId(testingId === prov.id ? null : prov.id);
+                          setTestDestination('');
+                        }}
+                      >
+                        <TestTubeIcon className="h-4 w-4 mr-1" />
+                        Test
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (confirm(`Remove ${prov.providerName || prov.provider} provider?`)) {
+                            deleteMutation.mutate(prov.id);
+                          }
+                        }}
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Test message form */}
+                  {testingId === prov.id && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1 space-y-1">
+                          <Label className="text-xs">
+                            {channel === 'EMAIL' ? 'Test Email Address' : 'Test Phone Number'}
+                          </Label>
+                          <Input
+                            placeholder={channel === 'EMAIL' ? 'test@example.com' : '+91XXXXXXXXXX'}
+                            value={testDestination}
+                            onChange={(e) => setTestDestination(e.target.value)}
+                            className="text-sm"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => testMutation.mutate({ id: prov.id, testDestination })}
+                          disabled={testMutation.isPending || !testDestination}
+                        >
+                          {testMutation.isPending ? (
+                            <Loader2Icon className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <SendIcon className="h-4 w-4 mr-1" />
+                          )}
+                          Send Test
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* No providers message */}
+              {channelProviders.length === 0 && addingChannel !== channel && (
+                <div className="text-center py-6 text-muted-foreground border border-dashed rounded-lg">
+                  <WifiOffIcon className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                  <p className="text-sm">No provider configured</p>
+                  <p className="text-xs mt-1">Messages will be logged to console (mock mode)</p>
+                </div>
+              )}
+
+              {/* Add New Provider Form */}
+              {addingChannel === channel && (
+                <div className="border-2 border-dashed border-brand/30 rounded-lg p-4 bg-brand-muted/5">
+                  <h4 className="font-medium text-sm mb-3">Add {CHANNEL_LABELS[channel]} Provider</h4>
+
+                  <div className="space-y-4">
+                    {/* Provider Select */}
+                    <div className="space-y-1">
+                      <Label className="text-sm">Provider</Label>
+                      <Select
+                        value={newProvider.provider}
+                        onValueChange={(v) => {
+                          setNewProvider({ provider: v, config: {}, providerName: v });
+                        }}
+                      >
+                        <SelectTrigger className="w-full max-w-xs">
+                          <SelectValue placeholder="Select a provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {channelSupported.map((p: any) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Dynamic Config Fields */}
+                    {newProvider.provider && (() => {
+                      const providerDef = channelSupported.find((p: any) => p.value === newProvider.provider);
+                      const fields = providerDef?.fields || [];
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {fields.map((field: any) => (
+                            <div key={field.key} className="space-y-1">
+                              <Label className="text-sm">
+                                {field.label}
+                                {field.required && <span className="text-red-500 ml-1">*</span>}
+                              </Label>
+                              <Input
+                                type={field.type === 'password' ? 'password' : 'text'}
+                                placeholder={field.placeholder || `Enter ${field.label}`}
+                                value={newProvider.config[field.key] || ''}
+                                onChange={(e) =>
+                                  setNewProvider({
+                                    ...newProvider,
+                                    config: { ...newProvider.config, [field.key]: e.target.value },
+                                  })
+                                }
+                                className="text-sm"
+                              />
+                              {field.description && (
+                                <p className="text-xs text-muted-foreground">{field.description}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Display Name */}
+                    {newProvider.provider && (
+                      <div className="space-y-1">
+                        <Label className="text-sm">Display Name (Optional)</Label>
+                        <Input
+                          placeholder={`e.g. My ${newProvider.provider} Account`}
+                          value={newProvider.providerName}
+                          onChange={(e) => setNewProvider({ ...newProvider, providerName: e.target.value })}
+                          className="text-sm max-w-xs"
+                        />
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleAddProvider(channel)}
+                        disabled={createMutation.isPending || !newProvider.provider}
+                      >
+                        {createMutation.isPending ? (
+                          <Loader2Icon className="h-4 w-4 animate-spin mr-1" />
+                        ) : (
+                          <PlusIcon className="h-4 w-4 mr-1" />
+                        )}
+                        Add Provider
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setAddingChannel(null);
+                          setNewProvider({ provider: '', config: {}, providerName: '' });
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+
+      {/* Help Card */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-4">
+            <div className="p-2 bg-blue-50 rounded-full">
+              <AlertTriangleIcon className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <h4 className="font-medium">How Messaging Providers Work</h4>
+              <ul className="mt-2 space-y-1 text-sm text-muted-foreground list-disc list-inside">
+                <li>Without a configured provider, messages are logged to console (mock mode) - useful for testing.</li>
+                <li>Add your API keys from Twilio, MSG91, Gupshup, SendGrid, or custom SMTP to start sending real messages.</li>
+                <li>Each channel (SMS, WhatsApp, Email, Voice) can have its own provider.</li>
+                <li>The "Default" provider per channel is used for campaign messages.</li>
+                <li>Use the "Test" button to verify your configuration before sending campaigns.</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

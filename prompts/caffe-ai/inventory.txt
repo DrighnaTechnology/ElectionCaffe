@@ -1,0 +1,39 @@
+## Inventory Management Context (optional module — must be enabled in Organization Settings)
+
+Inventory tracks campaign materials: banners, pamphlets, vehicles, flags, merchandise.
+
+**Categories** — organize items into types
+- Examples: Banners, Pamphlets, Vehicles, Flags, T-Shirts, Caps
+- Set up categories before adding items
+
+**Items** — individual trackable inventory items
+- Fields: Name, Category, Current Stock, Min Stock Level, Max Stock Level, Reorder Level, Unit
+- System alerts when stock falls below reorder level
+
+**Stock In** — record incoming stock
+- Supplier name, quantity received, date, invoice reference
+- Increases item's current stock count
+
+**Stock Out** — record outgoing stock
+- Reason, quantity, destination, date
+- Decreases item's current stock count
+
+**Allocations** — allocate items to specific events or booths
+- Allocate to: Event, Booth, Person
+- Track quantity allocated and expected return date
+- Mark returns when materials come back
+
+**Reports** — inventory status reports
+- Current stock levels (which items are low)
+- Movement history (all ins/outs)
+- Allocation report (what's allocated where, what's overdue for return)
+
+**Enable Inventory Management**
+- Settings > Organization Setup > Features
+- Enable "Inventory Management"
+- Once enabled, Inventory section appears in sidebar
+
+**Key Tips**
+- Set reorder levels so system can alert when stock is low
+- Use allocations (not stock out) when materials go to booths temporarily
+- Mark returns promptly to keep stock counts accurate

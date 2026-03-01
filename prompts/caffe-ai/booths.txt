@@ -1,0 +1,43 @@
+## Booths / Parts Context
+
+Parts/Booths are polling booth locations — the core geographic unit. Import them before voters.
+
+**Bulk Import Booths** — Parts/Booths page → Bulk Upload → Download CSV template
+
+CSV columns:
+```
+Part Number (unique, from Election Commission data — required)
+Booth Name (English — required)
+Booth Name Local (local language)
+Address
+Landmark
+Pincode
+Type (URBAN / RURAL)
+```
+
+- Part Number must be unique within an election
+- After import: verify booth list, edit any incorrect info
+- Voter counts populate automatically after voter import
+
+**Booth Detail Page** — click any booth row to:
+- View address, type, voter counts (total, male, female)
+- Edit booth information
+- Set vulnerability status: HIGH / MEDIUM / LOW
+
+**Booth Sub-sections** (Parts menu):
+
+1. **Add Part** — create single booth manually
+2. **Part Map** — geographic map view of all booths
+3. **Vulnerability** — flag sensitive/high-risk booths, add notes, prioritize security
+4. **Booth Committee** — assign cadres to committee roles per booth:
+   - Booth President, Booth Agent (BLA), Relief Agent, Polling Agent, Transport In-charge, Social Media In-charge, Volunteer
+5. **BLA-2** — assign primary Booth Level Agent (BLA) to each booth, track coverage
+
+**Sections** (separate from Parts)
+- Group booths into geographic sections for zone-based management
+- Go to Sections page to create and manage section groupings
+
+**Key Rules**
+- Always import booths BEFORE voters (voters reference Part Number)
+- Set vulnerability status early — helps prioritize resources
+- Assign booth committees as early as possible for full coverage
