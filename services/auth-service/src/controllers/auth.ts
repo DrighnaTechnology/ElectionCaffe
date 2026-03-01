@@ -886,8 +886,9 @@ export class AuthController {
         return;
       }
 
-      // Generate cryptographically secure temp password
-      const tempPassword = crypto.randomBytes(16).toString('base64url');
+      // Generate cryptographically secure temp password (satisfies uppercase + lowercase + number validation)
+      const randomPart = crypto.randomBytes(8).toString('base64url');
+      const tempPassword = 'Ec' + randomPart + '1x';
       const passwordHash = await bcrypt.hash(tempPassword, 12);
 
       // Update user with temp password and flag

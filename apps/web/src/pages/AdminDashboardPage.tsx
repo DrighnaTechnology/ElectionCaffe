@@ -59,6 +59,7 @@ import {
   ChevronDownIcon,
   PlusIcon,
   CopyIcon,
+  MessageSquareIcon,
 } from 'lucide-react';
 
 declare global {
@@ -372,6 +373,14 @@ export function AdminDashboardPage() {
             <ExternalLinkIcon className="h-4 w-4" />
             Open Election Caffe
           </a>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => navigate('/messaging-settings')}
+          >
+            <MessageSquareIcon className="h-4 w-4" />
+            Messaging
+          </Button>
           <Button className="gap-2" onClick={() => setShowCreateUserDialog(true)}>
             <UserPlusIcon className="h-4 w-4" />
             Create User

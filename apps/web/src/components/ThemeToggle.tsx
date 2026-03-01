@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PaletteIcon, CheckIcon, BookmarkIcon, Loader2Icon } from 'lucide-react';
 import { useUIThemeStore, UI_THEME_PRESETS, UIThemePreset, UIThemeTokens } from '../store/ui-theme';
+import { useAuthStore } from '../store/auth';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
@@ -39,21 +40,23 @@ function ColourStrip({ colors }: { colors: string[] }) {
 
 export function ThemeToggle() {
   const { preset, applyPreset, applyTokens, customTokens } = useUIThemeStore();
+  const { user } = useAuthStore();
+  const isAdmin = !user?.customRoleId;
   const navigate = useNavigate();
 
   const [savedThemes, setSavedThemes] = useState<SavedTheme[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [open, setOpen] = useState(false);
 
-  // Load saved themes from DB when dropdown opens
+  // Load saved themes from DB when dropdown opens (admin only)
   useEffect(() => {
-    if (!open) return;
+    if (!open || !isAdmin) return;
     setLoadingSaved(true);
     nbAPI.getSavedThemes()
       .then((res) => setSavedThemes(res.data?.data?.themes || []))
       .catch(() => {/* silently ignore */})
       .finally(() => setLoadingSaved(false));
-  }, [open]);
+  }, [open, isAdmin]);
 
   const handleApplyPreset = (key: UIThemePreset) => {
     applyPreset(key);
@@ -106,54 +109,58 @@ export function ThemeToggle() {
           );
         })}
 
-        <DropdownMenuSeparator />
+        {isAdmin && (
+          <>
+            <DropdownMenuSeparator />
 
-        {/* ── Saved (DB) themes ── */}
-        <DropdownMenuLabel className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-          <BookmarkIcon className="h-3 w-3" />
-          Saved Themes
-        </DropdownMenuLabel>
+            {/* ── Saved (DB) themes — admin only ── */}
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+              <BookmarkIcon className="h-3 w-3" />
+              Saved Themes
+            </DropdownMenuLabel>
 
-        {loadingSaved ? (
-          <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
-            <Loader2Icon className="h-3.5 w-3.5 animate-spin" />
-            Loading…
-          </div>
-        ) : savedThemes.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-muted-foreground italic">
-            No saved themes yet — generate one in UI Theme Studio
-          </div>
-        ) : (
-          savedThemes.map((t) => (
-            <DropdownMenuItem
-              key={t.id}
-              onClick={() => handleApplySaved(t)}
-              className="cursor-pointer px-3 py-2.5 focus:bg-muted"
-            >
-              <div className="flex items-center gap-3 w-full min-w-0">
-                <div
-                  className="h-7 w-7 rounded-md border border-black/10 shrink-0"
-                  style={{ backgroundColor: t.tokens.brandPrimary }}
-                />
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium truncate block">{t.name}</span>
-                  <ColourStrip colors={[t.tokens.brandPrimary, t.tokens.sidebarBg, t.tokens.background, t.tokens.surface, t.tokens.border]} />
-                </div>
+            {loadingSaved ? (
+              <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
+                <Loader2Icon className="h-3.5 w-3.5 animate-spin" />
+                Loading…
               </div>
+            ) : savedThemes.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-muted-foreground italic">
+                No saved themes yet — generate one in UI Theme Studio
+              </div>
+            ) : (
+              savedThemes.map((t) => (
+                <DropdownMenuItem
+                  key={t.id}
+                  onClick={() => handleApplySaved(t)}
+                  className="cursor-pointer px-3 py-2.5 focus:bg-muted"
+                >
+                  <div className="flex items-center gap-3 w-full min-w-0">
+                    <div
+                      className="h-7 w-7 rounded-md border border-black/10 shrink-0"
+                      style={{ backgroundColor: t.tokens.brandPrimary }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-medium truncate block">{t.name}</span>
+                      <ColourStrip colors={[t.tokens.brandPrimary, t.tokens.sidebarBg, t.tokens.background, t.tokens.surface, t.tokens.border]} />
+                    </div>
+                  </div>
+                </DropdownMenuItem>
+              ))
+            )}
+
+            <DropdownMenuSeparator />
+
+            {/* ── Go to Theme Studio — admin only ── */}
+            <DropdownMenuItem
+              onClick={() => { navigate('/ui-theme'); setOpen(false); }}
+              className="cursor-pointer px-3 py-2 text-xs text-brand font-medium"
+            >
+              <PaletteIcon className="h-3.5 w-3.5 mr-2" />
+              Open UI Theme Studio…
             </DropdownMenuItem>
-          ))
+          </>
         )}
-
-        <DropdownMenuSeparator />
-
-        {/* ── Go to Theme Studio ── */}
-        <DropdownMenuItem
-          onClick={() => { navigate('/ui-theme'); setOpen(false); }}
-          className="cursor-pointer px-3 py-2 text-xs text-brand font-medium"
-        >
-          <PaletteIcon className="h-3.5 w-3.5 mr-2" />
-          Open UI Theme Studio…
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

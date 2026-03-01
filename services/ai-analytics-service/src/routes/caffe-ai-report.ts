@@ -354,6 +354,8 @@ caffeAiReportRoutes.get('/report/:electionId', async (req: Request, res: Respons
           castes: casteLabels,
         },
         generatedAt: new Date().toISOString(),
+        creditsUsed: creditResult.creditsUsed,
+        creditsRemaining: creditResult.creditsRemaining,
       },
     });
   } catch (err: any) {

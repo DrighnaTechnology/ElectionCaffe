@@ -1,11 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import App from './App';
 import { ThemeProvider } from './components/ThemeProvider';
 import { useThemeStore } from './store/theme';
+import { queryClient } from './lib/queryClient';
 import './index.css';
 
 // ── Google Translate + React DOM compatibility patch ──────────────────────────
@@ -33,18 +34,10 @@ import './index.css';
   };
 }
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000,
-      retry: 1,
-    },
-  },
-});
 
 function ThemedToaster() {
   const { resolvedTheme } = useThemeStore();
-  return <Toaster position="top-right" richColors theme={resolvedTheme} />;
+  return <Toaster position="top-right" richColors theme={resolvedTheme} offset="58px" />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

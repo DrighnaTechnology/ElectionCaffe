@@ -269,6 +269,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
     let reply: string;
     let actions: Action[];
     const isLastStep = inGuided && stepIndex === GUIDE_STEPS.length - 1;
+    let lastCreditResult: { creditsUsed: number; creditsRemaining: number } | null = null;
 
     if (inGuided) {
       const step = GUIDE_STEPS[stepIndex];
@@ -312,6 +313,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
           },
         });
         reply = creditResult.output;
+        lastCreditResult = { creditsUsed: creditResult.creditsUsed, creditsRemaining: creditResult.creditsRemaining };
         reply += '\n\nReply **done** when you\'ve completed this step to continue.';
       } else {
         // Entering guided mode OR user confirmed step done → return hardcoded step
@@ -354,6 +356,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
             },
           });
           reply = creditResult.output;
+          lastCreditResult = { creditsUsed: creditResult.creditsUsed, creditsRemaining: creditResult.creditsRemaining };
         } else {
           reply = rawReply;
         }
@@ -395,6 +398,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
         },
       });
       reply = creditResult.output;
+      lastCreditResult = { creditsUsed: creditResult.creditsUsed, creditsRemaining: creditResult.creditsRemaining };
     }
 
     return res.json({
@@ -406,6 +410,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
         guidedStep: inGuided ? stepIndex : undefined,
         nextGuidedStep,
         isLastStep,
+        ...(lastCreditResult && { creditsUsed: lastCreditResult.creditsUsed, creditsRemaining: lastCreditResult.creditsRemaining }),
       },
     });
   } catch (err: any) {

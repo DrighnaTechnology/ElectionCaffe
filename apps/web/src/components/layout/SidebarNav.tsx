@@ -104,6 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
         to: '/candidates',
         icon: ContactIcon,
         label: 'Candidates',
+        featureKey: 'candidates',
         subItems: [
           { to: '/nominations', icon: FileCheck2Icon, label: 'Nominations' },
         ],
@@ -132,7 +133,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/analytics', icon: BarChart3Icon, label: 'Analytics', featureKey: 'analytics' },
       { to: '/ai-analytics', icon: BrainCircuitIcon, label: 'AI Analytics', featureKey: 'ai-analytics' },
       { to: '/ai-tools', icon: SparklesIcon, label: 'AI Tools', featureKey: 'ai-tools' },
-      { to: '/locality-analysis', icon: MapPinIcon, label: 'Locality Analysis' },
+      { to: '/locality-analysis', icon: MapPinIcon, label: 'Locality Analysis', featureKey: 'analytics' },
     ],
   },
   {
@@ -140,15 +141,15 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/reports', icon: FileTextIcon, label: 'Reports', featureKey: 'reports' },
       { to: '/datacaffe', icon: DatabaseIcon, label: 'DataCaffe', featureKey: 'datacaffe' },
-      { to: '/ec-data', icon: GlobeIcon, label: 'EC Data' },
-      { to: '/news', icon: NewspaperIcon, label: 'News & Info' },
-      { to: '/actions', icon: ListTodoIcon, label: 'Actions' },
+      { to: '/ec-data', icon: GlobeIcon, label: 'EC Data', featureKey: 'ec-data' },
+      { to: '/news', icon: NewspaperIcon, label: 'News & Info', featureKey: 'news' },
+      { to: '/actions', icon: ListTodoIcon, label: 'Actions', featureKey: 'actions' },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { to: '/funds', icon: WalletIcon, label: 'Funds' },
+      { to: '/funds', icon: WalletIcon, label: 'Funds', featureKey: 'funds' },
     ],
   },
 ];
@@ -179,9 +180,10 @@ const sidebarHoverProps = {
 // All feature keys used in NAV_GROUPS for role-based filtering
 const ALL_FEATURE_KEYS = [
   'dashboard', 'elections', 'voters', 'families', 'cadres',
-  'parts', 'sections', 'master-data', 'surveys', 'campaigns',
-  'poll-day', 'analytics', 'ai-analytics', 'ai-tools',
-  'reports', 'datacaffe', 'settings', 'inventory_management',
+  'parts', 'sections', 'master-data', 'candidates', 'surveys',
+  'campaigns', 'poll-day', 'funds', 'analytics', 'ai-analytics',
+  'ai-tools', 'reports', 'datacaffe', 'ec-data', 'news',
+  'actions', 'settings', 'inventory_management',
 ];
 
 export function SidebarNav() {
@@ -205,7 +207,7 @@ export function SidebarNav() {
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
-        if (!item.featureKey) return true; // No feature key = always visible
+        if (!item.featureKey) return true;
         return enabledFeatures[item.featureKey] !== false;
       }),
     }))

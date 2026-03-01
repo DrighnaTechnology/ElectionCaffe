@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
-import { SettingsIcon, LogOutIcon, ChevronDownIcon } from 'lucide-react';
+import { LogOutIcon, ChevronDownIcon } from 'lucide-react';
 
 export function UserMenu() {
   const { user, logout } = useAuthStore();
@@ -47,11 +47,6 @@ export function UserMenu() {
             <span className="text-xs text-muted-foreground font-normal">{user?.mobile}</span>
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
-          <SettingsIcon className="mr-2 h-4 w-4" />
-          Settings
-        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
           <LogOutIcon className="mr-2 h-4 w-4" />

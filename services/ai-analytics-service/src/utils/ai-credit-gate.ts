@@ -14,6 +14,7 @@ export const FEATURE_CREDIT_COSTS: Record<string, number> = {
   news_analysis: 2,
   action_generation: 2,
   battle_card: 3,
+  ai_theme: 2,
 };
 
 interface CreditCheckOptions {

@@ -17,14 +17,19 @@ const AVAILABLE_FEATURES = [
   { key: 'sections', label: 'Sections', category: 'Core' },
   { key: 'cadres', label: 'Cadres', category: 'Field' },
   { key: 'families', label: 'Families', category: 'Field' },
+  { key: 'candidates', label: 'Candidates', category: 'Field' },
   { key: 'surveys', label: 'Surveys', category: 'Campaign' },
   { key: 'campaigns', label: 'Campaigns', category: 'Campaign' },
   { key: 'poll-day', label: 'Poll Day', category: 'Operations' },
+  { key: 'funds', label: 'Funds', category: 'Operations' },
   { key: 'analytics', label: 'Analytics', category: 'Analytics' },
   { key: 'ai-analytics', label: 'AI Analytics', category: 'Analytics' },
   { key: 'ai-tools', label: 'AI Tools', category: 'Analytics' },
   { key: 'reports', label: 'Reports', category: 'Analytics' },
   { key: 'datacaffe', label: 'DataCaffe', category: 'Analytics' },
+  { key: 'ec-data', label: 'EC Data', category: 'Data' },
+  { key: 'news', label: 'News & Info', category: 'Data' },
+  { key: 'actions', label: 'Actions', category: 'Data' },
 ];
 
 // Admin role check — only CENTRAL_ADMIN has admin access
@@ -418,8 +423,9 @@ router.post('/users', async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    // Generate temp password
-    const tempPassword = crypto.randomBytes(16).toString('base64url');
+    // Generate temp password that satisfies password validation (uppercase + lowercase + number)
+    const randomPart = crypto.randomBytes(8).toString('base64url');
+    const tempPassword = 'Ec' + randomPart + '1x';
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
     const newUser = await tenantDb.user.create({
@@ -726,8 +732,9 @@ router.post('/users/:userId/regenerate-password', async (req: Request, res: Resp
       return;
     }
 
-    // Generate new temp password
-    const tempPassword = crypto.randomBytes(16).toString('base64url');
+    // Generate new temp password that satisfies password validation (uppercase + lowercase + number)
+    const randomPart = crypto.randomBytes(8).toString('base64url');
+    const tempPassword = 'Ec' + randomPart + '1x';
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
     // Update user password and mark as temp

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/auth';
+import { queryClient } from '../lib/queryClient';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -20,6 +21,19 @@ api.interceptors.request.use(
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+// Response interceptor to auto-refresh credit balance after any AI call
+api.interceptors.response.use(
+  (response) => {
+    const data = response.data?.data;
+    if (data && ('creditsUsed' in data || 'creditsRemaining' in data)) {
+      queryClient.invalidateQueries({ queryKey: ['ai-credits-header'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-credits'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ai-credits'] });
+    }
+    return response;
+  }
 );
 
 // Response interceptor to handle token refresh

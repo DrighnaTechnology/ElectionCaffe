@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useElectionStore } from '../store/election';
+import { useAuthStore } from '../store/auth';
 import { campaignsAPI } from '../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -48,6 +49,8 @@ interface Campaign {
 
 export function CampaignPage() {
   const { selectedElectionId } = useElectionStore();
+  const { user } = useAuthStore();
+  const isAdmin = !user?.customRoleId;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({
@@ -201,15 +204,19 @@ export function CampaignPage() {
               No messaging providers configured
             </p>
             <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5">
-              Campaigns will run in mock mode (messages logged but not delivered). Configure your SMS, WhatsApp, Email, or Voice provider in Settings.
+              {isAdmin
+                ? 'Campaigns will run in mock mode (messages logged but not delivered). Configure your SMS, WhatsApp, Email, or Voice provider in Settings.'
+                : 'Campaigns will run in mock mode (messages logged but not delivered). Contact your admin to configure messaging providers.'}
             </p>
           </div>
-          <Link to="/settings">
-            <Button variant="outline" size="sm" className="flex-shrink-0">
-              <SettingsIcon className="h-4 w-4 mr-1" />
-              Configure
-            </Button>
-          </Link>
+          {isAdmin && (
+            <Link to="/messaging-settings">
+              <Button variant="outline" size="sm" className="flex-shrink-0">
+                <SettingsIcon className="h-4 w-4 mr-1" />
+                Configure
+              </Button>
+            </Link>
+          )}
         </div>
       )}
 

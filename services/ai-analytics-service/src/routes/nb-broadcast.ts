@@ -139,6 +139,7 @@ router.post('/parse-news/:newsId', async (req: Request, res: Response): Promise<
 
     // AI parse (with credit check)
     let aiResult: any = {};
+    let parseCreditInfo: { creditsUsed: number; creditsRemaining: number } | null = null;
     try {
       const creditResult = await withCreditCheck({
         tenantDb, tenantId, userId,
@@ -173,6 +174,7 @@ router.post('/parse-news/:newsId', async (req: Request, res: Response): Promise<
         },
       });
       aiResult = JSON.parse(creditResult.output);
+      parseCreditInfo = { creditsUsed: creditResult.creditsUsed, creditsRemaining: creditResult.creditsRemaining };
     } catch (aiErr: any) {
       if (aiErr.statusCode === 403) {
         res.status(403).json(errorResponse('E4003', aiErr.message));
@@ -199,7 +201,7 @@ router.post('/parse-news/:newsId', async (req: Request, res: Response): Promise<
       } as any,
     });
 
-    res.status(201).json(successResponse({ ...normalizeParsedNews(parsed), message: 'News parsed successfully' }));
+    res.status(201).json(successResponse({ ...normalizeParsedNews(parsed), message: 'News parsed successfully', ...(parseCreditInfo && { creditsUsed: parseCreditInfo.creditsUsed, creditsRemaining: parseCreditInfo.creditsRemaining }) }));
   } catch (error) {
     logger.error({ err: error }, 'Parse news error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
@@ -934,8 +936,7 @@ router.post('/broadcasts/:id/send', async (req: Request, res: Response): Promise
 });
 
 // ============================================
-// AI THEME GENERATOR
-// No DB writes — pure AI generation, returns token JSON for frontend to apply
+// AI THEME GENERATOR (2 credits per call)
 // ============================================
 
 router.post('/generate-theme', async (req: Request, res: Response): Promise<void> => {
@@ -947,8 +948,11 @@ router.post('/generate-theme', async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const aiResult = await callOpenAI(
-      `You are an expert UI/UX designer specialising in election management software. Generate a complete colour theme based on the user's description.
+    const tenantDb = await getTenantDb(req);
+    const tenantId = req.headers['x-tenant-id'] as string;
+    const userId = req.headers['x-user-id'] as string;
+
+    const systemPrompt = `You are an expert UI/UX designer specialising in election management software. Generate a complete colour theme based on the user's description.
 
 Return ONLY valid JSON matching this exact shape (no comments, no extra fields):
 {
@@ -987,9 +991,30 @@ Rules:
 - Dark mode: backgrounds should be dark (#0f0f0f–#2a2a3a range), text should be light
 - Light mode: backgrounds should be light (#f5f5f5–#ffffff range), text should be dark
 - Brand colours should be vibrant and match the theme description
-- Make the theme cohesive — all colours should feel like they belong together`,
-      `Create a UI theme for: ${prompt.trim()}`
-    );
+- Make the theme cohesive — all colours should feel like they belong together`;
+
+    const creditResult = await withCreditCheck({
+      tenantDb, tenantId, userId,
+      featureKey: 'ai_theme',
+      callAI: async () => {
+        const completion = await getOpenAI().chat.completions.create({
+          model: process.env.OPENAI_MODEL || 'gpt-4o',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Create a UI theme for: ${prompt.trim()}` },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.7,
+        });
+        const usage = completion.usage;
+        return {
+          output: completion.choices[0]?.message?.content || '{}',
+          tokens: { input: usage?.prompt_tokens || 0, output: usage?.completion_tokens || 0 },
+        };
+      },
+    });
+
+    const aiResult = JSON.parse(creditResult.output);
 
     // Validate required fields exist
     const required = ['mode', 'brandPrimary', 'background', 'surface', 'foreground', 'sidebarBg', 'sidebarFg'];
@@ -1004,8 +1029,14 @@ Rules:
       tokens: aiResult,
       themeName: aiResult.themeName || 'AI Generated',
       themeDescription: aiResult.themeDescription || '',
+      creditsUsed: creditResult.creditsUsed,
+      creditsRemaining: creditResult.creditsRemaining,
     }));
-  } catch (error) {
+  } catch (error: any) {
+    if (error.statusCode === 403) {
+      res.status(403).json(errorResponse('E4003', error.message));
+      return;
+    }
     logger.error({ err: error }, 'Generate AI theme error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }

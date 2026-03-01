@@ -76,6 +76,9 @@ const LocalityAnalysisPage = lazy(() => import('./pages/LocalityAnalysisPage').t
 // UI Theme Studio
 const UIThemePage = lazy(() => import('./pages/UIThemePage').then(m => ({ default: m.UIThemePage })));
 
+// Messaging Settings (standalone page)
+const MessagingSettingsPage = lazy(() => import('./pages/MessagingSettingsPage').then(m => ({ default: m.MessagingSettingsPage })));
+
 // Admin Dashboard
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
 const UserDetailPage = lazy(() => import('./pages/UserDetailPage').then(m => ({ default: m.UserDetailPage })));
@@ -375,7 +378,8 @@ function App() {
             <Route path="/ec-data" element={<ECDataPage />} />
             <Route path="/news" element={<TenantNewsPage />} />
             <Route path="/actions" element={<TenantActionsPage />} />
-            <Route path="/ui-theme" element={<UIThemePage />} />
+            <Route path="/ui-theme" element={<AdminGuard><UIThemePage /></AdminGuard>} />
+            <Route path="/messaging-settings" element={<AdminGuard><MessagingSettingsPage /></AdminGuard>} />
 
             {/* Election-dependent routes - require an election to be selected */}
             <Route element={<ElectionGuard />}>

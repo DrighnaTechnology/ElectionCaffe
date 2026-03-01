@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getTenantSlug } from '../utils/tenant';
 
 // ─── Preset themes ────────────────────────────────────────────────────────────
 export type UIThemePreset =
@@ -420,7 +421,7 @@ export const useUIThemeStore = create<UIThemeState>()(
       },
     }),
     {
-      name: 'electioncaffe-ui-theme',
+      name: `electioncaffe-ui-theme-${getTenantSlug() || 'default'}`,
       onRehydrateStorage: () => (state) => {
         if (state) {
           applyUITheme(state.tokens);
