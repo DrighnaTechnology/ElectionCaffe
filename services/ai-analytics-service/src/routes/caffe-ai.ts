@@ -23,6 +23,43 @@ function loadPrompt(relativePath: string): string {
   return readFileSync(fp, 'utf-8').trim();
 }
 
+// ── Identity leak protection ─────────────────────────────────────────────────
+const IDENTITY_LEAK_PATTERNS = [
+  /I(?:'m| am) (?:an? )?(?:AI|language model|LLM)(?:\s+(?:developed|created|made|built|designed|trained))?\s+(?:by|from)\s+(?:OpenAI|Google|Anthropic|Meta|Microsoft)/gi,
+  /(?:developed|created|made|built|designed|trained|powered)\s+by\s+(?:OpenAI|Google|Anthropic|Meta|Microsoft)/gi,
+  /I(?:'m| am)\s+(?:GPT|ChatGPT|GPT-4|GPT-4o|Claude|Gemini|Llama|Copilot)/gi,
+  /(?:OpenAI|ChatGPT|GPT-4|GPT-4o|Anthropic|Claude|Google Gemini|Meta Llama)(?:'s)?\s+(?:AI|model|assistant|language model)/gi,
+  /not\s+(?:specifically\s+)?(?:affiliated|associated|branded|related)\s+(?:with|to)\s+(?:ElectionCaff?e|Election\s+Caff?e)/gi,
+];
+
+const IDENTITY_REPLACEMENT = 'I am CaffeAI, the AI assistant built by ElectionCaffe to help you manage your election campaigns.';
+
+function sanitizeIdentityLeak(text: string): string {
+  let sanitized = text;
+  for (const pattern of IDENTITY_LEAK_PATTERNS) {
+    if (pattern.test(sanitized)) {
+      // If the AI leaked its identity, replace the entire response
+      logger.warn('[CaffeAI] Identity leak detected and sanitized');
+      return IDENTITY_REPLACEMENT;
+    }
+  }
+  return sanitized;
+}
+
+// Strip identity leaks from conversation history to prevent GPT from doubling down
+function sanitizeMessages(msgs: Message[]): Message[] {
+  return msgs.map((m) => {
+    if (m.role === 'assistant') {
+      for (const pattern of IDENTITY_LEAK_PATTERNS) {
+        if (pattern.test(m.content)) {
+          return { ...m, content: IDENTITY_REPLACEMENT };
+        }
+      }
+    }
+    return m;
+  });
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Message { role: 'user' | 'assistant'; content: string; }
 
@@ -299,7 +336,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
           callAI: async () => {
             const completion = await getOpenAI().chat.completions.create({
               model: process.env.OPENAI_MODEL || 'gpt-4o',
-              messages: [{ role: 'system', content: systemPrompt }, ...messages],
+              messages: [{ role: 'system', content: systemPrompt }, ...sanitizeMessages(messages)],
               temperature: 0.3,
               max_tokens: 400,
             });
@@ -384,7 +421,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
         callAI: async () => {
           const completion = await getOpenAI().chat.completions.create({
             model: process.env.OPENAI_MODEL || 'gpt-4o',
-            messages: [{ role: 'system', content: systemPrompt }, ...messages],
+            messages: [{ role: 'system', content: systemPrompt }, ...sanitizeMessages(messages)],
             temperature: 0.35,
             max_tokens: 600,
           });
@@ -404,7 +441,7 @@ caffeAiRoutes.post('/chat', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       data: {
-        reply,
+        reply: sanitizeIdentityLeak(reply),
         actions,
         navTo: navTo || undefined,
         guidedStep: inGuided ? stepIndex : undefined,

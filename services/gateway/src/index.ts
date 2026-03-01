@@ -129,6 +129,13 @@ const createServiceProxy = (target: string, pathRewrite?: Record<string, string>
     changeOrigin: true,
     ...(pathRewrite && { pathRewrite }),
     onProxyReq: (proxyReq, req) => {
+      // Skip body re-write for multipart/form-data (file uploads) —
+      // express.json() doesn't parse these, so the raw stream is intact
+      const contentType = req.headers['content-type'] || '';
+      if (contentType.includes('multipart/form-data')) {
+        return;
+      }
+
       // Always re-write body if express.json() consumed it (even empty {})
       // Without this, the upstream hangs waiting for Content-Length bytes that never arrive
       if ((req as any).body !== undefined) {

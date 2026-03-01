@@ -1013,6 +1013,16 @@ export function UIThemePage() {
                       { value: 'geist', label: 'Geist', preview: 'Aa — Developer friendly' },
                       { value: 'poppins', label: 'Poppins', preview: 'Aa — Rounded & friendly' },
                       { value: 'nunito', label: 'Nunito', preview: 'Aa — Soft & approachable' },
+                      { value: 'roboto', label: 'Roboto', preview: 'Aa — Google standard' },
+                      { value: 'lato', label: 'Lato', preview: 'Aa — Warm & stable' },
+                      { value: 'opensans', label: 'Open Sans', preview: 'Aa — Neutral & readable' },
+                      { value: 'montserrat', label: 'Montserrat', preview: 'Aa — Bold & geometric' },
+                      { value: 'raleway', label: 'Raleway', preview: 'Aa — Elegant & thin' },
+                      { value: 'ubuntu', label: 'Ubuntu', preview: 'Aa — Humanist & unique' },
+                      { value: 'sourcesans', label: 'Source Sans', preview: 'Aa — Adobe professional' },
+                      { value: 'firasans', label: 'Fira Sans', preview: 'Aa — Mozilla crafted' },
+                      { value: 'rubik', label: 'Rubik', preview: 'Aa — Rounded geometric' },
+                      { value: 'outfit', label: 'Outfit', preview: 'Aa — Modern & versatile' },
                       { value: 'system', label: 'System', preview: 'Aa — OS default' },
                     ] as const).map((f) => (
                       <button

@@ -51,7 +51,7 @@ export interface UIThemeTokens {
   cardBorderRadius: number;   // rem — card specific override
 
   // ── Typography ────────────────────────────────────────────────────────────
-  fontFamily: 'inter' | 'geist' | 'system' | 'poppins' | 'nunito';
+  fontFamily: 'inter' | 'geist' | 'system' | 'poppins' | 'nunito' | 'roboto' | 'lato' | 'opensans' | 'montserrat' | 'raleway' | 'ubuntu' | 'sourcesans' | 'firasans' | 'rubik' | 'outfit';
   fontScale: number;          // 0.9 | 1.0 | 1.1 | 1.125
 
   // ── Spacing density ───────────────────────────────────────────────────────
@@ -146,8 +146,49 @@ export function applyUITheme(tokens: UIThemeTokens) {
     system: "system-ui, -apple-system, sans-serif",
     poppins: "'Poppins', 'Inter', sans-serif",
     nunito: "'Nunito', 'Inter', sans-serif",
+    roboto: "'Roboto', system-ui, sans-serif",
+    lato: "'Lato', system-ui, sans-serif",
+    opensans: "'Open Sans', system-ui, sans-serif",
+    montserrat: "'Montserrat', system-ui, sans-serif",
+    raleway: "'Raleway', system-ui, sans-serif",
+    ubuntu: "'Ubuntu', system-ui, sans-serif",
+    sourcesans: "'Source Sans 3', system-ui, sans-serif",
+    firasans: "'Fira Sans', system-ui, sans-serif",
+    rubik: "'Rubik', system-ui, sans-serif",
+    outfit: "'Outfit', system-ui, sans-serif",
   };
   root.style.setProperty('--font-family', fontMap[tokens.fontFamily]);
+
+  // Dynamically load Google Font when a non-system/non-bundled font is selected
+  const googleFontMap: Partial<Record<UIThemeTokens['fontFamily'], string>> = {
+    poppins: 'Poppins:wght@300;400;500;600;700',
+    nunito: 'Nunito:wght@300;400;500;600;700',
+    roboto: 'Roboto:wght@300;400;500;700',
+    lato: 'Lato:wght@300;400;700;900',
+    opensans: 'Open+Sans:wght@300;400;500;600;700',
+    montserrat: 'Montserrat:wght@300;400;500;600;700',
+    raleway: 'Raleway:wght@300;400;500;600;700',
+    ubuntu: 'Ubuntu:wght@300;400;500;700',
+    sourcesans: 'Source+Sans+3:wght@300;400;500;600;700',
+    firasans: 'Fira+Sans:wght@300;400;500;600;700',
+    rubik: 'Rubik:wght@300;400;500;600;700',
+    outfit: 'Outfit:wght@300;400;500;600;700',
+  };
+  const googleFont = googleFontMap[tokens.fontFamily];
+  if (googleFont) {
+    const linkId = 'ec-google-font';
+    let link = document.getElementById(linkId) as HTMLLinkElement | null;
+    const href = `https://fonts.googleapis.com/css2?family=${googleFont}&display=swap`;
+    if (!link) {
+      link = document.createElement('link');
+      link.id = linkId;
+      link.rel = 'stylesheet';
+      link.href = href;
+      document.head.appendChild(link);
+    } else if (link.href !== href) {
+      link.href = href;
+    }
+  }
   // Use CSS var for font scale — avoid touching html font-size which breaks rem cascade
   root.style.setProperty('--font-scale', `${tokens.fontScale}`);
 
