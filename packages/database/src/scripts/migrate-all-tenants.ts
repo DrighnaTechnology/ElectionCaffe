@@ -10,12 +10,9 @@
  */
 
 import dotenv from 'dotenv';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
+// __dirname is available in CJS (this package has no "type": "module")
 dotenv.config({ path: resolve(__dirname, '../../../../.env') });
 
 import { migrateAllTenantDatabases } from '../clients/db-manager.js';

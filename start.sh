@@ -32,7 +32,7 @@
 #   ./start.sh --help                   # Show help
 # =============================================================================
 
-set -e
+set -eo pipefail
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -539,7 +539,8 @@ fi
 if [ "$SKIP_DEPS" = false ]; then
   next_step
   print_step "$CURRENT_STEP" "Installing Dependencies"
-  npm install 2>&1 | tail -5
+  INSTALL_OUT=$(npm install 2>&1) || { echo "$INSTALL_OUT"; print_fail "npm install failed"; exit 1; }
+  echo "$INSTALL_OUT" | tail -5
   print_ok "All dependencies installed"
 fi
 
@@ -624,7 +625,23 @@ fi
 if [ "$TARGET" != "frontend" ]; then
   next_step
   print_step "$CURRENT_STEP" "Generating Prisma Clients"
-  npm run db:generate 2>&1 | tail -3
+
+  # Stop stale services that may lock Prisma DLL files (Windows EPERM issue)
+  if [ -f "stop.sh" ]; then
+    bash stop.sh 2>/dev/null || true
+  fi
+  # Also stop PM2 if running
+  if command -v pm2 &> /dev/null; then
+    pm2 kill 2>/dev/null || true
+  fi
+
+  GEN_OUT=$(npm run db:generate 2>&1) || {
+    # Retry once after a brief wait (file lock may take a moment to release)
+    print_warn "Prisma generate failed, retrying in 3s..."
+    sleep 3
+    GEN_OUT=$(npm run db:generate 2>&1) || { echo "$GEN_OUT"; print_fail "Prisma generate failed. A running process may be locking .prisma files."; print_info "Stop all node processes and retry: taskkill /F /IM node.exe (Windows) or killall node (Linux/Mac)"; exit 1; }
+  }
+  echo "$GEN_OUT" | tail -3
   print_ok "Prisma clients generated (core + tenant)"
 fi
 
@@ -633,7 +650,8 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 next_step
 print_step "$CURRENT_STEP" "Building Shared Packages"
-npx turbo run build --filter=@electioncaffe/shared --filter=@electioncaffe/database 2>&1 | tail -5
+BUILD_OUT=$(npx turbo run build --filter=@electioncaffe/shared --filter=@electioncaffe/database 2>&1) || { echo "$BUILD_OUT"; print_fail "Shared packages build failed"; exit 1; }
+echo "$BUILD_OUT" | tail -5
 print_ok "@electioncaffe/shared built"
 print_ok "@electioncaffe/database built"
 
@@ -644,14 +662,15 @@ if [ "$SKIP_DB" = false ] && [ "$TARGET" != "frontend" ]; then
   next_step
   print_step "$CURRENT_STEP" "Pushing Database Schemas"
 
-  # Push core schema
-  print_info "Pushing core schema..."
-  npm run db:push 2>&1 | tail -3 || print_warn "Schema push had minor issues (may be OK)"
+  # Push core + tenant schemas
+  print_info "Pushing schemas to databases..."
+  PUSH_OUT=$(npm run db:push 2>&1) || { echo "$PUSH_OUT"; print_fail "Schema push failed"; exit 1; }
+  echo "$PUSH_OUT" | tail -3
   print_ok "Core + Tenant schemas applied"
 
   # Sync schema to all existing tenant databases
   print_info "Syncing schema to all existing tenant databases..."
-  TENANT_URLS=$(node --input-type=module << 'EOJS'
+  TENANT_URLS=$(node --input-type=module -e "
 import dotenv from 'dotenv';
 dotenv.config();
 try {
@@ -661,20 +680,18 @@ try {
     select: { slug: true, databaseConnectionUrl: true }
   });
   for (const t of tenants) {
-    process.stdout.write('ROW:' + t.slug + '\t' + t.databaseConnectionUrl + '\n');
+    console.log(t.slug + '\t' + t.databaseConnectionUrl);
   }
-  await coreDb.$disconnect();
+  await coreDb.\$disconnect();
   process.exit(0);
 } catch(e) {
-  // Core DB might be freshly created with no tenants yet — that's fine
   process.exit(0);
 }
-EOJS
-2>/dev/null | grep '^ROW:' | sed 's/^ROW://')
+" 2>/dev/null || true)
 
   if [ -n "$TENANT_URLS" ]; then
     while IFS=$'\t' read -r slug url; do
-      if [ -n "$url" ]; then
+      if [ -n "$slug" ] && [ -n "$url" ]; then
         print_info "Syncing schema → $slug"
         TENANT_DATABASE_URL="$url" npx prisma db push \
           --schema=packages/database/prisma/tenant/schema.prisma \

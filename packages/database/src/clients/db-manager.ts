@@ -13,22 +13,18 @@
 import { Client } from 'pg';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { resolve, join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
+import { resolve, join } from 'path';
 import { coreDb } from './core-client.js';
 import { generateTenantDbName, generateTenantDbUrl, getTenantClientBySlug } from './tenant-client.js';
 
 const execFileAsync = promisify(execFile);
 
 // Derive the database package root from this file's location (works regardless of cwd)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// __dirname is available in CJS (this package has no "type": "module")
 const dbPkgRoot = resolve(__dirname, '..', '..');
 
 // Resolve prisma CLI path and node binary (absolute paths, cross-platform)
-const _require = createRequire(import.meta.url);
-const prismaCli = _require.resolve('prisma/build/index.js');
+const prismaCli = require.resolve('prisma/build/index.js');
 const nodeBin = process.execPath;
 
 export interface TenantDbConfig {
