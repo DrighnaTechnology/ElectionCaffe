@@ -289,6 +289,9 @@ export const votersAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+
+  export: (electionId: string, params?: { partId?: string; gender?: string }) =>
+    api.get('/voters/export', { params: { electionId, ...params }, responseType: 'blob' }),
 };
 
 // Families API
@@ -406,6 +409,25 @@ export const aiAnalyticsAPI = {
 
   delete: (electionId: string, id: string) =>
     api.delete(`/ai-analytics/${electionId}/${id}`),
+
+  // AI Dashboard Builder
+  generateDashboard: (electionId: string, prompt: string) =>
+    api.post(`/ai-analytics/${electionId}/dashboard/generate`, { prompt }),
+
+  executeDashboard: (electionId: string, widgets: any[]) =>
+    api.post(`/ai-analytics/${electionId}/dashboard/execute`, { widgets }),
+
+  saveDashboard: (electionId: string, data: { title: string; description?: string; prompt?: string; dashboardConfig: any; tags?: string[] }) =>
+    api.post(`/ai-analytics/${electionId}/dashboard/save`, data),
+
+  getDashboardLibrary: (electionId: string) =>
+    api.get(`/ai-analytics/${electionId}/dashboard/library`),
+
+  getDashboard: (electionId: string, id: string) =>
+    api.get(`/ai-analytics/${electionId}/dashboard/${id}`),
+
+  deleteDashboard: (electionId: string, id: string) =>
+    api.delete(`/ai-analytics/${electionId}/dashboard/${id}`),
 };
 
 // Surveys API
@@ -742,6 +764,9 @@ export const organizationAPI = {
 
   // Get current user's feature access
   getMyFeatures: () => api.get('/organization/my-features'),
+
+  // Admin context (capabilities, assignable roles)
+  getAdminContext: () => api.get('/organization/admin-context'),
 
   // Custom roles
   getCustomRoles: () => api.get('/organization/custom-roles'),

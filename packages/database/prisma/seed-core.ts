@@ -16,6 +16,18 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  // ── Check if core data already exists — skip if so ──────────────────────
+  const [superAdminCount, planCount, flagCount] = await Promise.all([
+    prisma.superAdmin.count(),
+    prisma.licensePlan.count(),
+    prisma.featureFlag.count(),
+  ]);
+
+  if (superAdminCount > 0 && planCount >= 4 && flagCount >= 10) {
+    console.log('✓ Core database already seeded (super admin, plans, feature flags exist). Skipping.');
+    return;
+  }
+
   console.log('Seeding ElectionCaffeCore database...');
 
   // 1. System Configuration

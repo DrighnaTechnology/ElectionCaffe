@@ -10,7 +10,7 @@ export { SectionsPage } from './SectionsPage';
 export { CadresPage } from './CadresPage';
 export { FamiliesPage } from './FamiliesPage';
 export { AnalyticsPage } from './AnalyticsPage';
-export { AIAnalyticsPage } from './AIAnalyticsPage';
+// export { AIAnalyticsPage } from './AIAnalyticsPage'; // Disabled: replaced by AI Dashboard Builder
 export { ReportsPage } from './ReportsPage';
 export { DataCaffePage } from './DataCaffePage';
 export { SettingsPage } from './SettingsPage';

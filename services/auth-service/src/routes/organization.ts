@@ -23,7 +23,7 @@ const AVAILABLE_FEATURES = [
   { key: 'poll-day', label: 'Poll Day', category: 'Operations' },
   { key: 'funds', label: 'Funds', category: 'Operations' },
   { key: 'analytics', label: 'Analytics', category: 'Analytics' },
-  { key: 'ai-analytics', label: 'AI Analytics', category: 'Analytics' },
+  { key: 'ai-analytics', label: 'AI Dashboards', category: 'Analytics' },
   { key: 'ai-tools', label: 'AI Tools', category: 'Analytics' },
   { key: 'reports', label: 'Reports', category: 'Analytics' },
   { key: 'datacaffe', label: 'DataCaffe', category: 'Analytics' },
@@ -34,6 +34,27 @@ const AVAILABLE_FEATURES = [
 
 // Admin role check — only CENTRAL_ADMIN has admin access
 const ADMIN_ROLE = 'CENTRAL_ADMIN';
+
+/**
+ * Determine the admin hierarchy tier for a given user.
+ *   Tier 1 = Owner (coreDb.tenant.adminUserId matches)
+ *   Tier 2 = Full Admin (customRoleId === null, not owner)
+ *   Tier 3 = Custom Role user (customRoleId !== null)
+ */
+async function getAdminTier(
+  tenantId: string,
+  userId: string,
+  userCustomRoleId: string | null
+): Promise<{ isOwner: boolean; isFullAdmin: boolean; tier: 1 | 2 | 3 }> {
+  const tenant = await coreDb.tenant.findUnique({
+    where: { id: tenantId },
+    select: { adminUserId: true },
+  });
+  const isOwner = tenant?.adminUserId === userId;
+  if (isOwner) return { isOwner: true, isFullAdmin: true, tier: 1 };
+  if (!userCustomRoleId) return { isOwner: false, isFullAdmin: true, tier: 2 };
+  return { isOwner: false, isFullAdmin: false, tier: 3 };
+}
 
 // Get available features list
 router.get('/features', async (_req: Request, res: Response): Promise<void> => {
@@ -295,6 +316,13 @@ router.delete('/custom-roles/:roleId', async (req: Request, res: Response): Prom
     const user = await (await getTenantDb(req)).user.findUnique({ where: { id: userId } });
     if (!user) { res.status(404).json(errorResponse('E3001', 'Tenant not found')); return; }
 
+    // Only owner can delete custom roles
+    const adminTier = await getAdminTier(user.tenantId, userId, user.customRoleId);
+    if (!adminTier.isOwner) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can delete custom roles.'));
+      return;
+    }
+
     const { roleId } = req.params;
 
     const customRole = await (await getTenantDb(req)).customRole.findFirst({
@@ -327,7 +355,8 @@ router.put('/custom-roles/:roleId/features', async (req: Request, res: Response)
       return;
     }
 
-    const user = await (await getTenantDb(req)).user.findUnique({ where: { id: userId } });
+    const tenantDb = await getTenantDb(req);
+    const user = await tenantDb.user.findUnique({ where: { id: userId } });
     if (!user) { res.status(404).json(errorResponse('E3001', 'Tenant not found')); return; }
 
     const { roleId } = req.params;
@@ -338,7 +367,27 @@ router.put('/custom-roles/:roleId/features', async (req: Request, res: Response)
       return;
     }
 
-    const customRole = await (await getTenantDb(req)).customRole.findFirst({
+    // Tier 3: can only enable features they themselves have
+    const adminTier = await getAdminTier(user.tenantId, userId, user.customRoleId);
+    if (adminTier.tier === 3 && user.customRoleId) {
+      const ownFeatures = await tenantDb.customRoleFeatureAccess.findMany({
+        where: { customRoleId: user.customRoleId, isEnabled: true },
+        select: { featureKey: true },
+      });
+      const ownFeatureKeys = new Set(ownFeatures.map((f: any) => f.featureKey));
+
+      const disallowed = updates.filter(
+        (u: { featureKey: string; isEnabled: boolean }) =>
+          u.isEnabled && !ownFeatureKeys.has(u.featureKey)
+      );
+
+      if (disallowed.length > 0) {
+        res.status(403).json(errorResponse('E4001', 'You can only enable features that you have access to.'));
+        return;
+      }
+    }
+
+    const customRole = await tenantDb.customRole.findFirst({
       where: { id: roleId, tenantId: user.tenantId },
     });
 
@@ -346,8 +395,6 @@ router.put('/custom-roles/:roleId/features', async (req: Request, res: Response)
       res.status(404).json(errorResponse('E3002', 'Custom role not found'));
       return;
     }
-
-    const tenantDb = await getTenantDb(req);
     const results = await tenantDb.$transaction(
       updates.map((u: { featureKey: string; isEnabled: boolean }) =>
         tenantDb.customRoleFeatureAccess.upsert({
@@ -398,8 +445,49 @@ router.post('/users', async (req: Request, res: Response): Promise<void> => {
 
     const { firstName, lastName, email, mobile, customRoleId } = req.body;
 
+    // Hierarchy enforcement
+    const adminTier = await getAdminTier(adminUser.tenantId, adminUserId, adminUser.customRoleId);
+
+    // Only owner can create Full Admin (no customRoleId)
+    if (!customRoleId && !adminTier.isOwner) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can create users with Full Admin access. Please assign a custom role.'));
+      return;
+    }
+
+    // Tier 3: can only assign roles with features at or below their own access level
+    if (adminTier.tier === 3 && adminUser.customRoleId && customRoleId) {
+      const ownFeatures = await tenantDb.customRoleFeatureAccess.findMany({
+        where: { customRoleId: adminUser.customRoleId, isEnabled: true },
+        select: { featureKey: true },
+      });
+      const ownFeatureKeys = new Set(ownFeatures.map((f: any) => f.featureKey));
+
+      const targetFeatures = await tenantDb.customRoleFeatureAccess.findMany({
+        where: { customRoleId, isEnabled: true },
+        select: { featureKey: true },
+      });
+
+      const isSubset = targetFeatures.every((f: any) => ownFeatureKeys.has(f.featureKey));
+      if (!isSubset) {
+        res.status(403).json(errorResponse('E4001', 'You can only assign roles with features within your own access level.'));
+        return;
+      }
+    }
+
     if (!firstName || !mobile) {
       res.status(400).json(errorResponse('E2001', 'First name and mobile number are required'));
+      return;
+    }
+
+    // Validate mobile format
+    if (!/^[6-9]\d{9}$/.test(mobile.trim())) {
+      res.status(400).json(errorResponse('E2001', 'Invalid mobile number. Must be a 10-digit Indian mobile number starting with 6-9.'));
+      return;
+    }
+
+    // Validate email format if provided
+    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      res.status(400).json(errorResponse('E2001', 'Invalid email address'));
       return;
     }
 
@@ -790,6 +878,9 @@ router.put('/users/:userId/role', async (req: Request, res: Response): Promise<v
 
     const { customRoleId } = req.body;
 
+    // Hierarchy enforcement
+    const adminTier = await getAdminTier(adminUser.tenantId, adminUserId, adminUser.customRoleId);
+
     // Verify target user belongs to same tenant
     const targetUser = await tenantDb.user.findUnique({ where: { id: targetUserId } });
     if (!targetUser || targetUser.tenantId !== adminUser.tenantId) {
@@ -800,6 +891,27 @@ router.put('/users/:userId/role', async (req: Request, res: Response): Promise<v
     // Prevent changing own role
     if (targetUserId === adminUserId) {
       res.status(400).json(errorResponse('E4003', 'Cannot change your own role'));
+      return;
+    }
+
+    // Prevent changing owner's role
+    if (adminTier.isOwner === false) {
+      const ownerTenant = await coreDb.tenant.findUnique({ where: { id: adminUser.tenantId }, select: { adminUserId: true } });
+      if (ownerTenant?.adminUserId === targetUserId) {
+        res.status(403).json(errorResponse('E4001', 'Cannot change the tenant owner\'s role.'));
+        return;
+      }
+    }
+
+    // Only owner can assign Full Admin (customRoleId is null/undefined)
+    if (!customRoleId && !adminTier.isOwner) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can assign Full Admin access.'));
+      return;
+    }
+
+    // Tier 2+ cannot modify roles of Full Admin users (only owner can)
+    if (!adminTier.isOwner && !targetUser.customRoleId) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can modify the role of Full Admin users.'));
       return;
     }
 
@@ -866,6 +978,21 @@ router.put('/users/:userId', async (req: Request, res: Response): Promise<void> 
     }
 
     const { firstName, lastName, email, mobile, customRoleId } = req.body;
+
+    // Hierarchy enforcement
+    const adminTier = await getAdminTier(adminUser.tenantId, adminUserId, adminUser.customRoleId);
+
+    // Non-owner cannot edit Full Admin users
+    if (!adminTier.isOwner && !targetUser.customRoleId && targetUserId !== adminUserId) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can edit Full Admin users.'));
+      return;
+    }
+
+    // Non-owner cannot assign Full Admin access (customRoleId set to null)
+    if (customRoleId !== undefined && !customRoleId && !adminTier.isOwner) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can assign Full Admin access.'));
+      return;
+    }
 
     // Check mobile uniqueness if being changed
     if (mobile && mobile !== targetUser.mobile) {
@@ -956,6 +1083,13 @@ router.put('/users/:userId/status', async (req: Request, res: Response): Promise
       return;
     }
 
+    // Hierarchy: non-owner cannot block/unblock Full Admin users
+    const adminTier = await getAdminTier(adminUser.tenantId, adminUserId, adminUser.customRoleId);
+    if (!adminTier.isOwner && !targetUser.customRoleId) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can change the status of Full Admin users.'));
+      return;
+    }
+
     const updatedUser = await tenantDb.user.update({
       where: { id: targetUserId },
       data: { status },
@@ -998,9 +1132,23 @@ router.delete('/users/:userId', async (req: Request, res: Response): Promise<voi
       return;
     }
 
+    // Only owner can delete users
+    const adminTier = await getAdminTier(adminUser.tenantId, adminUserId, adminUser.customRoleId);
+    if (!adminTier.isOwner) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can delete users.'));
+      return;
+    }
+
     const targetUser = await tenantDb.user.findUnique({ where: { id: targetUserId } });
     if (!targetUser || targetUser.tenantId !== adminUser.tenantId) {
       res.status(404).json(errorResponse('E3002', 'User not found'));
+      return;
+    }
+
+    // Prevent deleting the owner
+    const ownerTenant = await coreDb.tenant.findUnique({ where: { id: adminUser.tenantId }, select: { adminUserId: true } });
+    if (ownerTenant?.adminUserId === targetUserId) {
+      res.status(403).json(errorResponse('E4001', 'Cannot delete the tenant owner.'));
       return;
     }
 
@@ -1046,9 +1194,20 @@ router.post('/users/bulk-delete', async (req: Request, res: Response): Promise<v
       return;
     }
 
+    // Only owner can delete users
+    const adminTier = await getAdminTier(adminUser.tenantId, adminUserId, adminUser.customRoleId);
+    if (!adminTier.isOwner) {
+      res.status(403).json(errorResponse('E4001', 'Only the tenant owner can delete users.'));
+      return;
+    }
+
+    // Prevent deleting the owner
+    const ownerTenant = await coreDb.tenant.findUnique({ where: { id: adminUser.tenantId }, select: { adminUserId: true } });
+    const filteredIds = userIds.filter((id: string) => id !== ownerTenant?.adminUserId);
+
     // Verify all target users belong to the same tenant
     const targetUsers = await tenantDb.user.findMany({
-      where: { id: { in: userIds } },
+      where: { id: { in: filteredIds } },
       select: { id: true, tenantId: true },
     });
 
@@ -1118,6 +1277,74 @@ router.get('/my-features', async (req: Request, res: Response): Promise<void> =>
     }));
   } catch (error) {
     logger.error({ err: error }, 'Get my features error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
+// Get admin context (capabilities, assignable roles for the current admin)
+router.get('/admin-context', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.headers['x-user-id'] as string;
+    const userRole = req.headers['x-user-role'] as string;
+
+    if (userRole !== ADMIN_ROLE) {
+      res.status(403).json(errorResponse('E4001', 'Access denied'));
+      return;
+    }
+
+    const tenantDb = await getTenantDb(req);
+    const user = await tenantDb.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json(errorResponse('E3001', 'User not found'));
+      return;
+    }
+
+    const { isOwner, tier } = await getAdminTier(user.tenantId, userId, user.customRoleId);
+
+    // Get all custom roles for this tenant
+    const allCustomRoles = await tenantDb.customRole.findMany({
+      where: { tenantId: user.tenantId },
+      select: { id: true, name: true, slug: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Determine assignable roles based on tier
+    let assignableRoles = allCustomRoles;
+
+    if (tier === 3 && user.customRoleId) {
+      // Tier 3: only roles with features that are a subset of admin's own features
+      const ownFeatures = await tenantDb.customRoleFeatureAccess.findMany({
+        where: { customRoleId: user.customRoleId, isEnabled: true },
+        select: { featureKey: true },
+      });
+      const ownFeatureKeys = new Set(ownFeatures.map((f: any) => f.featureKey));
+
+      const rolesWithFeatures = await tenantDb.customRole.findMany({
+        where: { tenantId: user.tenantId },
+        include: { featureAccess: { where: { isEnabled: true } } },
+      });
+
+      assignableRoles = rolesWithFeatures
+        .filter((role: any) =>
+          role.featureAccess.every((fa: any) => ownFeatureKeys.has(fa.featureKey))
+        )
+        .map((r: any) => ({ id: r.id, name: r.name, slug: r.slug }));
+    }
+
+    res.json(successResponse({
+      isOwner,
+      tier,
+      canCreateFullAdmin: isOwner,
+      canDeleteUsers: isOwner,
+      canDeleteRoles: isOwner,
+      canCreateRoles: tier <= 2,
+      canEditUsers: tier <= 2,
+      canBlockUsers: tier <= 2,
+      canAssignFullAdmin: isOwner,
+      assignableRoles,
+    }));
+  } catch (error) {
+    logger.error({ err: error }, 'Get admin context error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

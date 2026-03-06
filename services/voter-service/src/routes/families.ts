@@ -45,13 +45,18 @@ router.get('/', async (req: Request, res: Response) => {
         take: limit,
         orderBy: sort ? { [sort]: order } : { createdAt: 'desc' },
         include: {
+          part: { select: { partNumber: true, boothName: true } },
           voters: {
             select: {
               id: true,
               name: true,
+              nameLocal: true,
+              slNumber: true,
               gender: true,
               age: true,
               mobile: true,
+              epicNumber: true,
+              isFamilyCaptain: true,
               part: { select: { partNumber: true, boothName: true } },
             },
           },
@@ -60,40 +65,61 @@ router.get('/', async (req: Request, res: Response) => {
       (tenantDb as any).family.count({ where }),
     ]);
 
-    res.json(successResponse(families, createPaginationMeta(total, page, limit)));
+    // Enrich families with captain info derived from voters
+    const enrichedFamilies = families.map((family: any) => {
+      const captainVoter = family.voters?.find((v: any) => v.isFamilyCaptain);
+      return {
+        ...family,
+        captainId: captainVoter?.id || null,
+        captain: captainVoter ? {
+          id: captainVoter.id,
+          voterName: captainVoter.name,
+          voterNameEn: captainVoter.name,
+          voterNameLocal: captainVoter.nameLocal,
+          mobile: captainVoter.mobile,
+          serialNo: captainVoter.slNumber,
+        } : null,
+      };
+    });
+
+    res.json(successResponse(enrichedFamilies, createPaginationMeta(total, page, limit)));
   } catch (error) {
     logger.error({ err: error }, 'Get families error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
 
-// Get family by ID
-router.get('/:id', async (req: Request, res: Response) => {
+// Get family captains list (must be before /:id to avoid route conflict)
+router.get('/captains/list', async (req: Request, res: Response) => {
   try {
     const tenantDb = await getTenantDb(req);
-    const { id } = req.params;
+    const { electionId } = req.query;
+    const validation = paginationSchema.safeParse(req.query);
+    const { page, limit } = validation.success ? validation.data : { page: 1, limit: 10 };
+    const skip = calculateSkip(page, limit);
 
-    const family = await (tenantDb as any).family.findUnique({
-      where: { id },
-      include: {
-        voters: {
-          include: {
-            part: { select: { partNumber: true, boothName: true } },
-            religion: { select: { religionName: true } },
-            caste: { select: { casteName: true } },
-          },
+    const where = {
+      electionId: electionId as string,
+      isFamilyCaptain: true,
+      deletedAt: null,
+    };
+
+    const [captains, total] = await Promise.all([
+      (tenantDb as any).voter.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          family: true,
+          part: { select: { partNumber: true, boothName: true } },
         },
-      },
-    });
+      }),
+      (tenantDb as any).voter.count({ where }),
+    ]);
 
-    if (!family) {
-      res.status(404).json(errorResponse('E3001', 'Family not found'));
-      return;
-    }
-
-    res.json(successResponse(family));
+    res.json(successResponse(captains, createPaginationMeta(total, page, limit)));
   } catch (error) {
-    logger.error({ err: error }, 'Get family error');
+    logger.error({ err: error }, 'Get family captains error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -111,7 +137,6 @@ router.post('/', async (req: Request, res: Response) => {
         familyName,
         houseNo,
         address,
-        captainId,
         latitude,
         longitude,
         totalMembers: memberIds?.length || 0,
@@ -188,6 +213,79 @@ router.post('/bulk', async (req: Request, res: Response) => {
   }
 });
 
+// Get family members
+router.get('/:id/members', async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const { id } = req.params;
+
+    const members = await (tenantDb as any).voter.findMany({
+      where: { familyId: id },
+      select: {
+        id: true,
+        name: true,
+        nameLocal: true,
+        slNumber: true,
+        gender: true,
+        age: true,
+        mobile: true,
+        epicNumber: true,
+        isFamilyCaptain: true,
+      },
+    });
+
+    // Map DB field names to frontend-expected field names
+    const mappedMembers = members.map((m: any) => ({
+      id: m.id,
+      voterName: m.name,
+      voterNameEn: m.name,
+      voterNameLocal: m.nameLocal,
+      serialNo: m.slNumber,
+      gender: m.gender,
+      age: m.age,
+      mobile: m.mobile,
+      epicNo: m.epicNumber,
+      isFamilyCaptain: m.isFamilyCaptain,
+    }));
+
+    res.json(successResponse(mappedMembers));
+  } catch (error) {
+    logger.error({ err: error }, 'Get family members error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
+// Get family by ID
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const { id } = req.params;
+
+    const family = await (tenantDb as any).family.findUnique({
+      where: { id },
+      include: {
+        voters: {
+          include: {
+            part: { select: { partNumber: true, boothName: true } },
+            religion: { select: { religionName: true } },
+            caste: { select: { casteName: true } },
+          },
+        },
+      },
+    });
+
+    if (!family) {
+      res.status(404).json(errorResponse('E3001', 'Family not found'));
+      return;
+    }
+
+    res.json(successResponse(family));
+  } catch (error) {
+    logger.error({ err: error }, 'Get family error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
 // Update family
 router.put('/:id', async (req: Request, res: Response) => {
   try {
@@ -225,6 +323,47 @@ router.put('/:id', async (req: Request, res: Response) => {
     res.json(successResponse(family));
   } catch (error) {
     logger.error({ err: error }, 'Update family error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
+// Assign captain to family
+router.put('/:id/captain', async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const { id } = req.params;
+    const { captainId } = req.body;
+
+    if (!captainId) {
+      res.status(400).json(errorResponse('E2001', 'captainId is required'));
+      return;
+    }
+
+    // Verify the voter belongs to this family
+    const voter = await (tenantDb as any).voter.findFirst({
+      where: { id: captainId, familyId: id },
+    });
+
+    if (!voter) {
+      res.status(400).json(errorResponse('E2001', 'Voter is not a member of this family'));
+      return;
+    }
+
+    // Remove captain status from all family members
+    await (tenantDb as any).voter.updateMany({
+      where: { familyId: id },
+      data: { isFamilyCaptain: false },
+    });
+
+    // Set new captain
+    await (tenantDb as any).voter.update({
+      where: { id: captainId },
+      data: { isFamilyCaptain: true },
+    });
+
+    res.json(successResponse({ message: 'Captain assigned successfully' }));
+  } catch (error) {
+    logger.error({ err: error }, 'Assign captain error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });
@@ -287,6 +426,25 @@ router.delete('/:id/members/:voterId', async (req: Request, res: Response) => {
   }
 });
 
+// Remove captain from family
+router.delete('/:id/captain', async (req: Request, res: Response) => {
+  try {
+    const tenantDb = await getTenantDb(req);
+    const { id } = req.params;
+
+    // Remove captain status from all family members
+    await (tenantDb as any).voter.updateMany({
+      where: { familyId: id },
+      data: { isFamilyCaptain: false },
+    });
+
+    res.json(successResponse({ message: 'Captain removed successfully' }));
+  } catch (error) {
+    logger.error({ err: error }, 'Remove captain error');
+    res.status(500).json(errorResponse('E5001', 'Internal server error'));
+  }
+});
+
 // Delete family
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
@@ -305,41 +463,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
     res.json(successResponse({ message: 'Family deleted successfully' }));
   } catch (error) {
     logger.error({ err: error }, 'Delete family error');
-    res.status(500).json(errorResponse('E5001', 'Internal server error'));
-  }
-});
-
-// Get family captains
-router.get('/captains/list', async (req: Request, res: Response) => {
-  try {
-    const tenantDb = await getTenantDb(req);
-    const { electionId } = req.query;
-    const validation = paginationSchema.safeParse(req.query);
-    const { page, limit } = validation.success ? validation.data : { page: 1, limit: 10 };
-    const skip = calculateSkip(page, limit);
-
-    const where = {
-      electionId: electionId as string,
-      isFamilyCaptain: true,
-      deletedAt: null,
-    };
-
-    const [captains, total] = await Promise.all([
-      (tenantDb as any).voter.findMany({
-        where,
-        skip,
-        take: limit,
-        include: {
-          family: true,
-          part: { select: { partNumber: true, boothName: true } },
-        },
-      }),
-      (tenantDb as any).voter.count({ where }),
-    ]);
-
-    res.json(successResponse(captains, createPaginationMeta(total, page, limit)));
-  } catch (error) {
-    logger.error({ err: error }, 'Get family captains error');
     res.status(500).json(errorResponse('E5001', 'Internal server error'));
   }
 });

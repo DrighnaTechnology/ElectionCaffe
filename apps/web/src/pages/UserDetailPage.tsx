@@ -63,6 +63,17 @@ export function UserDetailPage() {
   const [regenResult, setRegenResult] = useState<{ tempPassword: string; loginUrl: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Fetch admin context for hierarchy restrictions
+  const { data: adminContextData } = useQuery({
+    queryKey: ['admin-context'],
+    queryFn: () => organizationAPI.getAdminContext(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const adminContext = (adminContextData as any)?.data?.data || {};
+  const isOwner = adminContext.isOwner ?? false;
+  const canDeleteUsers = adminContext.canDeleteUsers ?? false;
+  const canAssignFullAdmin = adminContext.canAssignFullAdmin ?? false;
+
   // Fetch user detail
   const { data, isLoading, error } = useQuery({
     queryKey: ['user-detail', userId],
@@ -85,6 +96,13 @@ export function UserDetailPage() {
   const enabledFeatures: Record<string, boolean> = userData?.enabledFeatures || {};
 
   const isSelf = currentUser?.id === userId;
+
+  // Determine if the target user is a Full Admin (no customRoleId)
+  const isTargetFullAdmin = userDetail ? !userDetail.customRoleId : false;
+  // Non-owner cannot edit/block Full Admin users
+  const canEditThisUser = !isSelf && (isOwner || !isTargetFullAdmin);
+  const canBlockThisUser = !isSelf && (isOwner || !isTargetFullAdmin);
+  const canDeleteThisUser = !isSelf && canDeleteUsers;
 
   // Mutations
   const updateUserMutation = useMutation({
@@ -131,7 +149,7 @@ export function UserDetailPage() {
     onSuccess: () => {
       toast.success('User deleted');
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      navigate('/admin-dashboard');
+      navigate('/admin-dashboard/users');
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error?.message || 'Failed to delete user');
@@ -177,7 +195,7 @@ export function UserDetailPage() {
   if (error || !userDetail) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate('/admin-dashboard')} className="gap-2">
+        <Button variant="ghost" onClick={() => navigate('/admin-dashboard/users')} className="gap-2">
           <ArrowLeftIcon className="h-4 w-4" /> Back to Admin Dashboard
         </Button>
         <Card>
@@ -200,31 +218,31 @@ export function UserDetailPage() {
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Back + Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" onClick={() => navigate('/admin-dashboard')} className="gap-2">
+        <Button variant="ghost" onClick={() => navigate('/admin-dashboard/users')} className="gap-2">
           <ArrowLeftIcon className="h-4 w-4" /> Back
         </Button>
         <div className="flex gap-2">
-          {!isSelf && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setShowRegenConfirm(true)}
-              >
-                <KeyIcon className="h-4 w-4" />
-                Reset Password
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="gap-2"
-                onClick={() => setShowDeleteConfirm(true)}
-              >
-                <Trash2Icon className="h-4 w-4" />
-                Delete User
-              </Button>
-            </>
+          {canEditThisUser && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setShowRegenConfirm(true)}
+            >
+              <KeyIcon className="h-4 w-4" />
+              Reset Password
+            </Button>
+          )}
+          {canDeleteThisUser && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-2"
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2Icon className="h-4 w-4" />
+              Delete User
+            </Button>
           )}
         </div>
       </div>
@@ -257,7 +275,7 @@ export function UserDetailPage() {
                 </div>
               </div>
             </div>
-            {!isSelf && !isEditing && (
+            {canEditThisUser && !isEditing && (
               <Button variant="outline" size="sm" className="gap-2" onClick={startEditing}>
                 <PencilIcon className="h-4 w-4" /> Edit
               </Button>
@@ -312,7 +330,9 @@ export function UserDetailPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">Full Admin Access</SelectItem>
+                    {canAssignFullAdmin && (
+                      <SelectItem value="__none__">Full Admin Access</SelectItem>
+                    )}
                     {allCustomRoles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                     ))}
@@ -335,7 +355,7 @@ export function UserDetailPage() {
           )}
 
           {/* Status Controls */}
-          {!isSelf && !isEditing && (
+          {canBlockThisUser && !isEditing && (
             <div className="flex items-center gap-3 pt-2 border-t">
               <span className="text-sm text-muted-foreground">Change Status:</span>
               {['ACTIVE', 'INACTIVE', 'BLOCKED'].map((s) => (

@@ -1,280 +1,223 @@
 # ElectionCaffe
 
-A comprehensive Election Management Platform with AI-powered analytics and DataCaffe.ai integration.
+Election Management Platform with multi-tenant architecture, AI-powered analytics, and DataCaffe.ai integration.
 
-## Features
+## Prerequisites
 
-- **Election Management**: Create and manage elections, constituencies, and polling booths
-- **Voter Database**: Comprehensive voter data management with demographic information
-- **Cadre Management**: Manage election workers, assign to booths, track performance
-- **Family Grouping**: Group voters by family for targeted outreach
-- **Analytics Dashboard**: Real-time analytics and insights
-- **AI-Powered Analytics**: Advanced predictions and risk assessments
-- **Report Generation**: Export reports in multiple formats
-- **DataCaffe.ai Integration**: Embed advanced analytics dashboards
+- **Node.js** >= 18
+- **PostgreSQL** >= 14 (running on port 5333 by default, configurable in `.env`)
+- **npm** >= 9
 
-## Tech Stack
+## Quick Start
 
-### Backend
-- **Node.js** with Express.js
-- **PostgreSQL** with Prisma ORM
-- **Microservices Architecture**
-- **JWT Authentication**
-- **Socket.IO** for real-time updates
+```bash
+git clone <repo-url>
+cd ElectionCaffe
 
-### Frontend
-- **React 18** with TypeScript
-- **Vite** for build tooling
-- **Tailwind CSS** for styling
-- **Radix UI** components
-- **TanStack Query** for data fetching
-- **Zustand** for state management
-- **Recharts** for charts and visualizations
-- **Leaflet** for maps
+# One command — sets up everything and starts all services:
+./start.sh
+```
+
+That's it. The script handles:
+- `.env` creation from `.env.example` (if missing)
+- Environment validation
+- PostgreSQL connection verification
+- Database creation (`electioncaffecore`, `ec_demo`)
+- Dependency installation
+- Prisma client generation + schema push
+- Super admin seeding (login credentials, license plans, feature flags, AI config)
+- Starting all 9 backend services + 2 frontend apps
+
+### Super Admin Login
+
+Created automatically on first run:
+
+| | |
+|---|---|
+| **Email** | `superadmin@electioncaffe.com` |
+| **Password** | `SuperAdmin@123` |
+| **URL** | `http://localhost:5174` (Super Admin UI) |
+
+### Start Options
+
+```bash
+./start.sh                          # Full setup + start everything
+./start.sh --backend                # Backend services only
+./start.sh --frontend               # Frontend apps only
+./start.sh --skip-deps --skip-db    # Fast restart (skip setup)
+./start.sh --setup-only             # Setup only, don't start services
+./start.sh --mode=production        # Production mode (build + PM2)
+./start.sh --help                   # All options
+```
+
+## Architecture
+
+```
+                    ┌──────────────────┐    ┌──────────────────┐
+                    │    Web App       │    │  Super Admin UI  │
+                    │  (React, :5000)  │    │  (React, :5174)  │
+                    └────────┬─────────┘    └────────┬─────────┘
+                             │                       │
+                             └───────────┬───────────┘
+                                         ▼
+                              ┌─────────────────────┐
+                              │    API Gateway      │
+                              │     (Port 3000)     │
+                              └──────────┬──────────┘
+                                         │
+         ┌───────────┬───────────┬───────┼───────┬───────────┬───────────┐
+         ▼           ▼           ▼       ▼       ▼           ▼           ▼
+   ┌──────────┐┌──────────┐┌──────────┐┌────┐┌──────────┐┌──────────┐┌──────────┐
+   │  Auth    ││ Election ││  Voter   ││Cadre││Analytics ││Reporting ││AI Analyt.│
+   │  :3001   ││  :3002   ││  :3003   ││:3004││  :3005   ││  :3006   ││  :3007   │
+   └────┬─────┘└────┬─────┘└────┬─────┘└──┬─┘└────┬─────┘└────┬─────┘└────┬─────┘
+        │           │           │         │        │           │           │
+        └───────────┴───────────┴────┬────┴────────┴───────────┘           │
+                                     ▼                                     │
+                    ┌──────────────────────────────┐      ┌────────────────┘
+                    │    Super Admin Service       │      │
+                    │         (Port 3008)          │      │
+                    └──────────────┬───────────────┘      │
+                                   │                      │
+                    ┌──────────────┴──────────────────────┘
+                    ▼
+         ┌─────────────────────┐
+         │     PostgreSQL      │
+         │  ┌───────────────┐  │
+         │  │electioncaffe- │  │
+         │  │    core       │  │  ← Super admin, tenants, plans, feature flags
+         │  └───────────────┘  │
+         │  ┌───────────────┐  │
+         │  │   ec_demo     │  │  ← Per-tenant data (voters, elections, cadres)
+         │  └───────────────┘  │
+         │  ┌───────────────┐  │
+         │  │   ec_bjp_tn   │  │  ← Each tenant gets its own database
+         │  └───────────────┘  │
+         └─────────────────────┘
+```
 
 ## Project Structure
 
 ```
 ElectionCaffe/
 ├── apps/
-│   └── web/                    # React frontend application
+│   ├── web/                      # Tenant portal (React + Vite, :5000)
+│   └── super-admin/              # Super admin panel (React + Vite, :5174)
 ├── packages/
-│   ├── database/               # Prisma schema and database client
-│   └── shared/                 # Shared types, utilities, and validation
+│   ├── database/                 # Prisma schemas (core + tenant), seed scripts
+│   └── shared/                   # Shared types, validation, logger
 ├── services/
-│   ├── gateway/               # API Gateway (port 3000)
-│   ├── auth-service/          # Authentication service (port 3001)
-│   ├── election-service/      # Election management (port 3002)
-│   ├── voter-service/         # Voter management (port 3003)
-│   ├── cadre-service/         # Cadre management (port 3004)
-│   ├── analytics-service/     # Analytics (port 3005)
-│   ├── reporting-service/     # Reports & DataCaffe (port 3006)
-│   └── ai-analytics-service/  # AI Analytics (port 3007)
-└── scripts/                   # Setup and utility scripts
+│   ├── gateway/                  # API Gateway (:3000) — routes to all services
+│   ├── auth-service/             # Authentication (:3001) — JWT, login
+│   ├── election-service/         # Election management (:3002)
+│   ├── voter-service/            # Voter database (:3003)
+│   ├── cadre-service/            # Campaign workers (:3004)
+│   ├── analytics-service/        # Analytics dashboards (:3005)
+│   ├── reporting-service/        # Reports + DataCaffe (:3006)
+│   ├── ai-analytics-service/     # AI analytics (:3007)
+│   └── super-admin-service/      # Super admin API (:3008)
+├── start.sh                      # Setup & start (single entry point)
+├── stop.sh                       # Stop all services
+├── ecosystem.config.cjs          # PM2 config (production)
+└── scripts/                      # Utility scripts
 ```
 
-## Prerequisites
+## Databases
 
-- Node.js 18 or higher
-- PostgreSQL 14 or higher
-- npm 9 or higher
+Two separate Prisma schemas, two database types:
 
-## Quick Start
+| Database | Schema | Purpose |
+|----------|--------|---------|
+| `electioncaffecore` | `packages/database/prisma/core/` | Super admin users, tenants, license plans, feature flags, AI config |
+| `ec_<tenant>` | `packages/database/prisma/tenant/` | Per-tenant data: voters, elections, cadres, analytics |
 
-### 1. Clone and Install
-
-```bash
-cd ElectionCaffe
-npm install
-```
-
-### 2. Configure Environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and update the database connection string:
-
-```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/electioncaffe"
-```
-
-### 3. Setup Database
-
-```bash
-# Generate Prisma client
-npm run db:generate
-
-# Create database schema
-npm run db:push
-
-# Seed with sample data (optional)
-npm run db:seed
-```
-
-### 4. Start Development Server
-
-```bash
-npm run dev
-```
-
-This starts all services using Turborepo. The web app will be available at http://localhost:5173
-
-## 🏢 Multi-Tenant Access
-
-ElectionCaffe supports multiple tenants with **separate URLs** for each organization. Each tenant has a dedicated portal on a different port (development) or subdomain (production).
-
-### Start All Tenant Portals
-
-```bash
-./start-all-tenants.sh
-```
-
-Or manually:
-
-```bash
-cd apps/web
-npm run dev:all-tenants
-```
-
-### Access Tenant Portals (Development)
-
-| Tenant | URL | Email | Password |
-|--------|-----|-------|----------|
-| **Demo** | http://localhost:5180/ | demo@electioncaffe.com | Admin@123 |
-| **BJP Tamil Nadu** | http://localhost:5181/ | admin.bjp-tn@electioncaffe.com | Admin@123 |
-| **BJP Uttar Pradesh** | http://localhost:5182/ | admin.bjp-up@electioncaffe.com | Admin@123 |
-| **AIDMK Tamil Nadu** | http://localhost:5183/ | admin.aidmk-tn@electioncaffe.com | Admin@123 |
-
-**Currently Running Apps:**
-- Super Admin Portal: http://localhost:5176/
-- Default Web App: http://localhost:5177/ (Demo tenant)
-
-### Production Access (Subdomains)
-
-- Demo: https://demo.electioncaffe.com
-- BJP TN: https://bjp-tn.electioncaffe.com
-- BJP UP: https://bjp-up.electioncaffe.com
-- AIDMK TN: https://aidmk-tn.electioncaffe.com
-
-**Note:** Each tenant portal automatically detects the organization from the URL. No tenant slug field required!
-
-**For detailed tenant setup and management, see [TENANT_ACCESS_GUIDE.md](TENANT_ACCESS_GUIDE.md)**
-
-## Default Login Credentials
-
-After seeding the database:
-- **Mobile**: 9876543210
-- **Password**: admin123
-
-## Available Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start all services in development mode |
-| `npm run build` | Build all packages and services |
-| `npm run db:generate` | Generate Prisma client |
-| `npm run db:push` | Push schema to database |
-| `npm run db:seed` | Seed database with sample data |
-| `npm run db:studio` | Open Prisma Studio |
-
-## API Endpoints
-
-All API requests go through the gateway at `http://localhost:3000/api`
-
-### Authentication
-- `POST /api/auth/login` - Login
-- `POST /api/auth/register` - Register
-- `POST /api/auth/refresh` - Refresh token
-- `GET /api/auth/me` - Get current user
-
-### Elections
-- `GET /api/elections` - List elections
-- `POST /api/elections` - Create election
-- `GET /api/elections/:id` - Get election
-- `PUT /api/elections/:id` - Update election
-- `DELETE /api/elections/:id` - Delete election
-
-### Voters
-- `GET /api/voters` - List voters
-- `POST /api/voters` - Create voter
-- `POST /api/voters/bulk` - Bulk import voters
-- `GET /api/voters/:id` - Get voter
-- `PUT /api/voters/:id` - Update voter
-
-### Parts/Booths
-- `GET /api/parts` - List parts
-- `POST /api/parts` - Create part
-- `POST /api/parts/bulk` - Bulk import parts
-
-### Cadres
-- `GET /api/cadres` - List cadres
-- `POST /api/cadres` - Create cadre
-- `POST /api/cadres/assign` - Assign cadre to booth
-
-### Analytics
-- `GET /api/analytics/overview/:electionId` - Overview analytics
-- `GET /api/analytics/voters/:electionId` - Voter analytics
-- `GET /api/analytics/age-groups/:electionId` - Age group distribution
-
-### AI Analytics
-- `GET /api/ai-analytics/:electionId/predict/turnout` - Turnout prediction
-- `GET /api/ai-analytics/:electionId/analyze/swing-voters` - Swing voter analysis
-- `GET /api/ai-analytics/:electionId/assess/booth-risk` - Booth risk assessment
-
-### Reports
-- `GET /api/reports` - List reports
-- `POST /api/reports` - Generate report
-- `GET /api/reports/generate/voter-demographics/:electionId` - Generate voter demographics report
-
-### DataCaffe
-- `GET /api/datacaffe/embeds` - List embeds
-- `POST /api/datacaffe/embeds` - Create embed
-- `POST /api/datacaffe/sync/:electionId` - Sync data to DataCaffe
+The core database is shared. Each tenant gets an isolated database (`ec_demo`, `ec_bjp_tn`, etc.) provisioned through the super admin UI.
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | Required |
-| `JWT_SECRET` | JWT signing secret | Required |
-| `JWT_REFRESH_SECRET` | Refresh token secret | Required |
-| `GATEWAY_PORT` | Gateway service port | 3000 |
-| `WEB_PORT` | Web app port | 5173 |
-| `CORS_ORIGIN` | CORS allowed origin | http://localhost:5173 |
-| `DATACAFFE_API_URL` | DataCaffe.ai API URL | https://api.datacaffe.ai |
-| `DATACAFFE_API_KEY` | DataCaffe.ai API key | Optional |
+Copy `.env.example` to `.env` (done automatically by `start.sh`). Key variables:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `CORE_DATABASE_URL` | Core database connection | Yes |
+| `TENANT_DATABASE_URL` | Default tenant database | Yes |
+| `JWT_SECRET` | JWT signing key (min 32 chars) | Yes |
+| `JWT_REFRESH_SECRET` | Refresh token key (min 32 chars) | Yes |
+| `CREDIT_SIGNATURE_SECRET` | HMAC key for AI credit tamper detection | Yes |
+| `INTERNAL_API_KEY` | Service-to-service auth | Recommended |
+| `OPENAI_API_KEY` | OpenAI API key (for AI features) | Optional |
+| `GEMINI_API_KEY` | Google Gemini fallback | Optional |
+| `DATACAFFE_API_KEY` | DataCaffe.ai integration | Optional |
+
+All ports are configurable: `GATEWAY_PORT`, `AUTH_PORT`, `ELECTION_PORT`, etc.
+
+## npm Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start all services in dev mode (turbo, hot-reload) |
+| `npm run build` | Build all packages and services |
+| `npm run services:dev` | Start backend services only |
+| `npm run db:generate` | Generate Prisma clients (core + tenant) |
+| `npm run db:push` | Push schemas to databases |
+| `npm run db:seed:core` | Seed super admin + platform config |
+| `npm run db:seed` | Seed demo data (dev only) |
+| `npm run db:studio` | Open Prisma Studio GUI |
+
+## Multi-Tenant
+
+Each tenant gets a separate portal URL. In development, tenants run on different ports. In production, they use subdomains.
+
+Tenants are created through the **Super Admin UI** (`http://localhost:5174`). The super admin provisions the tenant, creates their database, and sets up their admin user. No hardcoded tenant data — everything goes through the UI.
 
 ## Production Deployment
 
-### Build for Production
-
 ```bash
-npm run build
+# Production mode: builds everything, starts with PM2
+./start.sh --mode=production
+
+# Or step by step:
+./start.sh --setup-only --mode=production   # Setup only
+pm2 start ecosystem.config.cjs             # Start services
 ```
 
-### Start Production Server
+Production requires:
+- PM2 globally installed (`npm install -g pm2`)
+- Nginx as reverse proxy
+- Real secrets in `.env` (script blocks default values in production mode)
+- SSL via Certbot or managed load balancer
 
-```bash
-NODE_ENV=production npm start
-```
+See [DEPLOYMENT-FULL.md](DEPLOYMENT-FULL.md) for the complete production deployment guide.
 
-## Architecture
+## API
 
-```
-┌─────────────┐     ┌─────────────────┐
-│   Web App   │────▶│   API Gateway   │
-│  (React)    │     │   (Port 3000)   │
-└─────────────┘     └────────┬────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        ▼                    ▼                    ▼
-┌───────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│ Auth Service  │  │Election Service │  │ Voter Service   │
-│  (Port 3001)  │  │   (Port 3002)   │  │   (Port 3003)   │
-└───────────────┘  └─────────────────┘  └─────────────────┘
-        │                    │                    │
-        └────────────────────┼────────────────────┘
-                             ▼
-                    ┌─────────────────┐
-                    │   PostgreSQL    │
-                    │    Database     │
-                    └─────────────────┘
-```
+All requests go through the gateway at `http://localhost:3000/api`.
 
-## Contributing
+| Endpoint | Service | Description |
+|----------|---------|-------------|
+| `/api/auth/*` | Auth | Login, register, refresh tokens |
+| `/api/elections/*` | Election | Election CRUD, constituencies |
+| `/api/voters/*` | Voter | Voter management, bulk import |
+| `/api/parts/*` | Voter | Polling booths and sections |
+| `/api/cadres/*` | Cadre | Campaign worker management |
+| `/api/analytics/*` | Analytics | Dashboards, demographics |
+| `/api/ai-analytics/*` | AI Analytics | Predictions, sentiment |
+| `/api/reports/*` | Reporting | PDF/Excel report generation |
+| `/api/datacaffe/*` | Reporting | DataCaffe.ai embed sync |
+| `/api/super-admin/*` | Super Admin | Tenant management, plans |
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Tech Stack
+
+**Backend:** Node.js, Express.js, TypeScript, Prisma, PostgreSQL, JWT, Socket.IO, Pino
+
+**Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Radix UI, TanStack Query, Zustand, Recharts, Leaflet
+
+**Tooling:** Turborepo, PM2, Nginx, Concurrently
 
 ## License
 
-This project is proprietary software. All rights reserved.
+Proprietary software. All rights reserved.
 
 ## Support
 
-For support, email support@datacaffe.ai or visit https://datacaffe.ai
+support@datacaffe.ai | https://datacaffe.ai

@@ -50,6 +50,8 @@ import {
   TrashIcon,
   EyeIcon,
   UserIcon,
+  AlertCircleIcon,
+  RefreshCwIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/utils';
@@ -80,12 +82,14 @@ export function ElectionsPage() {
   const navigate = useNavigate();
   const { setSelectedElection } = useElectionStore();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error: listError, refetch } = useQuery({
     queryKey: ['elections', search, statusFilter],
     queryFn: () => electionsAPI.getAll({
       search: search || undefined,
       status: statusFilter !== 'all' ? statusFilter : undefined,
     }),
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
   const createMutation = useMutation({
@@ -139,6 +143,7 @@ export function ElectionsPage() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (createMutation.isPending) return; // Prevent double submission
     if (!formData.name || !formData.constituency || !formData.state) {
       toast.error('Please fill in required fields');
       return;
@@ -173,9 +178,9 @@ export function ElectionsPage() {
           <h1 className="text-2xl font-bold">Elections</h1>
           <p className="text-muted-foreground">Manage your elections</p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog open={createOpen} onOpenChange={(open) => { if (!createMutation.isPending) setCreateOpen(open); }}>
           <DialogTrigger asChild>
-            <Button>
+            <Button disabled={isError}>
               <PlusIcon className="h-4 w-4 mr-2" />
               Create Election
             </Button>
@@ -299,7 +304,23 @@ export function ElectionsPage() {
       {/* Elections Table */}
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {isError ? (
+            <div className="p-8 flex flex-col items-center justify-center text-center space-y-3">
+              <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                <AlertCircleIcon className="h-6 w-6 text-destructive" />
+              </div>
+              <div>
+                <p className="font-medium text-destructive">Unable to load elections</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {(listError as any)?.response?.data?.error?.message || 'The service may be starting up. Please wait a moment and try again.'}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCwIcon className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          ) : isLoading ? (
             <div className="p-4 space-y-4">
               {Array(5)
                 .fill(0)

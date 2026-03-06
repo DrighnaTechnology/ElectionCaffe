@@ -13,7 +13,6 @@ import {
   UserCogIcon,
   Users2Icon,
   BarChart3Icon,
-  BrainCircuitIcon,
   FileTextIcon,
   DatabaseIcon,
   SettingsIcon,
@@ -130,10 +129,17 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Analytics & AI',
     items: [
-      { to: '/analytics', icon: BarChart3Icon, label: 'Analytics', featureKey: 'analytics' },
-      { to: '/ai-analytics', icon: BrainCircuitIcon, label: 'AI Analytics', featureKey: 'ai-analytics' },
-      { to: '/ai-tools', icon: SparklesIcon, label: 'AI Tools', featureKey: 'ai-tools' },
-      { to: '/locality-analysis', icon: MapPinIcon, label: 'Locality Analysis', featureKey: 'analytics' },
+      {
+        to: '/analytics',
+        icon: BarChart3Icon,
+        label: 'Analytics',
+        featureKey: 'analytics',
+        subItems: [
+          { to: '/ai-analytics/dashboards', icon: LayoutDashboardIcon, label: 'AI Dashboards' },
+          { to: '/ai-tools', icon: SparklesIcon, label: 'AI Tools' },
+          { to: '/locality-analysis', icon: MapPinIcon, label: 'Locality Analysis' },
+        ],
+      },
     ],
   },
   {

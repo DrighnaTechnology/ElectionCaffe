@@ -10,6 +10,7 @@ interface User {
   mobile: string;
   role: string;
   customRoleId?: string;
+  isOwner?: boolean;
   permissions?: string[];
 }
 

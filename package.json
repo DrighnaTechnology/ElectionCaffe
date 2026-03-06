@@ -7,7 +7,8 @@
   "workspaces": [
     "services/*",
     "packages/*",
-    "apps/*"
+    "apps/web",
+    "apps/super-admin"
   ],
   "scripts": {
     "dev": "turbo run dev --concurrency=15",
@@ -20,6 +21,7 @@
     "db:push": "npm run db:push --workspace=@electioncaffe/database",
     "db:migrate:all-tenants": "npm run db:migrate:all-tenants --workspace=@electioncaffe/database",
     "db:seed": "npm run db:seed --workspace=@electioncaffe/database",
+    "db:seed:core": "npm run db:seed:core --workspace=@electioncaffe/database",
     "db:studio": "npm run db:studio --workspace=@electioncaffe/database",
     "gateway:dev": "npm run dev --workspace=@electioncaffe/gateway",
     "auth:dev": "npm run dev --workspace=@electioncaffe/auth-service",

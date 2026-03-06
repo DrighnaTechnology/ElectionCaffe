@@ -1,4 +1,5 @@
 export { Sidebar } from './Sidebar';
+export { AdminSidebar } from './AdminSidebar';
 export { SidebarHeader } from './SidebarHeader';
 export { SidebarNav } from './SidebarNav';
 export { ElectionSelector } from './ElectionSelector';

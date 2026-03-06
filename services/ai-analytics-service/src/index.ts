@@ -16,6 +16,7 @@ import { caffeAiReportRoutes } from './routes/caffe-ai-report.js';
 import { surveyAiRoutes } from './routes/survey-ai.js';
 import { campaignAiRoutes } from './routes/campaign-ai.js';
 import { pollDayAiRoutes } from './routes/poll-day-ai.js';
+import { aiDashboardRoutes } from './routes/ai-dashboard.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { SERVICE_PORTS, createLogger, validateEnv, metricsMiddleware, metricsEndpoint } from '@electioncaffe/shared';
 
@@ -57,6 +58,7 @@ app.use('/api/caffe-ai', caffeAiReportRoutes);
 app.use('/api/caffe-ai', surveyAiRoutes);
 app.use('/api/caffe-ai', campaignAiRoutes);
 app.use('/api/ai-analytics', pollDayAiRoutes);
+app.use('/api/ai-analytics', aiDashboardRoutes);
 
 // Error handler
 app.use(errorHandler);

@@ -57,6 +57,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     req.headers['x-user-id'] = decoded.id;
     req.headers['x-tenant-id'] = decoded.tenantId;
     req.headers['x-user-role'] = decoded.role;
+    req.headers['x-custom-role-id'] = decoded.customRoleId || '';
 
     next();
   } catch (error) {

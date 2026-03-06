@@ -42,6 +42,7 @@ import {
   TrashIcon,
   AlertTriangleIcon,
   PhoneIcon,
+  DownloadIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -224,6 +225,31 @@ export function VotersPage() {
     );
   }
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    if (!selectedElectionId) return;
+    setExporting(true);
+    try {
+      const response = await votersAPI.export(selectedElectionId, {
+        partId: partFilter !== 'all' ? partFilter : undefined,
+        gender: genderFilter !== 'all' ? genderFilter : undefined,
+      });
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'voters_export.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Voters exported successfully');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error?.message || 'Failed to export voters');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.partId) {
@@ -243,6 +269,10 @@ export function VotersPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={exporting}>
+            {exporting ? <Spinner size="sm" className="mr-2" /> : <DownloadIcon className="h-4 w-4 mr-2" />}
+            Bulk Export
+          </Button>
           <BulkUpload
             entityName="Voters"
             templateColumns={votersTemplateColumns}

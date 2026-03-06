@@ -144,6 +144,21 @@ export class ElectionController {
       // Extract partyId if provided, handle properly
       const { partyId, ...electionData } = validation.data as any;
 
+      // Prevent duplicate elections (same name + constituency + electionType for this tenant)
+      const duplicate = await (tenantDb as any).election.findFirst({
+        where: {
+          tenantId,
+          name: electionData.name,
+          constituency: electionData.constituency,
+          electionType: electionData.electionType,
+        },
+      });
+
+      if (duplicate) {
+        res.status(409).json(errorResponse('E4004', `An election "${electionData.name}" for constituency "${electionData.constituency}" already exists`));
+        return;
+      }
+
       const election = await (tenantDb as any).election.create({
         data: {
           ...electionData,

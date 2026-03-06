@@ -21,7 +21,7 @@ const ROUTE_LABELS: Record<string, string> = {
   'poll-day': 'Poll Day',
   'poll-day/voter-slips': 'Voter Slips',
   'analytics': 'Analytics',
-  'ai-analytics': 'AI Analytics',
+  'ai-analytics': 'AI Dashboards',
   'ai-tools': 'AI Tools',
   'reports': 'Reports',
   'datacaffe': 'DataCaffe',
@@ -37,6 +37,11 @@ const ROUTE_LABELS: Record<string, string> = {
   'settings/banners': 'App Banners',
   'settings/organization': 'Organization Setup',
   'settings/database': 'Database Settings',
+  'admin-dashboard': 'Admin Dashboard',
+  'admin-dashboard/users': 'Users',
+  'admin-dashboard/roles': 'Roles & Access',
+  'admin-dashboard/credits': 'AI Credits',
+  'admin-dashboard/messaging': 'Messaging',
 };
 
 export function Breadcrumbs() {
@@ -66,10 +71,14 @@ export function Breadcrumbs() {
 
   if (breadcrumbs.length === 0) return null;
 
+  // Context-aware home link: admin pages go to /admin-dashboard, others to /dashboard
+  const isAdminArea = location.pathname.startsWith('/admin-dashboard');
+  const homeLink = isAdminArea ? '/admin-dashboard' : '/dashboard';
+
   return (
     <nav className="hidden md:flex items-center gap-1.5 text-sm">
       <Link
-        to="/dashboard"
+        to={homeLink}
         className="text-muted-foreground hover:text-foreground transition-colors"
       >
         <HomeIcon className="h-4 w-4" />

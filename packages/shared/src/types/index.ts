@@ -29,6 +29,7 @@ export interface UserPayload {
   mobile: string;
   role: UserRole;
   customRoleId?: string;
+  isOwner?: boolean;
   permissions?: string[];
 }
 

@@ -299,6 +299,7 @@ model Election {
   boothAgents      BoothAgent[]
   reports          Report[]
   aiResults        AIAnalyticsResult[]
+  aiDashboards     AIDashboard[]
   voterSlipTemplates VoterSlipTemplate[]
   appBanners       AppBanner[]
   ecIntegrations   ECIntegration[]
@@ -1287,6 +1288,25 @@ model AIAnalyticsResult {
 
   @@index([electionId])
   @@map("ai_analytics_results")
+}
+
+model AIDashboard {
+  id              String   @id @default(uuid())
+  electionId      String   @map("election_id")
+  title           String
+  description     String?
+  prompt          String?
+  dashboardConfig Json     @map("dashboard_config")
+  tags            Json?    @default("[]")
+  createdBy       String?  @map("created_by")
+  creditsUsed     Int      @default(0) @map("credits_used")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  election        Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("ai_dashboards")
 }
 
 // ==================== TEMPLATES & BANNERS ====================

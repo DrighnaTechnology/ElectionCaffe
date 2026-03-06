@@ -22,7 +22,7 @@ const FEATURE_ROUTE_ORDER: { featureKey: string; path: string }[] = [
   { featureKey: 'campaigns', path: '/campaigns' },
   { featureKey: 'poll-day', path: '/poll-day' },
   { featureKey: 'analytics', path: '/analytics' },
-  { featureKey: 'ai-analytics', path: '/ai-analytics' },
+  { featureKey: 'ai-analytics', path: '/ai-analytics/dashboards' },
   { featureKey: 'ai-tools', path: '/ai-tools' },
   { featureKey: 'reports', path: '/reports' },
   { featureKey: 'datacaffe', path: '/datacaffe' },
@@ -47,7 +47,8 @@ const CadresPage = lazy(() => import('./pages/CadresPage').then(m => ({ default:
 const FamiliesPage = lazy(() => import('./pages/FamiliesPage').then(m => ({ default: m.FamiliesPage })));
 const FamilyDetailPage = lazy(() => import('./pages/FamilyDetailPage').then(m => ({ default: m.FamilyDetailPage })));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })));
-const AIAnalyticsPage = lazy(() => import('./pages/AIAnalyticsPage').then(m => ({ default: m.AIAnalyticsPage })));
+// const AIAnalyticsPage = lazy(() => import('./pages/AIAnalyticsPage').then(m => ({ default: m.AIAnalyticsPage }))); // Disabled: replaced by AI Dashboard Builder
+const AIDashboardBuilderPage = lazy(() => import('./pages/AIDashboardBuilderPage').then(m => ({ default: m.AIDashboardBuilderPage })));
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
 const DataCaffePage = lazy(() => import('./pages/DataCaffePage').then(m => ({ default: m.DataCaffePage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
@@ -79,8 +80,11 @@ const UIThemePage = lazy(() => import('./pages/UIThemePage').then(m => ({ defaul
 // Messaging Settings (standalone page)
 const MessagingSettingsPage = lazy(() => import('./pages/MessagingSettingsPage').then(m => ({ default: m.MessagingSettingsPage })));
 
-// Admin Dashboard
-const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
+// Admin Dashboard — split into separate pages
+const AdminOverviewPage = lazy(() => import('./pages/admin/AdminOverviewPage').then(m => ({ default: m.AdminOverviewPage })));
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })));
+const AdminRolesPage = lazy(() => import('./pages/admin/AdminRolesPage').then(m => ({ default: m.AdminRolesPage })));
+const AdminCreditsPage = lazy(() => import('./pages/admin/AdminCreditsPage').then(m => ({ default: m.AdminCreditsPage })));
 const UserDetailPage = lazy(() => import('./pages/UserDetailPage').then(m => ({ default: m.UserDetailPage })));
 
 // Candidate Management Pages
@@ -346,7 +350,7 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Admin Dashboard — standalone layout, full admin only (no custom role) */}
+          {/* Admin Dashboard — layout with sidebar, full admin only (no custom role) */}
           <Route
             element={
               <ProtectedRoute>
@@ -356,9 +360,16 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/admin-dashboard" element={<AdminDashboardPage />} />
+            <Route path="/admin-dashboard" element={<AdminOverviewPage />} />
+            <Route path="/admin-dashboard/users" element={<AdminUsersPage />} />
             <Route path="/admin-dashboard/users/:userId" element={<UserDetailPage />} />
+            <Route path="/admin-dashboard/roles" element={<AdminRolesPage />} />
+            <Route path="/admin-dashboard/credits" element={<AdminCreditsPage />} />
+            <Route path="/admin-dashboard/messaging" element={<MessagingSettingsPage />} />
           </Route>
+
+          {/* Redirect old messaging-settings route to new admin location */}
+          <Route path="/messaging-settings" element={<Navigate to="/admin-dashboard/messaging" replace />} />
 
           {/* Protected Dashboard Routes — full app with sidebar */}
           <Route
@@ -379,7 +390,6 @@ function App() {
             <Route path="/news" element={<TenantNewsPage />} />
             <Route path="/actions" element={<TenantActionsPage />} />
             <Route path="/ui-theme" element={<AdminGuard><UIThemePage /></AdminGuard>} />
-            <Route path="/messaging-settings" element={<AdminGuard><MessagingSettingsPage /></AdminGuard>} />
 
             {/* Election-dependent routes - require an election to be selected */}
             <Route element={<ElectionGuard />}>
@@ -404,7 +414,9 @@ function App() {
               <Route path="/poll-day" element={<FeatureGuard featureKey="poll-day"><PollDayPage /></FeatureGuard>} />
               <Route path="/poll-day/voter-slips" element={<FeatureGuard featureKey="poll-day"><VoterSlipPage /></FeatureGuard>} />
               <Route path="/analytics" element={<FeatureGuard featureKey="analytics"><AnalyticsPage /></FeatureGuard>} />
-              <Route path="/ai-analytics" element={<FeatureGuard featureKey="ai-analytics"><AIAnalyticsPage /></FeatureGuard>} />
+              {/* Old hardcoded AI Analytics page disabled — redirect to AI Dashboards */}
+              <Route path="/ai-analytics" element={<Navigate to="/ai-analytics/dashboards" replace />} />
+              <Route path="/ai-analytics/dashboards" element={<FeatureGuard featureKey="ai-analytics"><AIDashboardBuilderPage /></FeatureGuard>} />
               <Route path="/ai-tools" element={<FeatureGuard featureKey="ai-tools"><AIToolsPage /></FeatureGuard>} />
               <Route path="/reports" element={<FeatureGuard featureKey="reports"><ReportsPage /></FeatureGuard>} />
               <Route path="/datacaffe" element={<FeatureGuard featureKey="datacaffe"><DataCaffePage /></FeatureGuard>} />

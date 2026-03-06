@@ -119,6 +119,7 @@ export class AuthController {
       }
 
       // Generate tokens
+      const isOwner = tenant.adminUserId === user.id;
       const userPayload: UserPayload = {
         id: user.id,
         tenantId: user.tenantId,
@@ -128,6 +129,7 @@ export class AuthController {
         mobile: user.mobile,
         role: user.role as UserPayload['role'],
         customRoleId: (user as any).customRoleId || undefined,
+        isOwner,
         permissions: user.permissions as string[] || [],
       };
 
@@ -307,6 +309,7 @@ export class AuthController {
       }
 
       // Generate new access token
+      const isOwner = tenant.adminUserId === user.id;
       const userPayload: UserPayload = {
         id: user.id,
         tenantId: user.tenantId,
@@ -316,6 +319,7 @@ export class AuthController {
         mobile: user.mobile,
         role: user.role as UserPayload['role'],
         customRoleId: (user as any).customRoleId || undefined,
+        isOwner,
         permissions: user.permissions as string[] || [],
       };
 

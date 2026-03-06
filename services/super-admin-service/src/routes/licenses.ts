@@ -611,18 +611,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       });
     }
 
-    // Check if tenant already has a license
-    const existingLicense = await prisma.tenantLicense.findUnique({
-      where: { tenantId },
-    });
-
-    if (existingLicense) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Tenant already has a license. Use update endpoint instead.' },
-      });
-    }
-
     // Check if plan exists
     const plan = await prisma.licensePlan.findUnique({
       where: { id: planId },
@@ -644,40 +632,67 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
     const adminId = (req as any).adminId;
 
-    const license = await prisma.tenantLicense.create({
-      data: {
-        tenantId,
-        planId,
-        status: (status as LicenseStatus) || 'TRIAL',
-        customMaxUsers,
-        customMaxSessions,
-        customMaxSessionsPerUser,
-        customMaxDataGB,
-        customMaxVoters,
-        customMaxElections,
-        customMaxConstituencies,
-        customMaxStorageMB,
-        customMaxApiPerDay,
-        customMaxApiPerHour,
-        customBasePrice,
-        discountPercent: discountPercent || 0,
-        activatedAt: status === 'ACTIVE' ? new Date() : null,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
-        trialEndsAt: trialEnd,
-        enforceSessionLimit: enforceSessionLimit !== false,
-        enforceUserLimit: enforceUserLimit !== false,
-        enforceDataLimit: enforceDataLimit !== false,
-        enforceApiLimit: enforceApiLimit !== false,
-        softLimitMode: softLimitMode || false,
-        autoRenew: autoRenew !== false,
-        adminNotes,
-        createdBy: adminId,
-      },
-      include: {
-        tenant: true,
-        plan: true,
-      },
+    // Check if tenant already has a license — upsert automatically
+    const existingLicense = await prisma.tenantLicense.findUnique({
+      where: { tenantId },
     });
+
+    const licenseData = {
+      planId,
+      status: (status as LicenseStatus) || 'TRIAL',
+      customMaxUsers,
+      customMaxSessions,
+      customMaxSessionsPerUser,
+      customMaxDataGB,
+      customMaxVoters,
+      customMaxElections,
+      customMaxConstituencies,
+      customMaxStorageMB,
+      customMaxApiPerDay,
+      customMaxApiPerHour,
+      customBasePrice,
+      discountPercent: discountPercent || 0,
+      activatedAt: status === 'ACTIVE' ? new Date() : (existingLicense?.activatedAt || null),
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      trialEndsAt: trialEnd,
+      enforceSessionLimit: enforceSessionLimit !== false,
+      enforceUserLimit: enforceUserLimit !== false,
+      enforceDataLimit: enforceDataLimit !== false,
+      enforceApiLimit: enforceApiLimit !== false,
+      softLimitMode: softLimitMode || false,
+      autoRenew: autoRenew !== false,
+      adminNotes,
+    };
+
+    let license;
+    let auditAction: string;
+
+    if (existingLicense) {
+      // Update existing license
+      license = await prisma.tenantLicense.update({
+        where: { id: existingLicense.id },
+        data: licenseData,
+        include: {
+          tenant: true,
+          plan: true,
+        },
+      });
+      auditAction = 'UPDATE_LICENSE';
+    } else {
+      // Create new license
+      license = await prisma.tenantLicense.create({
+        data: {
+          tenantId,
+          ...licenseData,
+          createdBy: adminId,
+        },
+        include: {
+          tenant: true,
+          plan: true,
+        },
+      });
+      auditAction = 'ASSIGN_LICENSE';
+    }
 
     // Update tenant limits and subscription plan based on license
     await prisma.tenant.update({
@@ -692,9 +707,9 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       },
     });
 
-    auditLog(req, 'ASSIGN_LICENSE', 'tenant_license', license.id, tenantId, { planId, status: license.status });
+    auditLog(req, auditAction, 'tenant_license', license.id, tenantId, { planId, status: license.status });
 
-    res.status(201).json({
+    res.status(existingLicense ? 200 : 201).json({
       success: true,
       data: license,
     });
